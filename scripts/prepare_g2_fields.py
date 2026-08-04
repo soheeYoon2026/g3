@@ -333,6 +333,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", action="append", default=[])
     parser.add_argument("--case-glob", action="append", default=[])
+    parser.add_argument(
+        "--case-manifest",
+        action="append",
+        default=[],
+        type=Path,
+        help="JSON manifest whose cases contain source.case_dir paths",
+    )
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--group-id", default=None)
@@ -346,9 +353,16 @@ def main() -> None:
     paths = [Path(p).resolve() for p in args.case]
     for pattern in args.case_glob:
         paths.extend(Path(p).resolve() for p in sorted(glob.glob(pattern)))
+    for manifest_path in args.case_manifest:
+        source_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for row in source_manifest.get("cases", []):
+            case_dir = (row.get("source") or {}).get("case_dir")
+            if not case_dir:
+                raise ValueError(f"case without source.case_dir in {manifest_path}")
+            paths.append(Path(case_dir).resolve())
     paths = list(dict.fromkeys(paths))
     if not paths:
-        parser.error("provide --case and/or --case-glob")
+        parser.error("provide --case, --case-glob and/or --case-manifest")
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     rows, skipped = [], []
