@@ -11,6 +11,12 @@ from pathlib import Path
 
 import numpy as np
 
+from aox_g3.geometry.surface_sampling import (
+    GEOMETRY_PREPROCESSING_VERSION,
+    interpolate_vertex_values,
+    sample_triangle_surface,
+)
+
 try:
     import vtk
     from vtk.util import numpy_support as nps
@@ -41,6 +47,20 @@ def _array(data, *names: str) -> np.ndarray | None:
 
 def _points(data) -> np.ndarray:
     return np.asarray(nps.vtk_to_numpy(data.GetPoints().GetData()), dtype=np.float64)
+
+
+def _triangles(poly) -> np.ndarray:
+    """Return triangle indices, fan-triangulating polygonal VTK cells."""
+    result = []
+    for cell_index in range(poly.GetNumberOfCells()):
+        cell = poly.GetCell(cell_index)
+        ids = [cell.GetPointId(i) for i in range(cell.GetNumberOfPoints())]
+        result.extend(
+            [ids[0], ids[i], ids[i + 1]] for i in range(1, len(ids) - 1)
+        )
+    if not result:
+        raise ValueError("surface mesh contains no triangles")
+    return np.asarray(result, dtype=np.int64)
 
 
 def _surface_with_normals(data):
@@ -216,8 +236,9 @@ def prepare_case(
     q_ref = 0.5 * rho * u_ref * u_ref
 
     surface_raw = _read_vtu(surface_path)
-    surface, normals = _surface_with_normals(surface_raw)
+    surface, _ = _surface_with_normals(surface_raw)
     surface_points_raw = _points(surface)
+    surface_faces = _triangles(surface)
     body_lo, body_hi = surface_points_raw.min(0), surface_points_raw.max(0)
     center = (body_lo + body_hi) / 2.0
     scale = float(np.max(body_hi - body_lo)) or 1.0
@@ -254,19 +275,25 @@ def prepare_case(
 
     rng = np.random.default_rng(seed)
     vi = _sample_indices(volume_points_raw, body_lo, body_hi, flow_dir, n_volume, rng)
-    si = rng.choice(len(surface_points_raw), size=min(n_surface, len(surface_points_raw)), replace=False)
+    surface_samples = sample_triangle_surface(
+        surface_points_raw, surface_faces, n_surface, seed=seed + 1_000_003
+    )
+    sampled_surface_cp = interpolate_vertex_values(
+        np.asarray(surface_cp).reshape(-1), surface_faces, surface_samples
+    )
 
     output.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         output,
-        geometry_points=((surface_points_raw[si] - center) / scale).astype(np.float32),
-        geometry_normals=normals[si].astype(np.float32),
+        geometry_points=((surface_samples.points - center) / scale).astype(np.float32),
+        geometry_normals=surface_samples.normals.astype(np.float32),
         volume_points=((volume_points_raw[vi] - center) / scale).astype(np.float32),
         volume_velocity=(volume_velocity[vi] / u_ref).astype(np.float32),
         volume_cp=volume_cp[vi].astype(np.float32),
-        surface_points=((surface_points_raw[si] - center) / scale).astype(np.float32),
-        surface_cp=np.asarray(surface_cp[si], dtype=np.float32).reshape(-1),
+        surface_points=((surface_samples.points - center) / scale).astype(np.float32),
+        surface_cp=np.asarray(sampled_surface_cp, dtype=np.float32).reshape(-1),
         center=center.astype(np.float64), scale=np.asarray(scale),
+        geometry_preprocessing_version=np.asarray(GEOMETRY_PREPROCESSING_VERSION),
     )
     reynolds = rho * u_ref * conditions["ref_length"] / conditions["viscosity"]
     return {
@@ -275,11 +302,13 @@ def prepare_case(
         "conditions": conditions,
         "normalization": {"center": center.tolist(), "scale": scale, "u_ref": u_ref,
                           "q_ref": q_ref, "p_ref": p_ref},
+        "geometry_preprocessing_version": GEOMETRY_PREPROCESSING_VERSION,
+        "geometry_sampling": "area_weighted_triangle_face_normal",
         "reynolds": reynolds,
         "coefficients": coefficients,
         "source": {"case_dir": str(case_dir), "volume": str(volume_path),
                    "surface": str(surface_path), "cfg": str(cfg_candidates[0])},
-        "counts": {"volume": int(len(vi)), "surface": int(len(si))},
+        "counts": {"volume": int(len(vi)), "surface": int(len(surface_samples.points))},
     }
 
 
@@ -344,6 +373,7 @@ def main() -> None:
     args.manifest.parent.mkdir(parents=True, exist_ok=True)
     args.manifest.write_text(json.dumps({
         "schema_version": 1,
+        "geometry_preprocessing_version": GEOMETRY_PREPROCESSING_VERSION,
         "cases": rows,
         "skipped": skipped,
     }, indent=2))

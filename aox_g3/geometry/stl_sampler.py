@@ -21,6 +21,7 @@ import numpy as np
 import trimesh
 
 from ..config import SampleConfig, DEFAULT_SAMPLE
+from .surface_sampling import sample_triangle_surface
 
 
 @dataclass
@@ -64,10 +65,10 @@ def sample_surface(
     over-represent small, highly-tessellated regions (wheels, mirrors) and
     starve large panels, biasing the force integral the model has to learn.
     """
-    rng = np.random.default_rng(seed)
-    points, face_idx = trimesh.sample.sample_surface(mesh, n_points, seed=rng)
-    normals = np.asarray(mesh.face_normals[face_idx], dtype=np.float64)
-    return np.asarray(points, dtype=np.float64), normals
+    samples = sample_triangle_surface(
+        np.asarray(mesh.vertices), np.asarray(mesh.faces), n_points, seed
+    )
+    return samples.points, samples.normals
 
 
 def signed_distance(mesh: trimesh.Trimesh, query: np.ndarray) -> np.ndarray:
@@ -98,9 +99,11 @@ def stl_to_pointcloud(path: str, cfg: SampleConfig = DEFAULT_SAMPLE) -> PointClo
     center = np.zeros(3)
     scale = 1.0
     if cfg.normalize:
-        lo, hi = points.min(0), points.max(0)
+        # Use the full mesh bounds, not the random sample bounds.  Field
+        # preparation and inference use this same body transform.
+        lo, hi = np.asarray(mesh.bounds, dtype=np.float64)
         center = (lo + hi) / 2.0
-        scale = float((hi - lo).max()) or 1.0  # longest bbox edge; guard zero
+        scale = float(np.max(hi - lo)) or 1.0
         points = (points - center) / scale
         # normals are directions: unaffected by translation + isotropic scale,
         # but re-normalise to unit length to shed any numerical drift.

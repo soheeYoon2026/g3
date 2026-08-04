@@ -20,6 +20,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from aox_g3.geometry.stl_sampler import load_mesh, sample_surface
+from aox_g3.geometry.surface_sampling import GEOMETRY_PREPROCESSING_VERSION
 
 
 def list_objects(client, bucket, prefix):
@@ -81,7 +82,7 @@ def main():
                 client.download_file(bucket, stl["Key"], str(stl_path))
                 mesh = load_mesh(stl_path)
                 points, normals = sample_surface(mesh, args.max_points, seed=number)
-            lo, hi = points.min(axis=0), points.max(axis=0)
+                lo, hi = np.asarray(mesh.bounds, dtype=np.float64)
             center, scale = (lo + hi) / 2.0, float(np.max(hi - lo))
             points = ((points - center) / max(scale, 1e-12)).astype(np.float32)
             target = cases_dir / f"{case_id}.npz"
@@ -92,6 +93,9 @@ def main():
                 cd_final=np.float32(cd),
                 center=center.astype(np.float32),
                 scale=np.float32(scale),
+                geometry_preprocessing_version=np.asarray(
+                    GEOMETRY_PREPROCESSING_VERSION
+                ),
             )
             try:
                 cfg = json.loads(row.get("run_config") or "{}")
@@ -105,6 +109,8 @@ def main():
                 "cd_final": cd,
                 "coefficient_expert": "g4_lbm",
                 "coefficient_quality": "successful_g4_results_json",
+                "geometry_preprocessing_version": GEOMETRY_PREPROCESSING_VERSION,
+                "geometry_sampling": "area_weighted_triangle_face_normal",
                 "surface_points": len(points),
                 "conditions": {
                     "u_x": velocity, "u_y": 0.0, "u_z": 0.0,
@@ -126,6 +132,7 @@ def main():
 
     payload = {
         "format": "geometry-coefficient-v1", "coefficient_expert": "g4_lbm",
+        "geometry_preprocessing_version": GEOMETRY_PREPROCESSING_VERSION,
         "source_csv": str(args.csv), "cases": cases, "skipped": skipped,
     }
     (args.out_dir / "manifest.json").write_text(json.dumps(payload, indent=2))

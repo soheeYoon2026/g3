@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from .data.field_dataset import CONDITION_NAMES
+from .geometry.surface_sampling import GEOMETRY_PREPROCESSING_VERSION
 
 
 @dataclass
@@ -23,11 +24,24 @@ class ExpertCase:
     cl: float
 
 
-def load_cases(manifest_path: Path) -> list[ExpertCase]:
+def load_cases(
+    manifest_path: Path,
+    expected_preprocessing_version: int | None = None,
+) -> list[ExpertCase]:
     payload = json.loads(manifest_path.read_text())
     rows = payload["cases"] if isinstance(payload, dict) else payload
     result = []
     for row in rows:
+        version = int(row.get("geometry_preprocessing_version", 1))
+        if (
+            expected_preprocessing_version is not None
+            and version != expected_preprocessing_version
+        ):
+            raise ValueError(
+                f"{manifest_path}: case {row.get('case_id')} uses geometry "
+                f"preprocessing version {version}; expected "
+                f"{expected_preprocessing_version}"
+            )
         path = Path(row["npz"])
         if not path.is_absolute():
             path = (manifest_path.parent / path).resolve()
@@ -114,6 +128,12 @@ def main(argv=None):
     rng = np.random.default_rng(args.seed)
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint = torch.load(args.base, map_location=device, weights_only=False)
+    checkpoint_version = int(checkpoint.get("geometry_preprocessing_version", 1))
+    if checkpoint_version != GEOMETRY_PREPROCESSING_VERSION:
+        raise ValueError(
+            f"base checkpoint uses geometry preprocessing version {checkpoint_version}; "
+            f"expected {GEOMETRY_PREPROCESSING_VERSION}"
+        )
     model = ImplicitFieldNet(**checkpoint["model_config"]).to(device)
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
@@ -126,7 +146,9 @@ def main(argv=None):
     sources: dict[str, list[str]] = {}
     for name, manifest in args.expert:
         path = Path(manifest).resolve()
-        grouped.setdefault(name, []).extend(load_cases(path))
+        grouped.setdefault(name, []).extend(load_cases(
+            path, expected_preprocessing_version=GEOMETRY_PREPROCESSING_VERSION
+        ))
         sources.setdefault(name, []).append(str(path))
 
     expert_specs = copy.deepcopy(checkpoint.get("coefficient_experts", {}))

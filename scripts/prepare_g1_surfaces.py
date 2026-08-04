@@ -13,6 +13,11 @@ import boto3
 import numpy as np
 
 from build_g1_dataset import region_from_bucket
+from aox_g3.geometry.surface_sampling import (
+    GEOMETRY_PREPROCESSING_VERSION,
+    interpolate_vertex_values,
+    sample_triangle_surface,
+)
 
 
 def read_polydata(path: Path):
@@ -50,10 +55,16 @@ def merge_body(polys):
     normals.Update()
     poly = normals.GetOutput()
     points = vtk_to_numpy(poly.GetPoints().GetData())
-    normal = point_array(poly, "Normals")
     pressure = point_array(poly, "pMean")
     velocity = point_array(poly, "UMean")
-    return points, normal, pressure, velocity
+    faces = []
+    for cell_index in range(poly.GetNumberOfCells()):
+        cell = poly.GetCell(cell_index)
+        ids = [cell.GetPointId(i) for i in range(cell.GetNumberOfPoints())]
+        faces.extend([ids[0], ids[i], ids[i + 1]] for i in range(1, len(ids) - 1))
+    if not faces:
+        raise ValueError("body patches contain no triangles")
+    return points, np.asarray(faces, dtype=np.int64), pressure, velocity
 
 
 def download(client, bucket: str, key: str, target: Path) -> Path:
@@ -188,7 +199,15 @@ def main() -> None:
             if not body_entries:
                 raise ValueError("manifest has no source body patches")
 
-            if not target.exists() or args.overwrite:
+            needs_write = args.overwrite or not target.exists()
+            if not needs_write:
+                with np.load(target) as existing:
+                    needs_write = (
+                        "geometry_preprocessing_version" not in existing.files
+                        or int(existing["geometry_preprocessing_version"])
+                        != GEOMETRY_PREPROCESSING_VERSION
+                    )
+            if needs_write:
                 with tempfile.TemporaryDirectory(prefix=f"g1_{job}_") as temp:
                     temp = Path(temp)
                     inlet = read_polydata(download(client, bucket, inlet_key, temp / "inlet.vtp"))
@@ -208,28 +227,30 @@ def main() -> None:
                     if u_ref < 1e-6:
                         raise ValueError("inlet and outlet UMean are zero")
                     p_ref = float(np.median(point_array(outlet, "pMean")))
-                    points, normals, pressure, velocity = merge_body(polys)
-                    finite = (np.isfinite(points).all(axis=1) & np.isfinite(normals).all(axis=1)
+                    points, faces, pressure, velocity = merge_body(polys)
+                    finite = (np.isfinite(points).all(axis=1)
                               & np.isfinite(pressure) & np.isfinite(velocity).all(axis=1))
-                    points, normals = points[finite], normals[finite]
-                    pressure, velocity = pressure[finite], velocity[finite]
+                    if not finite.all():
+                        # Dropping arbitrary vertices would invalidate face indices.
+                        raise ValueError("body surface contains non-finite point fields")
                     lo, hi = points.min(axis=0), points.max(axis=0)
                     center = (lo + hi) / 2.0
                     scale = float(np.max(hi - lo))
                     if scale <= 0:
                         raise ValueError("body bounding box has zero scale")
-                    rng = np.random.default_rng(number)
-                    count = min(len(points), args.max_points)
-                    select = rng.choice(len(points), count, replace=False)
-                    points = ((points[select] - center) / scale).astype(np.float32)
-                    normals = normals[select].astype(np.float32)
-                    cp = ((pressure[select] - p_ref) / (0.5 * u_ref**2)).astype(np.float32)
-                    normalized_velocity = (velocity[select] / u_ref).astype(np.float32)
+                    samples = sample_triangle_surface(
+                        points, faces, args.max_points, seed=number
+                    )
+                    sampled_pressure = interpolate_vertex_values(pressure, faces, samples)
+                    sampled_velocity = interpolate_vertex_values(velocity, faces, samples)
+                    normalized_points = ((samples.points - center) / scale).astype(np.float32)
+                    cp = ((sampled_pressure - p_ref) / (0.5 * u_ref**2)).astype(np.float32)
+                    normalized_velocity = (sampled_velocity / u_ref).astype(np.float32)
                     np.savez_compressed(
                         target,
-                        geometry_points=points,
-                        geometry_normals=normals,
-                        surface_points=points,
+                        geometry_points=normalized_points,
+                        geometry_normals=samples.normals.astype(np.float32),
+                        surface_points=normalized_points,
                         surface_cp=cp,
                         surface_velocity=normalized_velocity,
                         **{
@@ -242,6 +263,9 @@ def main() -> None:
                         scale=np.float32(scale),
                         u_ref_vector=u_ref_vector.astype(np.float32),
                         p_ref=np.float32(p_ref),
+                        geometry_preprocessing_version=np.asarray(
+                            GEOMETRY_PREPROCESSING_VERSION
+                        ),
                     )
             with np.load(target) as data:
                 u_vec = data["u_ref_vector"].astype(float)
@@ -259,6 +283,8 @@ def main() -> None:
                 "surface_points": n_points,
                 "coefficient_expert": args.coefficient_expert,
                 "coefficient_quality": "successful_solver_surface_fields",
+                "geometry_preprocessing_version": GEOMETRY_PREPROCESSING_VERSION,
+                "geometry_sampling": "area_weighted_triangle_face_normal",
                 "smoke_test_case": row.get("test_case"),
                 "conditions": {
                     "u_x": float(u_vec[0]), "u_y": float(u_vec[1]), "u_z": float(u_vec[2]),
@@ -273,6 +299,7 @@ def main() -> None:
 
     payload = {
         "format": "g1-surface-v1",
+        "geometry_preprocessing_version": GEOMETRY_PREPROCESSING_VERSION,
         "source_csv": str(args.csv),
         "coefficient": coefficient_name,
         "selection": ("status=succeeded, objective_function=" + args.objective_function

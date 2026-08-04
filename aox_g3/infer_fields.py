@@ -11,6 +11,7 @@ import numpy as np
 
 from .data.field_dataset import CONDITION_NAMES
 from .geometry.stl_sampler import load_mesh, sample_surface
+from .geometry.surface_sampling import GEOMETRY_PREPROCESSING_VERSION
 
 
 def _conditions(args) -> tuple[np.ndarray, float, float]:
@@ -71,6 +72,13 @@ def main(argv=None):
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint = torch.load(args.model, map_location=device, weights_only=False)
+    checkpoint_version = int(checkpoint.get("geometry_preprocessing_version", 1))
+    if checkpoint_version != GEOMETRY_PREPROCESSING_VERSION:
+        raise ValueError(
+            f"checkpoint geometry preprocessing version {checkpoint_version} does not "
+            f"match inference version {GEOMETRY_PREPROCESSING_VERSION}; retrain or use "
+            "the matching legacy inference code"
+        )
     model = ImplicitFieldNet(**checkpoint["model_config"]).to(device)
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
@@ -236,6 +244,7 @@ def main(argv=None):
         ),
         "grid": [nx, ny, nz],
         "device": device,
+        "geometry_preprocessing_version": GEOMETRY_PREPROCESSING_VERSION,
     }
     (out / "prediction.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))

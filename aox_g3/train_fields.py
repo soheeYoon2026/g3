@@ -15,6 +15,22 @@ from .data.field_dataset import (
     condition_stats,
     load_field_manifest,
 )
+from .geometry.surface_sampling import GEOMETRY_PREPROCESSING_VERSION
+
+
+def _require_preprocessing_version(cases, label: str) -> None:
+    incompatible = [
+        case.case_id for case in cases
+        if int(case.metadata.get("geometry_preprocessing_version", 1))
+        != GEOMETRY_PREPROCESSING_VERSION
+    ]
+    if incompatible:
+        preview = ", ".join(incompatible[:5])
+        raise ValueError(
+            f"{label} contains {len(incompatible)} legacy geometry cases "
+            f"({preview}); regenerate them with preprocessing version "
+            f"{GEOMETRY_PREPROCESSING_VERSION}"
+        )
 
 
 def split_cases(cases, val_fraction: float, seed: int):
@@ -122,20 +138,25 @@ def main(argv=None):
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
     cases = load_field_manifest(args.manifest)
+    _require_preprocessing_version(cases, "G2 manifest")
     train_cases, val_cases, split_mode = split_cases(cases, args.val_fraction, args.seed)
     cond_mean, cond_std = condition_stats(train_cases)
 
     g1_train_cases = g1_val_cases = []
     g1_split_mode = None
     if args.g1_manifest:
+        g1_cases = load_field_manifest(args.g1_manifest)
+        _require_preprocessing_version(g1_cases, "G1 Cd manifest")
         g1_train_cases, g1_val_cases, g1_split_mode = split_cases(
-            load_field_manifest(args.g1_manifest), args.val_fraction, args.seed
+            g1_cases, args.val_fraction, args.seed
         )
     g1_cl_train_cases = g1_cl_val_cases = []
     g1_cl_split_mode = None
     if args.g1_cl_manifest:
+        g1_cl_cases = load_field_manifest(args.g1_cl_manifest)
+        _require_preprocessing_version(g1_cl_cases, "G1 Cl manifest")
         g1_cl_train_cases, g1_cl_val_cases, g1_cl_split_mode = split_cases(
-            load_field_manifest(args.g1_cl_manifest), args.val_fraction, args.seed
+            g1_cl_cases, args.val_fraction, args.seed
         )
 
     cd_values = _g2_values(train_cases, "cd", positive=True)
@@ -401,6 +422,8 @@ def main(argv=None):
                 "drag_head_state": drag_head.state_dict() if drag_head is not None else None,
                 "lift_head_state": lift_head.state_dict() if lift_head is not None else None,
                 "model_config": {"condition_dim": len(CONDITION_NAMES)},
+                "geometry_preprocessing_version": GEOMETRY_PREPROCESSING_VERSION,
+                "geometry_sampling": "area_weighted_triangle_face_normal",
                 "condition_names": CONDITION_NAMES,
                 "condition_mean": cond_mean,
                 "condition_std": cond_std,
