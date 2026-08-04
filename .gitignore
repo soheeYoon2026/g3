@@ -24,11 +24,11 @@ env/
 .service-token
 
 # Generated datasets, checkpoints, and runtime artifacts
-data/
-models/
-var/
-predictions/
-outputs/
+/data/
+/models/
+/var/
+/predictions/
+/outputs/
 *.pt
 *.pth
 *.pkl
