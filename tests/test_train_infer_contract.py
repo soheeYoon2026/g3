@@ -115,3 +115,16 @@ def test_tiny_train_checkpoint_and_stl_inference(tmp_path: Path, monkeypatch):
     assert np.isfinite(summary["drag_coefficient"])
     assert np.isfinite(summary["lift_coefficient"])
     assert (output / "prediction.json").is_file()
+
+    quick_output = tmp_path / "prediction-quick"
+    quick = infer_main([
+        "--stl", str(stl), "--model", str(checkpoint),
+        "--out-dir", str(quick_output), "--geometry-points", "16",
+        "--device", "cpu", "--ref-length", "4.0", "--ref-area", "2.0",
+        "--coefficients-only",
+    ])
+    assert quick["mode"] == "coefficients-only"
+    assert np.isfinite(quick["drag_coefficient"])
+    assert quick["mesh"]["faces"] == 12
+    assert (quick_output / "prediction.json").is_file()
+    assert not (quick_output / "volume_field.vti").exists()

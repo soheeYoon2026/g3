@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import time
 from pathlib import Path
 
 import numpy as np
@@ -42,6 +43,7 @@ def main(argv=None):
     from .field_io import render_png, write_streamlines, write_surface_vtp, write_volume_vti
     from .models.implicit_field import DragHead, ImplicitFieldNet, LiftHead
 
+    started = time.perf_counter()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stl", required=True)
     parser.add_argument("--model", required=True)
@@ -64,11 +66,33 @@ def main(argv=None):
     parser.add_argument("--p-ref", type=float, default=0.0)
     parser.add_argument("--device", default=None)
     parser.add_argument("--png", action="store_true")
+    parser.add_argument(
+        "--coefficients-only",
+        action="store_true",
+        help="predict Cd/Cl only; skip the 3-D grid, VTK files, and rendering",
+    )
     parser.add_argument("--patch-id", default=None,
                         help="optional AOX patch id for the Result Viewer VTP manifest")
     parser.add_argument("--coefficient-expert", default=None,
                         help="explicit coefficient label domain; defaults to checkpoint primary")
     args = parser.parse_args(argv)
+
+    numeric = {
+        "u_x": args.u_x, "u_y": args.u_y, "u_z": args.u_z,
+        "density": args.density, "viscosity": args.viscosity,
+        "temperature": args.temperature, "ref_length": args.ref_length,
+        "ref_area": args.ref_area, "p_ref": args.p_ref,
+    }
+    invalid = [name for name, value in numeric.items() if not np.isfinite(value)]
+    if invalid:
+        parser.error(f"non-finite input value: {', '.join(invalid)}")
+    for name in ("density", "viscosity", "temperature", "ref_length", "ref_area"):
+        if numeric[name] <= 0.0:
+            parser.error(f"--{name.replace('_', '-')} must be positive")
+    if args.geometry_points <= 0 or args.chunk_size <= 0:
+        parser.error("--geometry-points and --chunk-size must be positive")
+    if not args.coefficients_only and any(value < 2 for value in args.grid):
+        parser.error("all --grid dimensions must be at least 2")
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint = torch.load(args.model, map_location=device, weights_only=False)
@@ -113,7 +137,13 @@ def main(argv=None):
         expert_modules[name] = (drag_head, lift_head)
 
     mesh = load_mesh(args.stl)
+    vertices = np.asarray(mesh.vertices)
+    if not np.isfinite(vertices).all():
+        raise ValueError("STL contains non-finite vertex coordinates")
     lo, hi = mesh.bounds
+    extents = hi - lo
+    if not np.isfinite(extents).all() or np.any(extents <= 0.0):
+        raise ValueError(f"STL must have positive 3-D extents; got {extents.tolist()}")
     center = (lo + hi) / 2.0
     scale = float(np.max(hi - lo)) or 1.0
     geometry_points, geometry_normals = sample_surface(mesh, args.geometry_points, seed=0)
@@ -160,6 +190,48 @@ def main(argv=None):
         drag_coefficient = selected_prediction["drag_coefficient"]
         lift_coefficient = selected_prediction["lift_coefficient"]
 
+    mesh_diagnostics = {
+        "vertices": int(len(vertices)),
+        "faces": int(len(mesh.faces)),
+        "watertight": bool(mesh.is_watertight),
+        "winding_consistent": bool(mesh.is_winding_consistent),
+        "bounds": [lo.tolist(), hi.tolist()],
+        "extents": extents.tolist(),
+    }
+    input_conditions = {name: float(value) for name, value in numeric.items()}
+    coefficient_warning = (
+        "selected expert is experimental and requires solver verification"
+        if selected_prediction.get("deployment_status") == "experimental"
+        else (
+            None if selected_prediction.get("in_distribution", True)
+            else "geometry is outside this expert's training distribution; run G2 verification"
+        )
+    )
+    out = Path(args.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    optimized_stl_path = out / f"{Path(args.stl).stem}_optimized.stl"
+    shutil.copyfile(args.stl, optimized_stl_path)
+
+    if args.coefficients_only:
+        summary = {
+            "mode": "coefficients-only",
+            "input_stl": str(Path(args.stl).resolve()),
+            "optimized_stl": str(optimized_stl_path),
+            "drag_coefficient": drag_coefficient,
+            "lift_coefficient": lift_coefficient,
+            "coefficient_expert": selected_expert,
+            "coefficient_experts": expert_predictions,
+            "coefficient_warning": coefficient_warning,
+            "conditions": input_conditions,
+            "mesh": mesh_diagnostics,
+            "device": device,
+            "geometry_preprocessing_version": GEOMETRY_PREPROCESSING_VERSION,
+            "elapsed_seconds": round(time.perf_counter() - started, 3),
+        }
+        (out / "prediction.json").write_text(json.dumps(summary, indent=2))
+        print(json.dumps(summary, indent=2))
+        return summary
+
     nx, ny, nz = args.grid
     xmin, xmax, ymin, ymax, zmin, zmax = args.bounds
     x = np.linspace(xmin, xmax, nx)
@@ -172,15 +244,12 @@ def main(argv=None):
     volume_velocity = volume_pred[:, 1:] * u_ref
     volume_pressure = args.p_ref + volume_cp * q_ref
 
-    vertices = np.asarray(mesh.vertices)
     surface_query = (vertices - center) / scale
     surface_pred = _predict_chunks(model, latent, cond_latent, surface_query, device, args.chunk_size)
     surface_cp = surface_pred[:, 0]
     surface_velocity = surface_pred[:, 1:] * u_ref
     surface_pressure = args.p_ref + surface_cp * q_ref
 
-    out = Path(args.out_dir)
-    out.mkdir(parents=True, exist_ok=True)
     origin = center + scale * np.asarray([xmin, ymin, zmin])
     spacing = scale * np.asarray([(xmax - xmin) / (nx - 1), (ymax - ymin) / (ny - 1),
                                   (zmax - zmin) / (nz - 1)])
@@ -202,8 +271,6 @@ def main(argv=None):
     # STRM/VFLD binaries, and associates the VTP field manifest with the body.
     flow_path = out / "flow.vti"
     shutil.copyfile(volume_path, flow_path)
-    optimized_stl_path = out / f"{Path(args.stl).stem}_optimized.stl"
-    shutil.copyfile(args.stl, optimized_stl_path)
     vtp_dir = out / "vtp"
     vtp_dir.mkdir(exist_ok=True)
     viewer_surface_path = vtp_dir / surface_path.name
@@ -222,6 +289,8 @@ def main(argv=None):
     }
     (vtp_dir / "manifest.json").write_text(json.dumps(viewer_manifest, indent=2))
     summary = {
+        "mode": "full-field",
+        "input_stl": str(Path(args.stl).resolve()),
         "volume": str(volume_path), "surface": str(surface_path),
         "streamlines": str(streamlines_path),
         "flow_volume": str(flow_path),
@@ -234,17 +303,13 @@ def main(argv=None):
         "lift_coefficient": lift_coefficient,
         "coefficient_expert": selected_expert,
         "coefficient_experts": expert_predictions,
-        "coefficient_warning": (
-            "selected expert is experimental and requires solver verification"
-            if selected_prediction.get("deployment_status") == "experimental"
-            else (
-                None if selected_prediction.get("in_distribution", True)
-                else "geometry is outside this expert's training distribution; run G2 verification"
-            )
-        ),
+        "coefficient_warning": coefficient_warning,
+        "conditions": input_conditions,
+        "mesh": mesh_diagnostics,
         "grid": [nx, ny, nz],
         "device": device,
         "geometry_preprocessing_version": GEOMETRY_PREPROCESSING_VERSION,
+        "elapsed_seconds": round(time.perf_counter() - started, 3),
     }
     (out / "prediction.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
