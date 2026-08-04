@@ -149,6 +149,7 @@ def main(argv=None):
     geometry_points, geometry_normals = sample_surface(mesh, args.geometry_points, seed=0)
     geometry = np.concatenate([(geometry_points - center) / scale, geometry_normals], axis=1)
     conditions, u_ref, q_ref = _conditions(args)
+    raw_conditions = conditions.copy()
     cond_mean = np.asarray(checkpoint["condition_mean"], np.float32)
     cond_std = np.asarray(checkpoint["condition_std"], np.float32)
     conditions = (conditions - cond_mean) / cond_std
@@ -183,8 +184,35 @@ def main(argv=None):
                 prediction.update({
                     "ood_score": score,
                     "ood_threshold": threshold,
-                    "in_distribution": bool(score <= threshold),
+                    "geometry_in_distribution": bool(score <= threshold),
                 })
+            condition_range = spec.get("condition_range") or checkpoint.get("condition_range")
+            condition_violations = []
+            if condition_range:
+                for index, condition_name in enumerate(CONDITION_NAMES):
+                    bounds = condition_range.get(condition_name)
+                    if not bounds:
+                        continue
+                    value = float(raw_conditions[index])
+                    lower, upper = float(bounds["min"]), float(bounds["max"])
+                    tolerance = max(abs(lower), abs(upper), 1.0) * 1e-6
+                    if value < lower - tolerance or value > upper + tolerance:
+                        condition_violations.append({
+                            "name": condition_name,
+                            "value": value,
+                            "training_min": lower,
+                            "training_max": upper,
+                        })
+            prediction["condition_range_available"] = bool(condition_range)
+            prediction["condition_violations"] = condition_violations
+            prediction["condition_in_distribution"] = (
+                not condition_violations if condition_range else None
+            )
+            geometry_ok = prediction.get("geometry_in_distribution", True)
+            condition_ok = prediction["condition_in_distribution"]
+            prediction["in_distribution"] = bool(
+                geometry_ok and condition_ok is not False
+            )
             expert_predictions[name] = prediction
         selected_prediction = expert_predictions[selected_expert]
         drag_coefficient = selected_prediction["drag_coefficient"]
@@ -199,7 +227,11 @@ def main(argv=None):
         "extents": extents.tolist(),
     }
     input_conditions = {name: float(value) for name, value in numeric.items()}
+    selected_condition_violations = selected_prediction.get("condition_violations", [])
     coefficient_warning = (
+        "inference conditions are outside the selected expert's training range: "
+        + ", ".join(item["name"] for item in selected_condition_violations)
+        if selected_condition_violations else
         "selected expert is experimental and requires solver verification"
         if selected_prediction.get("deployment_status") == "experimental"
         else (

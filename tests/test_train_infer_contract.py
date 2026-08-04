@@ -87,6 +87,7 @@ def test_tiny_train_checkpoint_and_stl_inference(tmp_path: Path, monkeypatch):
     ])
     payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
     assert payload["geometry_preprocessing_version"] == GEOMETRY_PREPROCESSING_VERSION
+    assert payload["condition_range"]["u_x"] == {"min": 30.0, "max": 30.0}
 
     stl = tmp_path / "box.stl"
     trimesh.creation.box(extents=(4.0, 2.0, 1.0)).export(stl)
@@ -121,10 +122,14 @@ def test_tiny_train_checkpoint_and_stl_inference(tmp_path: Path, monkeypatch):
         "--stl", str(stl), "--model", str(checkpoint),
         "--out-dir", str(quick_output), "--geometry-points", "16",
         "--device", "cpu", "--ref-length", "4.0", "--ref-area", "2.0",
-        "--coefficients-only",
+        "--u-x", "40.0", "--coefficients-only",
     ])
     assert quick["mode"] == "coefficients-only"
     assert np.isfinite(quick["drag_coefficient"])
     assert quick["mesh"]["faces"] == 12
+    selected = quick["coefficient_experts"][quick["coefficient_expert"]]
+    assert selected["condition_in_distribution"] is False
+    assert selected["condition_violations"][0]["name"] == "u_x"
+    assert "u_x" in quick["coefficient_warning"]
     assert (quick_output / "prediction.json").is_file()
     assert not (quick_output / "volume_field.vti").exists()

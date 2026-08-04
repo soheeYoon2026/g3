@@ -157,6 +157,14 @@ def main(argv=None):
         unique = {case.case_id: case for case in all_cases}
         cases = list(unique.values())
         train_cases, val_cases = split_groups(cases, args.val_fraction, args.seed + expert_index)
+        train_condition_values = np.stack([case.conditions for case in train_cases])
+        condition_range = {
+            name: {
+                "min": float(train_condition_values[:, index].min()),
+                "max": float(train_condition_values[:, index].max()),
+            }
+            for index, name in enumerate(checkpoint["condition_names"])
+        }
         cd_values = [case.cd for case in train_cases if np.isfinite(case.cd) and case.cd > 0]
         cl_values = [case.cl for case in train_cases if np.isfinite(case.cl)]
         if not cd_values and not cl_values:
@@ -281,6 +289,7 @@ def main(argv=None):
                 "method": "geometry_latent_l2_q95", "centroid": centroid.tolist(),
                 "radius": radius, "threshold": 1.0,
             },
+            "condition_range": condition_range,
             "sources": sources[name],
             "train_cases": [case.case_id for case in train_cases],
             "val_cases": [case.case_id for case in val_cases],

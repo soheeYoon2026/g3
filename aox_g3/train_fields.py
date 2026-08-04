@@ -141,6 +141,14 @@ def main(argv=None):
     _require_preprocessing_version(cases, "G2 manifest")
     train_cases, val_cases, split_mode = split_cases(cases, args.val_fraction, args.seed)
     cond_mean, cond_std = condition_stats(train_cases)
+    train_condition_values = np.stack([case.conditions for case in train_cases])
+    condition_range = {
+        name: {
+            "min": float(train_condition_values[:, index].min()),
+            "max": float(train_condition_values[:, index].max()),
+        }
+        for index, name in enumerate(CONDITION_NAMES)
+    }
 
     g1_train_cases = g1_val_cases = []
     g1_split_mode = None
@@ -414,6 +422,7 @@ def main(argv=None):
                     "radius": ood_radius,
                     "threshold": 1.0,
                 },
+                "condition_range": condition_range,
                 "train_cases": [case.case_id for case in train_cases],
                 "val_cases": [case.case_id for case in val_cases],
             }
@@ -427,6 +436,7 @@ def main(argv=None):
                 "condition_names": CONDITION_NAMES,
                 "condition_mean": cond_mean,
                 "condition_std": cond_std,
+                "condition_range": condition_range,
                 "training": vars(args),
                 "split_mode": split_mode,
                 "train_cases": [case.case_id for case in train_cases],
