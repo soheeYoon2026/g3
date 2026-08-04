@@ -1,0 +1,53 @@
+# Python caches and test output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments and editor state
+.venv/
+venv/
+env/
+.env
+.env.*
+.claude/
+.vscode/
+.idea/
+
+# Credentials and service-local secrets
+*.pem
+*.key
+*.token
+.service-token
+
+# Generated datasets, checkpoints, and runtime artifacts
+data/
+models/
+var/
+predictions/
+outputs/
+*.pt
+*.pth
+*.pkl
+
+# Generated scientific and visualization artifacts
+*.npz
+*.npy
+*.vti
+*.vtp
+*.vtu
+*.stl
+*.png
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*~
+
+# OS metadata
+.DS_Store
+Thumbs.db

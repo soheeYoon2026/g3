@@ -1,0 +1,25 @@
+[Unit]
+Description=AOX G3 CUDA inference API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/g3
+Environment=G3_MODEL_PATH=models/registry/production.pt
+Environment=G3_COEFFICIENT_EXPERT=g2_su2_clean
+Environment=G3_API_TOKEN_FILE=/home/ubuntu/g3/.service-token
+Environment=G3_SHADOW_URL=http://127.0.0.1:8004
+Environment=G3_SHADOW_TOKEN_FILE=/home/ubuntu/g3/.service-token
+Environment=G3_SHADOW_SAMPLE_RATE=0.10
+Environment=G3_SHADOW_AUDIT_PATH=/home/ubuntu/g3/var/canary/shadow.jsonl
+Environment=G3_SHADOW_SPOOL_DIR=/home/ubuntu/g3/var/canary/spool
+Environment=G3_SHADOW_MODEL_POINTER=/home/ubuntu/g3/models/registry/challenger.pt
+Environment=G3_SHADOW_MAX_PENDING=1
+ExecStart=/home/ubuntu/venv_g3/bin/uvicorn aox_g3.service:app --host 127.0.0.1 --port 8003
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

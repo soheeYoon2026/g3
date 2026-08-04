@@ -1,0 +1,16 @@
+# --- Phase 0 spike (runs today, CPU, no torch) -----------------------------
+numpy>=1.24
+scipy>=1.10
+trimesh>=4.0
+scikit-learn>=1.3
+matplotlib>=3.7        # optional, only for scripts/sample_stl_demo.py --png
+pytest>=7.0            # optional, for tests/
+boto3>=1.34            # optional, for scripts/build_g1_dataset.py on AWS
+
+# --- Phase 1 GPU stack (uncomment when moving off the baseline) -------------
+# torch>=2.2            # CUDA build matching your driver (RTX 5070 -> cu12x)
+# nvidia-physicsnemo    # DoMINO / FIGConvNet / X-MeshGraphNet (Apache-2.0)
+# huggingface_hub       # to pull CC-BY-SA datasets / seed checkpoints
+#
+# MIT-licensed alternative backbones:
+# neuraloperator        # FNO / GINO (github.com/neuraloperator/neuraloperator)

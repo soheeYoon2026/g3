@@ -1,0 +1,8 @@
+-r requirements.txt
+torch>=2.13
+vtk>=9.3
+pyvista>=0.47
+fastapi>=0.115
+python-multipart>=0.0.20
+uvicorn[standard]>=0.34
+requests>=2.31

@@ -1,0 +1,499 @@
+<title>AOX G3 — Neural-Surrogate Solver Proposal</title>
+<style>
+  :root {
+    --bg: #eceff3; --surface: #ffffff; --surface-2: #f5f7fa; --surface-3: #e7ecf1;
+    --ink: #0f1822; --ink-soft: #44525e; --ink-faint: #788894;
+    --line: #d6dde4; --line-soft: #e3e9ee;
+    --accent: #0a8ea4; --accent-strong: #06697b; --accent-wash: #dcf0f4;
+    --hot: #dd4d33; --hot-wash: #fbe4de;
+    --good: #1c8f61; --good-wash: #dcf1e8;
+    --warn: #b57d16; --warn-wash: #f6ecd4;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --shadow: 0 1px 2px rgba(15,24,34,.06), 0 8px 24px rgba(15,24,34,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a1017; --surface: #121b25; --surface-2: #0e1620; --surface-3: #172230;
+      --ink: #e8eef4; --ink-soft: #a6b3bf; --ink-faint: #6a7a88;
+      --line: #223141; --line-soft: #1a2734;
+      --accent: #24c8e0; --accent-strong: #7ee3f2; --accent-wash: #0d2c33;
+      --hot: #ff7359; --hot-wash: #35190f;
+      --good: #37cc8e; --good-wash: #0c2b1f;
+      --warn: #e6b34a; --warn-wash: #2e2410;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #eceff3; --surface: #ffffff; --surface-2: #f5f7fa; --surface-3: #e7ecf1;
+    --ink: #0f1822; --ink-soft: #44525e; --ink-faint: #788894;
+    --line: #d6dde4; --line-soft: #e3e9ee;
+    --accent: #0a8ea4; --accent-strong: #06697b; --accent-wash: #dcf0f4;
+    --hot: #dd4d33; --hot-wash: #fbe4de; --good: #1c8f61; --good-wash: #dcf1e8;
+    --warn: #b57d16; --warn-wash: #f6ecd4;
+    --shadow: 0 1px 2px rgba(15,24,34,.06), 0 8px 24px rgba(15,24,34,.05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a1017; --surface: #121b25; --surface-2: #0e1620; --surface-3: #172230;
+    --ink: #e8eef4; --ink-soft: #a6b3bf; --ink-faint: #6a7a88;
+    --line: #223141; --line-soft: #1a2734;
+    --accent: #24c8e0; --accent-strong: #7ee3f2; --accent-wash: #0d2c33;
+    --hot: #ff7359; --hot-wash: #35190f; --good: #37cc8e; --good-wash: #0c2b1f;
+    --warn: #e6b34a; --warn-wash: #2e2410;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); line-height: 1.6;
+    -webkit-font-smoothing: antialiased; font-size: 17px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
+  .band { border-bottom: 1px solid var(--line); }
+
+  /* ---------- typographic system ---------- */
+  h1, h2, h3 { text-wrap: balance; letter-spacing: -0.02em; line-height: 1.12; margin: 0; }
+  h2 { font-size: clamp(1.35rem, 2.6vw, 1.8rem); font-weight: 750; }
+  h3 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+  p { margin: 0 0 1rem; max-width: 68ch; }
+  .lead { font-size: 1.12rem; color: var(--ink-soft); max-width: 62ch; }
+  .eyebrow {
+    font-family: var(--mono); font-size: .72rem; font-weight: 600;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--accent-strong);
+  }
+  .label { font-family: var(--mono); font-size: .72rem; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-faint); }
+  code, .mono { font-family: var(--mono); font-size: .86em; }
+  .mono-tag { font-family: var(--mono); background: var(--surface-3);
+    border: 1px solid var(--line); border-radius: 3px; padding: .05em .4em; font-size: .82em; }
+  a { color: var(--accent-strong); }
+
+  /* ---------- masthead ---------- */
+  header { position: relative; overflow: hidden; border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--surface-2), var(--bg)); }
+  #flow { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0;
+    opacity: .5; }
+  @media (prefers-color-scheme: dark) { #flow { opacity: .38; } }
+  .masthead { position: relative; z-index: 1; padding: 68px 0 52px; }
+  .masthead h1 {
+    font-size: clamp(2.3rem, 6vw, 3.7rem); font-weight: 800;
+    margin: 18px 0 0; max-width: 20ch;
+  }
+  .masthead h1 .hl { color: var(--accent-strong); }
+  .masthead .lead { margin-top: 20px; }
+  .kicker-row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: baseline; }
+  .verdict-chip {
+    display: inline-flex; gap: 8px; align-items: center; margin-top: 26px;
+    font-family: var(--mono); font-size: .8rem; letter-spacing: .04em;
+    background: var(--accent-wash); color: var(--accent-strong);
+    border: 1px solid var(--accent); border-radius: 999px; padding: 7px 15px;
+  }
+  .verdict-chip b { color: var(--ink); font-weight: 700; }
+
+  /* ---------- HUD stat strip ---------- */
+  .hud { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+    background: var(--line); border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line); }
+  .hud .cell { background: var(--surface); padding: 20px 22px; }
+  .hud .v { font-family: var(--mono); font-weight: 700; font-size: 1.5rem;
+    letter-spacing: -.02em; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .hud .v .u { font-size: .8rem; color: var(--accent-strong); font-weight: 600; }
+  .hud .k { margin-top: 6px; }
+  @media (max-width: 760px) { .hud { grid-template-columns: repeat(2, 1fr); } }
+
+  /* ---------- sections ---------- */
+  section { padding: 52px 0; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 26px; }
+  .sec-head .no { font-family: var(--mono); font-size: .8rem; color: var(--accent-strong);
+    font-weight: 700; }
+
+  /* ---------- tier ladder ---------- */
+  .ladder { display: flex; flex-direction: column; gap: 10px; }
+  .tier { display: grid; grid-template-columns: 96px 1fr 128px;
+    gap: 16px; align-items: center; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 8px; padding: 14px 18px; box-shadow: var(--shadow); }
+  .tier.new { border-color: var(--accent); background:
+      linear-gradient(90deg, var(--accent-wash), var(--surface) 55%); }
+  .tier .code { font-family: var(--mono); font-weight: 800; font-size: 1.15rem; }
+  .tier.new .code { color: var(--accent-strong); }
+  .tier .name { font-weight: 700; }
+  .tier .eng { color: var(--ink-soft); font-size: .92rem; }
+  .tier .track { position: relative; height: 8px; background: var(--surface-3);
+    border-radius: 999px; margin-top: 10px; overflow: hidden; }
+  .tier .track > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px;
+    background: var(--ink-faint); }
+  .tier.new .track > i { background: linear-gradient(90deg, var(--accent), var(--accent-strong)); }
+  .tier .time { font-family: var(--mono); font-weight: 700; text-align: right;
+    font-variant-numeric: tabular-nums; }
+  .tier.new .time { color: var(--accent-strong); }
+  @media (max-width: 640px) {
+    .tier { grid-template-columns: 64px 1fr; }
+    .tier .time { grid-column: 2; text-align: left; }
+  }
+
+  /* ---------- callout ---------- */
+  .callout { border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    background: var(--surface); border-radius: 8px; padding: 22px 24px; box-shadow: var(--shadow); }
+  .callout.warn { border-left-color: var(--hot); }
+  .callout h3 { margin-bottom: 8px; }
+  .callout p:last-child { margin-bottom: 0; }
+
+  /* ---------- generic cards ---------- */
+  .grid { display: grid; gap: 16px; }
+  .grid.two { grid-template-columns: 1fr 1fr; }
+  .grid.three { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 720px) { .grid.two, .grid.three { grid-template-columns: 1fr; } }
+  .card { background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: 20px 22px; box-shadow: var(--shadow); }
+  .card h3 { margin-bottom: 8px; }
+  .card p { font-size: .95rem; color: var(--ink-soft); margin-bottom: 0; }
+  .card .tag { margin-bottom: 12px; }
+
+  /* ---------- tables ---------- */
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; background: var(--surface); }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line-soft);
+    font-size: .92rem; vertical-align: top; }
+  thead th { font-family: var(--mono); font-size: .7rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-faint); background: var(--surface-2); }
+  tbody tr:last-child td { border-bottom: none; }
+  td .mono { color: var(--ink); }
+  .pill { display: inline-block; font-family: var(--mono); font-size: .72rem;
+    letter-spacing: .03em; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .pill.ok { background: var(--good-wash); color: var(--good); border: 1px solid var(--good); }
+  .pill.no { background: var(--hot-wash); color: var(--hot); border: 1px solid var(--hot); }
+  .pill.warn { background: var(--warn-wash); color: var(--warn); border: 1px solid var(--warn); }
+
+  /* ---------- roadmap ---------- */
+  .road { display: flex; flex-direction: column; gap: 0; }
+  .phase { display: grid; grid-template-columns: 150px 1fr; gap: 22px;
+    padding: 22px 0; border-top: 1px solid var(--line); }
+  .phase:first-child { border-top: none; }
+  .phase .meta .p { font-family: var(--mono); font-weight: 800; font-size: 1.05rem; color: var(--accent-strong); }
+  .phase .meta .t { font-family: var(--mono); font-size: .78rem; color: var(--ink-faint); margin-top: 4px; }
+  .phase ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-soft); font-size: .95rem; }
+  .phase li { margin-bottom: 4px; }
+  .phase.now .meta .p::after { content: "● SHIPPED"; display: block; font-size: .62rem;
+    letter-spacing: .1em; color: var(--good); margin-top: 6px; }
+  @media (max-width: 620px) { .phase { grid-template-columns: 1fr; gap: 8px; } }
+
+  /* ---------- risk list ---------- */
+  .risk { display: grid; grid-template-columns: 28px 1fr; gap: 14px; padding: 16px 0;
+    border-top: 1px solid var(--line-soft); }
+  .risk:first-child { border-top: none; }
+  .risk .n { font-family: var(--mono); font-weight: 700; color: var(--hot); }
+  .risk .h { font-weight: 650; }
+  .risk .m { color: var(--ink-soft); font-size: .93rem; margin-top: 2px; }
+  .risk .m b { color: var(--ink); font-weight: 650; }
+
+  /* ---------- bottom line ---------- */
+  .bottom { background: var(--ink); color: var(--bg); border-radius: 12px;
+    padding: 34px 32px; margin: 10px 0 0; }
+  @media (prefers-color-scheme: dark) { .bottom { background: var(--surface-3); color: var(--ink); border: 1px solid var(--line); } }
+  :root[data-theme="dark"] .bottom { background: var(--surface-3); color: var(--ink); border: 1px solid var(--line); }
+  :root[data-theme="light"] .bottom { background: #0f1822; color: #eceff3; border: none; }
+  .bottom .eyebrow { color: var(--accent); }
+  .bottom p { font-size: 1.15rem; max-width: 66ch; margin-bottom: 0; line-height: 1.5; }
+  .bottom b { color: var(--accent-strong); }
+  @media (prefers-color-scheme: dark) { .bottom b { color: var(--accent-strong); } }
+
+  footer { padding: 34px 0 60px; color: var(--ink-faint); font-size: .82rem; }
+  footer .mono { color: var(--ink-faint); }
+
+  @media (prefers-reduced-motion: reduce) { #flow { display: none; } }
+</style>
+
+<header>
+  <canvas id="flow" aria-hidden="true"></canvas>
+  <div class="wrap masthead">
+    <div class="kicker-row">
+      <span class="eyebrow">AOX · Solver-Engine Proposal</span>
+      <span class="label">G3 / neural surrogate</span>
+    </div>
+    <h1>The engine tier that returns drag in <span class="hl">a second</span>, not an afternoon.</h1>
+    <p class="lead">G1, G2 and G4 are iterative PDE solvers — minutes to hours per case. G3 is a
+      trained neural surrogate that predicts C<sub>d</sub>/C<sub>l</sub> straight from an STL. It sits at the
+      top of the design funnel and warm-starts the solvers below it.</p>
+    <div class="verdict-chip">VERDICT&nbsp; <b>Adopt DoMINO, train our own weights, build the data seam.</b></div>
+  </div>
+  <div class="hud wrap" style="max-width:1000px">
+    <div class="cell"><div class="v">~1&thinsp;<span class="u">s</span></div><div class="k label">inference / case</div></div>
+    <div class="cell"><div class="v">0.97<span class="u"> R²</span></div><div class="k label">drag, DrivAerML</div></div>
+    <div class="cell"><div class="v">~$150</div><div class="k label">8×H100 · ~4&thinsp;h train</div></div>
+    <div class="cell"><div class="v">~500</div><div class="k label">labeled cars to start</div></div>
+  </div>
+</header>
+
+<section class="band"><div class="wrap">
+  <div class="sec-head"><span class="no">01</span><h2>Where G3 slots into the ladder</h2></div>
+  <p>Positioned by time-to-result. The existing tiers cover accuracy and differentiable optimisation;
+    the fast end of the ladder is empty. G3 fills it — and that speed is a <em>qualitative</em> change:
+    3&nbsp;min × thousands of shapes is impossible; seconds × thousands is a real-time slider.</p>
+  <div class="ladder">
+    <div class="tier">
+      <div class="code">G1</div>
+      <div><div class="name">Fidelity</div><div class="eng">OpenFOAM high-fidelity RANS + FFD</div>
+        <div class="track"><i style="width:100%"></i></div></div>
+      <div class="time">hours</div>
+    </div>
+    <div class="tier">
+      <div class="code">G2</div>
+      <div><div class="name">Fast</div><div class="eng">SU2 RANS, adjoint shape optimisation</div>
+        <div class="track"><i style="width:74%"></i></div></div>
+      <div class="time">~30 min</div>
+    </div>
+    <div class="tier">
+      <div class="code">G4</div>
+      <div><div class="name">Frontier</div><div class="eng">XLB Lattice-Boltzmann, differentiable, GPU</div>
+        <div class="track"><i style="width:52%"></i></div></div>
+      <div class="time">~3 min</div>
+    </div>
+    <div class="tier new">
+      <div class="code">G3</div>
+      <div><div class="name">Instant · neural surrogate</div><div class="eng">DoMINO point-operator — explore, screen, accelerate</div>
+        <div class="track"><i style="width:9%"></i></div></div>
+      <div class="time">~1–5 s</div>
+    </div>
+  </div>
+  <p style="margin-top:20px; color:var(--ink-soft); font-size:.95rem">
+    <b style="color:var(--hot)">Do not</b> market G3 as a replacement for G1/G2 on final decisions — an ML
+    surrogate trails full RANS/LES at tight 1–2 drag-count margins. Position: <em>explore / screen / accelerate</em>.</p>
+</div></section>
+
+<section class="band"><div class="wrap">
+  <div class="sec-head"><span class="no">02</span><h2>Reuse or build from scratch?</h2></div>
+  <div class="grid two">
+    <div class="callout">
+      <h3>Adopt the model architecture</h3>
+      <p>The field converged in 2024–26 on "STL → surface-field point operator." Don't reinvent it.
+        Primary: <span class="mono-tag">NVIDIA PhysicsNeMo / DoMINO</span> (Apache-2.0 code).
+        MIT fallbacks with zero vendor coupling: <span class="mono-tag">neuraloperator / GINO</span>,
+        <span class="mono-tag">thuml/Transolver</span>.</p>
+    </div>
+    <div class="callout warn">
+      <h3>Build the parts that are your moat</h3>
+      <p>STL↔point-cloud/SDF sampling, the G1/G2/G4 label pipeline, the FFD-to-objective wiring, serving,
+        OOD detection, and <b>your own trained weights</b>. This is where the defensibility lives — not in
+        the network.</p>
+    </div>
+  </div>
+  <p style="margin-top:18px">Your decisive advantage: the usual ML-CFD data bottleneck is already paid for.
+    G1/G2/G4 mass-produce <span class="mono">(geometry → C<sub>d</sub>/C<sub>l</sub> + surface fields)</span> labels
+    on your exact target cars. Everyone else has to buy that data; you don't.</p>
+</div></section>
+
+<section class="band"><div class="wrap">
+  <div class="sec-head"><span class="no">03</span><h2>MVP architecture</h2></div>
+  <div class="grid three">
+    <div class="card"><div class="tag label">geometry in</div>
+      <h3>Point cloud + SDF</h3>
+      <p>STL → area-weighted surface points + normals + a signed-distance field. The identical sampling
+        transform runs at train and inference — no input drift.</p></div>
+    <div class="card"><div class="tag label">model</div>
+      <h3>DoMINO operator</h3>
+      <p>Local point-based neural operator. PointNet scalar regressor as the week-1 harness; graduate to
+        DoMINO for surface fields.</p></div>
+    <div class="card"><div class="tag label">target</div>
+      <h3>Surface p + τ<sub>w</sub></h3>
+      <p>Predict the surface pressure &amp; wall-shear field, not just scalar C<sub>d</sub> — so forces integrate
+        out, gradients stay smooth, and figures render.</p></div>
+  </div>
+  <div class="callout" style="margin-top:16px; border-left-color:var(--good)">
+    <h3>Phase 0 spike — already shipped &amp; verified</h3>
+    <p>The full path runs today on CPU without torch: <span class="mono">STL → sampling → features →
+      Cd/Cl regression → FFD deform</span>. Smoke test <b style="color:var(--good)">PASS</b> (synthetic val
+      C<sub>d</sub> R²≈0.90), 5/5 geometry unit tests green, sampler verified on the 150k-face
+      <span class="mono">ahmed_1.stl</span>. Code in <span class="mono-tag">g3/</span>.</p>
+  </div>
+</div></section>
+
+<section class="band"><div class="wrap">
+  <div class="sec-head"><span class="no">04</span><h2>Data &amp; training — why it isn't scary</h2></div>
+  <div class="grid two">
+    <div>
+      <p>The ML training is cheap. The expensive input — labeled CFD — is what you already own.</p>
+      <p><b>Pretrain</b> on commercial-clean public data (DrivAerML, AhmedML, WindsorML — all CC-BY-SA).
+        <b>Fine-tune</b> on your G1/G2/G4 labels for the target car family. Onboard a new customer's
+        body with a <b>LoRA adapter on ~20 high-fidelity samples</b> — never a full fine-tune (it collapses).</p>
+      <p style="color:var(--ink-soft); font-size:.95rem">~500 high-fidelity cars already reach C<sub>d</sub>
+        R²≈0.95–0.98. Broad multi-family generalisation needs thousands and still degrades — budget per family.</p>
+    </div>
+    <div class="grid" style="gap:12px; align-content:start">
+      <div class="card"><div class="label">training wall-clock</div>
+        <div class="hud-v" style="font-family:var(--mono); font-weight:700; font-size:1.35rem; margin-top:6px">8×H100 · ~4 h <span style="color:var(--accent-strong); font-size:.9rem">≈ $100–160</span></div></div>
+      <div class="card"><div class="label">inference vs. a RANS solve</div>
+        <div style="font-family:var(--mono); font-weight:700; font-size:1.35rem; margin-top:6px">~5 s <span style="color:var(--ink-faint); font-size:.9rem">vs</span> 3–40 h</div></div>
+      <div class="card"><div class="label">model size</div>
+        <div style="font-family:var(--mono); font-weight:700; font-size:1.35rem; margin-top:6px">tens of M params</div></div>
+    </div>
+  </div>
+</div></section>
+
+<section class="band"><div class="wrap">
+  <div class="sec-head"><span class="no">05</span><h2>Into the optimisation loop</h2></div>
+  <div class="grid three">
+    <div class="card"><div class="tag label" style="color:var(--accent-strong)">default</div>
+      <h3>Differentiable surrogate</h3>
+      <p>Surrogate is differentiable → autograd <span class="mono">dC<sub>d</sub>/d(FFD δ)</span> → step with
+        optax/Adam, exactly like the existing loop.</p></div>
+    <div class="card"><div class="tag label" style="color:var(--good)">safest</div>
+      <h3>Warm-start G2 / G4</h3>
+      <p>Feed G3's predicted shape &amp; field as the initial guess for the adjoint solvers — cuts iterations,
+        and downstream solvers absorb any G3 error.</p></div>
+    <div class="card"><div class="tag label" style="color:var(--warn)">selective</div>
+      <h3>RL — only when needed</h3>
+      <p>Gymnasium env (action = morph δ, reward = −C<sub>d</sub>) for non-differentiable, discrete/topological,
+        or multi-objective search. Not a default — adjoint is cheaper.</p></div>
+  </div>
+</div></section>
+
+<section class="band"><div class="wrap">
+  <div class="sec-head"><span class="no">06</span><h2>Roadmap</h2></div>
+  <div class="road">
+    <div class="phase now">
+      <div class="meta"><div class="p">Phase 0</div><div class="t">1–2 wk</div></div>
+      <div><h3>Spike</h3><ul>
+        <li>Data pipeline smoke test on synthetic + AhmedML — <b>done, passing</b></li>
+        <li>Download DoMINO DrivAerML checkpoint, stand up an inference demo</li>
+      </ul></div>
+    </div>
+    <div class="phase">
+      <div class="meta"><div class="p">Phase 1</div><div class="t">4–8 wk</div></div>
+      <div><h3>MVP</h3><ul>
+        <li>Train DoMINO on DrivAerML + own G2/G4 labels (own weights, licence-clean)</li>
+        <li>STL→surface field→Cd/Cl contract; FFD gradient wiring; benchmark to ≤2–3% Cd error</li>
+        <li>OOD detection + G2/G4 re-verification trigger</li>
+      </ul></div>
+    </div>
+    <div class="phase">
+      <div class="meta"><div class="p">Phase 2</div><div class="t">2–4 mo</div></div>
+      <div><h3>Production</h3><ul>
+        <li>Per-family coverage (500–2,000 labels each); LoRA customer onboarding</li>
+        <li>Warm-start integration into G2/G4; batch-sweep API; real-time UI</li>
+        <li>Uncertainty quantification + optional physics-residual regulariser</li>
+      </ul></div>
+    </div>
+  </div>
+  <div class="callout" style="margin-top:20px">
+    <h3>Fastest path to a demo</h3>
+    <p>Pull the DrivAerML DoMINO checkpoint (NVIDIA Open Model License — commercial use permitted), wire it
+      to the existing STL pipeline, and show <span class="mono">STL → Cd/Cl + surface pressure</span> in seconds
+      on an Ahmed/DrivAer body. No training required — days, not weeks.</p>
+  </div>
+</div></section>
+
+<section class="band"><div class="wrap">
+  <div class="sec-head"><span class="no">07</span><h2>Licence map — read before shipping</h2></div>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Asset</th><th>Licence</th><th>Commercial SaaS</th></tr></thead>
+      <tbody>
+        <tr><td>PhysicsNeMo code / architectures</td><td class="mono">Apache-2.0</td><td><span class="pill ok">USE FREELY</span></td></tr>
+        <tr><td>HF pretrained weights (<span class="mono">nvidia/…</span> DrivAerML)</td><td class="mono">NVIDIA Open Model</td><td><span class="pill ok">OK — as a seed</span></td></tr>
+        <tr><td>DoMINO-Automotive-Aero <b>NIM</b> container</td><td class="mono">NVIDIA AI Enterprise</td><td><span class="pill warn">NEEDS SUBSCRIPTION</span></td></tr>
+        <tr><td>DrivAerML / AhmedML / WindsorML <b>data</b></td><td class="mono">CC-BY-SA 4.0</td><td><span class="pill ok">OK — attribute</span></td></tr>
+        <tr><td>DrivAerNet / DrivAerNet++ <b>data</b></td><td class="mono">CC-BY-NC 4.0</td><td><span class="pill no">FORBIDDEN</span></td></tr>
+        <tr><td><span class="mono">neuraloperator</span> / GINO / Transolver</td><td class="mono">MIT</td><td><span class="pill ok">CLEANEST</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:16px; color:var(--ink-soft); font-size:.95rem">Stance: train your own weights with
+    Apache-2.0 code on CC-BY-SA data + your labels. Avoid the NIM turnkey path and never touch CC-BY-NC
+    data for production weights.</p>
+</div></section>
+
+<section class="band"><div class="wrap">
+  <div class="sec-head"><span class="no">08</span><h2>Top risks</h2></div>
+  <div class="risk"><div class="n">1</div><div>
+    <div class="h">Out-of-distribution collapse — the #1 risk</div>
+    <div class="m">A surrogate trained on one body family degrades hard on arbitrary uploads (published:
+      RegDGCNN R² 0.90 single-family → 0.64 multi-family). <b>Mitigate:</b> cover the design space with your
+      own solvers, flag low-confidence/OOD predictions, route tight cases back to G2/G4, LoRA per family.</div>
+  </div></div>
+  <div class="risk"><div class="n">2</div><div>
+    <div class="h">No physical-plausibility guarantee</div>
+    <div class="m">Surrogates can emit non-physical fields. <b>Mitigate:</b> optional NS-residual loss as a
+      regulariser; always verify tight-margin designs with G2/G4.</div>
+  </div></div>
+  <div class="risk"><div class="n">3</div><div>
+    <div class="h">Accuracy trails full CFD at decision margins</div>
+    <div class="m">Not for 1–2 drag-count calls. <b>Mitigate:</b> scope the product to exploration/screening;
+      final judgement stays with the numerical solvers.</div>
+  </div></div>
+  <div class="risk"><div class="n">4</div><div>
+    <div class="h">Licence traps &amp; NVIDIA/GPU lock-in</div>
+    <div class="m">CC-BY-NC data or the NIM path can block commercial release. <b>Mitigate:</b> a training-data
+      whitelist, self-minted weights, and MIT backbones (GINO/Transolver) kept as a vendor-independent escape hatch.</div>
+  </div></div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="bottom">
+    <div class="eyebrow">Bottom line</div>
+    <p style="margin-top:14px">Adopt <b>DoMINO (PhysicsNeMo, Apache-2.0)</b>, train your own weights on
+      <b>DrivAerML + G1/G2/G4 labels</b>, and build only the data &amp; FFD-integration layer. Ship G3 as the
+      <b>sub-second explore-and-accelerate tier</b>. The real moat is that three solvers you already run print
+      unlimited labels — the data bottleneck that's expensive for everyone else isn't for you.</p>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <span class="mono">AOX · G3 solver proposal</span> — synthesised from a verified 2025–26 open-source AI-CFD
+  landscape review. Figures (R², drag counts, training cost) are from published DrivAerML / DrivAerNet++
+  benchmarks; reproduce on your own commercial-clean data before quoting externally.
+</div></footer>
+
+<script>
+(function () {
+  var c = document.getElementById('flow');
+  if (!c || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var ctx = c.getContext('2d'), W, H, DPR = Math.min(window.devicePixelRatio || 1, 2);
+  var N = 46, parts = [];
+  function accent() {
+    return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#0a8ea4';
+  }
+  function resize() {
+    W = c.clientWidth; H = c.clientHeight;
+    c.width = W * DPR; c.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  function seed() {
+    parts = [];
+    for (var i = 0; i < N; i++) parts.push({
+      x: Math.random() * W, y: Math.random() * H,
+      v: 0.4 + Math.random() * 1.1, len: 30 + Math.random() * 90,
+      a: 0.06 + Math.random() * 0.14
+    });
+  }
+  // A steady flow field with a body-like obstruction: streamlines bend around center-left.
+  function vy(x, y) {
+    var cx = W * 0.32, cy = H * 0.62, dx = x - cx, dy = y - cy;
+    var r2 = dx * dx + dy * dy + 8000;
+    return (dy * 42000) / r2 * 0.0009; // downwash/upwash around the "body"
+  }
+  function step() {
+    ctx.clearRect(0, 0, W, H);
+    var col = accent();
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      var ang = vy(p.x, p.y);
+      var nx = p.x + p.v * 1.6, ny = p.y + ang * p.v * 60;
+      ctx.beginPath();
+      ctx.strokeStyle = col; ctx.globalAlpha = p.a; ctx.lineWidth = 1.1;
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x + p.len, p.y + vy(p.x + p.len, p.y) * 60);
+      ctx.stroke();
+      p.x = nx; p.y = ny;
+      if (p.x > W + 100) { p.x = -100; p.y = Math.random() * H; }
+      if (p.y < -20 || p.y > H + 20) { p.y = Math.random() * H; p.x = -100; }
+    }
+    ctx.globalAlpha = 1;
+    raf = requestAnimationFrame(step);
+  }
+  var raf;
+  function boot() { resize(); seed(); cancelAnimationFrame(raf); step(); }
+  window.addEventListener('resize', function () { resize(); seed(); });
+  boot();
+})();
+</script>

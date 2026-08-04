@@ -1,0 +1,266 @@
+{
+  "working_directory": "/home/ubuntu/g3",
+  "state_path": "var/nightly/state.json",
+  "lock_path": "var/nightly/lifecycle.lock",
+  "runs_directory": "var/nightly/runs",
+  "registry": "models/registry",
+  "minimum_new_cases": 10,
+  "sync_commands": [
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/sync_training_events.py",
+      "--bucket",
+      "aoxlabs-stage-static",
+      "--prefix",
+      "_private/g3/training-events",
+      "--out-json",
+      "var/nightly/training-events.json",
+      "--out-csv",
+      "var/nightly/training-events.csv"
+    ]
+  ],
+  "dataset_manifests": [
+    "var/nightly/training-events.json"
+  ],
+  "prepare_commands": [
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/prepare_smoke_g2_s3.py",
+      "--csv",
+      "var/nightly/training-events.csv",
+      "--out-dir",
+      "{run_dir}/g2-events",
+      "--manifest",
+      "{run_dir}/g2-events/manifest.json"
+    ],
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/prepare_g1_surfaces.py",
+      "--csv",
+      "var/nightly/training-events.csv",
+      "--out-dir",
+      "{run_dir}/g1-events",
+      "--solver",
+      "G1",
+      "--objective-function",
+      "drag"
+    ],
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/prepare_g1_surfaces.py",
+      "--csv",
+      "var/nightly/training-events.csv",
+      "--out-dir",
+      "{run_dir}/g1-lift-events",
+      "--solver",
+      "G1",
+      "--objective-function",
+      "lift"
+    ],
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/prepare_smoke_g4_geometry.py",
+      "--csv",
+      "var/nightly/training-events.csv",
+      "--out-dir",
+      "{run_dir}/g4-events"
+    ],
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/filter_training_manifests.py",
+      "--manifest",
+      "data/g2_fields_v6/manifest.json",
+      "--manifest",
+      "{run_dir}/g2-events/manifest.json",
+      "--exclude-manifest",
+      "data/validation/g2-normal.json",
+      "--exclude-manifest",
+      "data/validation/g2-high-drag.json",
+      "--out",
+      "{run_dir}/g2-training.json"
+    ],
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/filter_training_manifests.py",
+      "--manifest",
+      "data/g1_surfaces_v1/manifest.json",
+      "--manifest",
+      "data/smoke_g1/manifest.json",
+      "--manifest",
+      "{run_dir}/g1-events/manifest.json",
+      "--exclude-manifest",
+      "data/validation/g1.json",
+      "--out",
+      "{run_dir}/g1-training.json"
+    ],
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/filter_training_manifests.py",
+      "--manifest",
+      "{run_dir}/g1-lift-events/manifest.json",
+      "--out",
+      "{run_dir}/g1-lift-training.json"
+    ],
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/filter_training_manifests.py",
+      "--manifest",
+      "data/smoke_g4/manifest.json",
+      "--manifest",
+      "{run_dir}/g4-events/manifest.json",
+      "--exclude-manifest",
+      "data/validation/g4.json",
+      "--out",
+      "{run_dir}/g4-training.json"
+    ],
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/split_g2_coefficient_domains.py",
+      "--manifest",
+      "{run_dir}/g2-training.json",
+      "--normal-out",
+      "{run_dir}/g2-normal.json",
+      "--high-out",
+      "{run_dir}/g2-high-drag.json"
+    ]
+  ],
+  "train_commands": [
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "-m",
+      "aox_g3.train_fields",
+      "--manifest",
+      "{run_dir}/g2-training.json",
+      "--out",
+      "{run_dir}/backbone.pt",
+      "--epochs",
+      "250",
+      "--group-balanced-sampling",
+      "--device",
+      "cuda"
+    ],
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "-m",
+      "aox_g3.train_coefficient_experts",
+      "--base",
+      "{run_dir}/backbone.pt",
+      "--out",
+      "{run_dir}/experts.pt",
+      "--expert",
+      "g2_su2_clean",
+      "{run_dir}/g2-normal.json",
+      "--expert",
+      "g2_su2_high_drag",
+      "{run_dir}/g2-high-drag.json",
+      "--expert",
+      "g1_openfoam",
+      "{run_dir}/g1-training.json",
+      "--expert",
+      "g1_openfoam",
+      "{run_dir}/g1-lift-training.json",
+      "--expert",
+      "g4_lbm",
+      "{run_dir}/g4-training.json",
+      "--epochs",
+      "300",
+      "--device",
+      "cuda"
+    ],
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/annotate_expert_policy.py",
+      "--checkpoint",
+      "{run_dir}/experts.pt",
+      "--out",
+      "{challenger}"
+    ]
+  ],
+  "evaluate_production_commands": [
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/evaluate_fixed_holdout.py",
+      "--checkpoint",
+      "{production}",
+      "--output",
+      "{production_report}",
+      "--dataset",
+      "g2_normal",
+      "g2_su2_clean",
+      "data/validation/g2-normal.json",
+      "--dataset",
+      "g2_high_drag",
+      "g2_su2_high_drag",
+      "data/validation/g2-high-drag.json",
+      "--dataset",
+      "g1",
+      "g1_openfoam",
+      "data/validation/g1.json",
+      "--dataset",
+      "g4",
+      "g4_lbm",
+      "data/validation/g4.json",
+      "--device",
+      "cuda"
+    ]
+  ],
+  "evaluate_challenger_commands": [
+    [
+      "/home/ubuntu/venv_g3/bin/python",
+      "scripts/evaluate_fixed_holdout.py",
+      "--checkpoint",
+      "{challenger}",
+      "--output",
+      "{challenger_report}",
+      "--dataset",
+      "g2_normal",
+      "g2_su2_clean",
+      "data/validation/g2-normal.json",
+      "--dataset",
+      "g2_high_drag",
+      "g2_su2_high_drag",
+      "data/validation/g2-high-drag.json",
+      "--dataset",
+      "g1",
+      "g1_openfoam",
+      "data/validation/g1.json",
+      "--dataset",
+      "g4",
+      "g4_lbm",
+      "data/validation/g4.json",
+      "--device",
+      "cuda"
+    ]
+  ],
+  "offline_gates": {
+    "metrics.datasets.g2_normal.cd.mae": {
+      "max_regression_ratio": 1.03
+    },
+    "metrics.datasets.g2_normal.cl.mae": {
+      "max_regression_ratio": 1.03
+    },
+    "metrics.datasets.g2_high_drag.cd.mae": {
+      "max_regression_ratio": 1.03
+    },
+    "metrics.datasets.g2_high_drag.cl.mae": {
+      "max_regression_ratio": 1.03
+    },
+    "metrics.datasets.g1.cd.mae": {
+      "max_regression_ratio": 1.03
+    },
+    "metrics.datasets.g1.cl.mae": {
+      "max_regression_ratio": 1.03
+    },
+    "metrics.datasets.g4.cd.mae": {
+      "max_regression_ratio": 1.03
+    }
+  },
+  "shadow_audit": "/home/ubuntu/g3/var/canary/shadow.jsonl",
+  "shadow_gates": {
+    "min_samples": 20,
+    "max_error_rate": 0.01,
+    "max_p95_abs_cd_delta": 0.05,
+    "max_p95_abs_cl_delta": 0.05,
+    "max_p95_latency_ratio": 1.5
+  }
+}

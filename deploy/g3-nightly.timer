@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the AOX G3 lifecycle at midnight Korea time
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 Asia/Seoul
+Persistent=true
+RandomizedDelaySec=300
+Unit=g3-nightly.service
+
+[Install]
+WantedBy=timers.target
+

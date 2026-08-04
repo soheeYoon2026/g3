@@ -1,0 +1,13 @@
+[Unit]
+Description=AOX G3 nightly training and model lifecycle
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/g3
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/venv_g3/bin/python scripts/nightly_lifecycle.py --config deploy/g3-nightly.json
+Nice=10
+

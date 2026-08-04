@@ -1,0 +1,16 @@
+[Unit]
+Description=AOX G3 authenticated Cloudflare tunnel
+After=network-online.target g3-inference.service
+Wants=network-online.target
+Requires=g3-inference.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/g3
+ExecStart=/home/ubuntu/venv_g3/bin/python /home/ubuntu/g3/scripts/run_service_tunnel.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
