@@ -44,31 +44,57 @@ def flow_frame(aoa_deg: float, sideslip_deg: float) -> np.ndarray:
     return rotation
 
 
+def flow_frame_from_velocity(velocity: np.ndarray) -> np.ndarray:
+    """Return a stable world-to-flow frame using an explicit velocity vector."""
+    velocity = np.asarray(velocity, dtype=np.float64)
+    speed = float(np.linalg.norm(velocity))
+    if speed <= 0:
+        raise ValueError("zero inlet velocity")
+    drag = velocity / speed
+    world_side = np.array([0.0, 1.0, 0.0])
+    side = world_side - np.dot(world_side, drag) * drag
+    if np.linalg.norm(side) < 1e-10:
+        fallback = np.array([0.0, 0.0, 1.0])
+        side = fallback - np.dot(fallback, drag) * drag
+    side /= np.linalg.norm(side)
+    lift = np.cross(drag, side)
+    return np.stack((drag, side, lift))
+
+
 def read_flow_conditions(cfg_path: str | Path) -> dict[str, object]:
     text = Path(cfg_path).read_text(errors="ignore")
     mach = _number(_setting(text, "MACH_NUMBER"))
-    aoa = float(_number(_setting(text, "AOA"), 0.0))
-    sideslip = float(_number(_setting(text, "SIDESLIP_ANGLE"), 0.0))
+    configured_aoa = _number(_setting(text, "AOA"))
+    configured_sideslip = _number(_setting(text, "SIDESLIP_ANGLE"))
     density = float(_number(_setting(text, "INC_DENSITY_INIT"), 1.225))
     ref_area = _number(_setting(text, "REF_AREA"))
 
     raw_velocity = _setting(text, "INC_VELOCITY_INIT")
     if raw_velocity:
         components = [float(v) for v in re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", raw_velocity)]
-        speed = float(np.linalg.norm(components))
+        if len(components) != 3:
+            raise ValueError(f"expected 3 INC_VELOCITY_INIT components in {cfg_path}")
+        velocity = np.asarray(components, dtype=np.float64)
+        speed = float(np.linalg.norm(velocity))
+        rotation = flow_frame_from_velocity(velocity)
+        aoa = math.degrees(math.atan2(velocity[2], velocity[0]))
+        sideslip = math.degrees(math.asin(np.clip(velocity[1] / speed, -1.0, 1.0)))
     elif mach is not None:
         speed = float(mach * 340.3)
+        aoa = float(configured_aoa or 0.0)
+        sideslip = float(configured_sideslip or 0.0)
+        rotation = flow_frame(aoa, sideslip)
+        velocity = rotation[0] * speed
     else:
         raise ValueError(f"no velocity or Mach number in {cfg_path}")
-
-    rotation = flow_frame(aoa, sideslip)
-    velocity = rotation[0] * speed
     return {
         "speed": speed,
         "velocity": velocity,
         "mach": mach,
         "aoa": aoa,
         "sideslip": sideslip,
+        "configured_aoa": configured_aoa,
+        "configured_sideslip": configured_sideslip,
         "density": density,
         "ref_area": ref_area,
         "rotation": rotation,

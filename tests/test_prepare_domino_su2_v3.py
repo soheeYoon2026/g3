@@ -43,3 +43,15 @@ def test_read_su2_coefficients_handles_quoted_spaced_headers(tmp_path):
         "99, 0.301, -0.012\n"
     )
     assert MODULE.read_su2_coefficients(tmp_path) == (0.301, -0.012)
+
+
+def test_explicit_negative_velocity_is_not_reduced_to_speed(tmp_path):
+    cfg = tmp_path / "reverse.cfg"
+    cfg.write_text(
+        "INC_VELOCITY_INIT= (-30.0, 0.0, 0.0)\n"
+        "REF_AREA= 1.0\n"
+    )
+    flow = MODULE.read_flow_conditions(cfg)
+    assert np.allclose(flow["velocity"], [-30.0, 0.0, 0.0])
+    assert np.allclose(flow["rotation"] @ [-30.0, 0.0, 0.0], [30.0, 0.0, 0.0])
+    assert np.isclose(abs(flow["aoa"]), 180.0)
