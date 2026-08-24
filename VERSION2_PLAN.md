@@ -204,3 +204,25 @@ LOO 파인튠 실험 기록: 5케이스 학습 → 홀드아웃 Cd MAE 0.0119→
 **다음 실행 순서:** ① gtr-smooth 7케이스에 현행 decoder-30epoch를 돌려
 `--pairs` ΔCd 방향 정확도 측정 (서버 GPU, 케이스당 ~1.5s) ② 미계산 변형
 7종 G2 제출(P1 확장) ③ LES 파일럿 P0/P1.
+
+### 2026-08-24 (3차) — ΔCd 방향 정확도 첫 실측 (① 완료)
+
+G3_TEST GPU에서 통합 지표로 gtr-smooth 6쌍 평가
+([benchmarks/results/gtr_smooth_decoder30_20260824.jsonl](benchmarks/results/gtr_smooth_decoder30_20260824.jsonl),
+tolerance 0.001):
+
+| 모델 | 절대 Cd MAE | Cd Spearman | ΔCd MAE | **방향 정확도** | ΔCd Spearman |
+|---|---:|---:|---:|---:|---:|
+| pretrained (NVIDIA) | 0.2374 | −0.14 | 0.0132 | 3/6 = 50% | −0.20 |
+| decoder-30epoch | 0.0121 | 0.43 | 0.0068 | **4/6 = 67%** | 0.49 |
+
+쌍별: 큰 변형일수록 정확 — front_narrow_5mm(trueΔ −0.0164)를 −0.0146으로
+거의 재현, rear_wide/rear_narrow_25 방향 정답. 실패 2건: roof_lower_10mm
+(true +0.0095 → pred −0.0021), rear_narrow_10mm(최소 변형 −0.0019 → +0.0101).
+예측 Cd 범위(0.012)가 실제(0.026)의 절반 — 변화 과소평가 경향.
+
+해석과 한계: ① 6쌍은 표본이 작아 67%는 ±지푸라기 수준 — 13쌍(미계산 7종
+제출)으로 확장해야 유의미 ② 평가 변형들은 학습(8/13, reaudit-v1) 이후
+생성(8/20)된 미학습 케이스지만, GT-R 계열 자체는 run_60으로 학습에 노출 —
+계열 밖 일반화 검증은 아님 ③ 과거 "방향 50%" 보고 대비 개선으로 보이나
+동일 세트 재현이 아니므로 직접 비교는 불가.
