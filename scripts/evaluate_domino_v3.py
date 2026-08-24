@@ -5,10 +5,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+import time
 from pathlib import Path
 
 import numpy as np
 import torch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from aox_g3.eval_metrics import coefficient_summary, load_pairs
 
 
 def forward_surface(model, data):
@@ -53,8 +59,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--fine-tuned", type=Path, required=True)
+    parser.add_argument("--split", type=Path)
+    parser.add_argument("--partition", choices=("train", "test"), default="test")
+    parser.add_argument("--pairs", type=Path, help="explicit baseline/variant pair manifest for ΔCd metrics")
+    parser.add_argument("--direction-tolerance", type=float, default=0.0)
     parser.add_argument("--device", default="cuda:0")
     args = parser.parse_args()
+
+    pairs = load_pairs(args.pairs) if args.pairs else None
 
     snapshot = Path(snapshot_download("nvidia/domino_drivaerml"))
     surface = snapshot / "domino_drivaerml_surface_checkpoint"
@@ -68,6 +80,13 @@ def main():
     pretrained = {key: value.detach().clone() for key, value in model.state_dict().items()}
     adapter = DrivAerMLAdapter(root=str(args.root))
     cases = adapter.list_cases()
+    groups = {}
+    if args.split:
+        split = json.loads(args.split.read_text())
+        groups = {
+            f"run_{row['run']}": row.get("group_id") for row in split[f"{args.partition}_cases"]
+        }
+        cases = [case_id for case_id in cases if case_id in groups]
 
     def evaluate(label, state):
         model.load_state_dict(state)
@@ -79,23 +98,35 @@ def main():
                 (args.root / case_id / f"conditions_{suffix}.json").read_text()
             )
             data = wrapper.prepare_inputs(adapter.load_case(case_id))["data_dict"]
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            started = time.perf_counter()
             with torch.no_grad():
                 prediction = forward_surface(model, data)[0]
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            elapsed = time.perf_counter() - started
             cd, cl = integrate_prediction(prediction, data, factors, conditions)
             row = {
-                "model": label, "case": case_id, "pred_cd": cd, "true_cd": conditions["su2_cd"],
+                "model": label, "case": case_id, "run": suffix,
+                "group_id": groups.get(case_id),
+                "pred_cd": cd, "true_cd": conditions["su2_cd"],
                 "pred_cl": cl, "true_cl": conditions["su2_cl"],
                 "cd_abs_error": abs(cd - conditions["su2_cd"]),
                 "cl_abs_error": abs(cl - conditions["su2_cl"]),
+                "inference_seconds": elapsed,
             }
             rows.append(row)
             print(json.dumps(row))
-        print(json.dumps({
-            "model": label,
-            "cd_mae": float(np.mean([row["cd_abs_error"] for row in rows])),
-            "cl_mae": float(np.mean([row["cl_abs_error"] for row in rows])),
-            "cases": len(rows),
-        }))
+        summary = {"model": label}
+        summary.update(coefficient_summary(
+            rows, pairs=pairs, case_key="run",
+            direction_tolerance=args.direction_tolerance,
+        ))
+        summary["mean_inference_seconds"] = float(
+            np.mean([row["inference_seconds"] for row in rows])
+        )
+        print(json.dumps(summary))
 
     evaluate("pretrained", pretrained)
     evaluate("fine_tuned", torch.load(args.fine_tuned, map_location=args.device))
