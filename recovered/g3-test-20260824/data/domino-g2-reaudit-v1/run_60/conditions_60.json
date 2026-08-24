@@ -1,0 +1,18 @@
+{
+  "speed": 30.0,
+  "velocity_world": [
+    30.0,
+    0.0,
+    0.0
+  ],
+  "mach": null,
+  "aoa": 0.0,
+  "sideslip": 0.0,
+  "density": 1.225,
+  "ref_area": 2.763585,
+  "su2_cd": 0.3024997955,
+  "su2_cl": -0.1178632243,
+  "flow_aligned": true,
+  "source_vtu": "/tmp/domino-g2-61b8cf5n/surface_flow.vtu",
+  "source_cfg": "/tmp/domino-g2-61b8cf5n/EKARLbnaih3eofFz9g2z8s_CFD.cfg"
+}

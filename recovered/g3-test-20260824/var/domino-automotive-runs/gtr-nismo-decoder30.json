@@ -1,0 +1,18 @@
+{
+  "stl": "/home/ubuntu/g3-v2/var/domino-automotive-runs/gtr-nismo-latest.stl",
+  "checkpoint": "/home/ubuntu/g3-v2/var/domino-automotive-runs/decoder-30epoch.pt",
+  "cd": 0.4722957909107208,
+  "cl": -0.1775401532649994,
+  "speed_mps": 30.0,
+  "density_kg_m3": 1.225,
+  "reference_area_m2": 3.1201439417469254,
+  "reference_area_source": "G2 bounding-box frontal area",
+  "flow_axis": "+x",
+  "inference_seconds": 1.4218150090891868,
+  "predicted_surface": "/home/ubuntu/g3-v2/var/domino-automotive-runs/gtr-nismo-decoder30.vtp",
+  "limitations": [
+    "checkpoint is trained near its dataset conditions; speed is recorded but is not a broadly validated conditioning variable",
+    "STL units must be metres and the selected flow axis must be correct",
+    "automatic reference area matches G2: bounding-box width times height perpendicular to the flow axis"
+  ]
+}

@@ -1,0 +1,332 @@
+{
+  "schema_version": 1,
+  "strategy": "leave-one-variant-out",
+  "train_cases": [
+    {
+      "run": 1,
+      "group_id": "artifact_0b6cda923b368eb7",
+      "geometry_digest": "0b6cda923b368eb79b6de576ac1762fd6d2db3dab66e0f6da1c96a3a680e29c5",
+      "conditions": {
+        "speed": 30.0,
+        "velocity_world": [
+          30.0,
+          0.0,
+          0.0
+        ],
+        "mach": null,
+        "aoa": 0.0,
+        "sideslip": 0.0,
+        "density": 1.225,
+        "ref_area": 3.104241,
+        "su2_cd": 0.30789939,
+        "su2_cl": -0.1519848736602517,
+        "flow_aligned": true,
+        "source_vtu": "/tmp/domino-g2-8tzch3_u/surface_flow.vtu",
+        "source_cfg": "/tmp/domino-g2-8tzch3_u/s5RbiXcGAWB0kPDi1EIZR2_CFD.cfg"
+      },
+      "integrated": {
+        "cd": 0.31232112261855904,
+        "cl": -0.1519848736602517,
+        "pressure_cd": 0.31239383269341764,
+        "friction_cd": -7.271007485860316e-05,
+        "su2_cd": 0.30789939,
+        "su2_cl": -0.1519848736602517,
+        "su2_cd_source": "rbf_optimization_history.csv",
+        "su2_cl_source": "surface_field_only"
+      },
+      "cd_relative_error": 0.014360965828997091,
+      "cl_absolute_error": 0.0,
+      "accepted": true,
+      "source_kind": "s3_g2",
+      "source": {
+        "source_id": "s5RbiXcGAWB0kPDi1EIZR2:RBF_DSN_001",
+        "bucket": "aoxlabs-stage-static",
+        "output_prefix": "tenant/UvoRqVG5AVEYrZ80zn5BiL/team/LQAFJHx8cQ40NyJ0lteizy/project/K7Uk29yp3xICUC6nOYKjxZ/job/s5RbiXcGAWB0kPDi1EIZR2/output",
+        "status": "accepted",
+        "run": 1
+      },
+      "job_uid": "s5RbiXcGAWB0kPDi1EIZR2",
+      "variant_name": "baseline_original"
+    },
+    {
+      "run": 4,
+      "group_id": "artifact_3d465039ffb646f0",
+      "geometry_digest": "3d465039ffb646f0a3ee47a2293cfd737b8d32bc5a27ea2961cbf41db5670f39",
+      "conditions": {
+        "speed": 30.0,
+        "velocity_world": [
+          30.0,
+          0.0,
+          0.0
+        ],
+        "mach": null,
+        "aoa": 0.0,
+        "sideslip": 0.0,
+        "density": 1.225,
+        "ref_area": 3.102432,
+        "su2_cd": 0.30604619,
+        "su2_cl": -0.16171247061917027,
+        "flow_aligned": true,
+        "source_vtu": "/tmp/domino-g2-ckuruhuq/surface_flow.vtu",
+        "source_cfg": "/tmp/domino-g2-ckuruhuq/K28TT2t2253p5D8nMNrnC1_CFD.cfg"
+      },
+      "integrated": {
+        "cd": 0.3113638425279061,
+        "cl": -0.16171247061917027,
+        "pressure_cd": 0.3114357378583642,
+        "friction_cd": -7.189533045811405e-05,
+        "su2_cd": 0.30604619,
+        "su2_cl": -0.16171247061917027,
+        "su2_cd_source": "rbf_optimization_history.csv",
+        "su2_cl_source": "surface_field_only"
+      },
+      "cd_relative_error": 0.017375326671788052,
+      "cl_absolute_error": 0.0,
+      "accepted": true,
+      "source_kind": "s3_g2",
+      "source": {
+        "source_id": "K28TT2t2253p5D8nMNrnC1:RBF_DSN_001",
+        "bucket": "aoxlabs-stage-static",
+        "output_prefix": "tenant/UvoRqVG5AVEYrZ80zn5BiL/team/LQAFJHx8cQ40NyJ0lteizy/project/K7Uk29yp3xICUC6nOYKjxZ/job/K28TT2t2253p5D8nMNrnC1/output",
+        "status": "accepted",
+        "run": 4
+      },
+      "job_uid": "K28TT2t2253p5D8nMNrnC1",
+      "variant_name": "rear_narrow_10mm"
+    },
+    {
+      "run": 5,
+      "group_id": "artifact_41e47e61a87775c0",
+      "geometry_digest": "41e47e61a87775c0b0ccb66decd32956d66b7b7539fca8bf5b0df7c43a838c08",
+      "conditions": {
+        "speed": 30.0,
+        "velocity_world": [
+          30.0,
+          0.0,
+          0.0
+        ],
+        "mach": null,
+        "aoa": 0.0,
+        "sideslip": 0.0,
+        "density": 1.225,
+        "ref_area": 3.086804,
+        "su2_cd": 0.31740991,
+        "su2_cl": -0.15104054961133634,
+        "flow_aligned": true,
+        "source_vtu": "/tmp/domino-g2-r5o2pygz/surface_flow.vtu",
+        "source_cfg": "/tmp/domino-g2-r5o2pygz/SzbJaO0tmftP44hokzSNWm_CFD.cfg"
+      },
+      "integrated": {
+        "cd": 0.32021079975752786,
+        "cl": -0.15104054961133634,
+        "pressure_cd": 0.3202825980748465,
+        "friction_cd": -7.179831731860435e-05,
+        "su2_cd": 0.31740991,
+        "su2_cl": -0.15104054961133634,
+        "su2_cd_source": "rbf_optimization_history.csv",
+        "su2_cl_source": "surface_field_only"
+      },
+      "cd_relative_error": 0.008824203874188575,
+      "cl_absolute_error": 0.0,
+      "accepted": true,
+      "source_kind": "s3_g2",
+      "source": {
+        "source_id": "SzbJaO0tmftP44hokzSNWm:RBF_DSN_001",
+        "bucket": "aoxlabs-stage-static",
+        "output_prefix": "tenant/UvoRqVG5AVEYrZ80zn5BiL/team/LQAFJHx8cQ40NyJ0lteizy/project/K7Uk29yp3xICUC6nOYKjxZ/job/SzbJaO0tmftP44hokzSNWm/output",
+        "status": "accepted",
+        "run": 5
+      },
+      "job_uid": "SzbJaO0tmftP44hokzSNWm",
+      "variant_name": "roof_lower_10mm"
+    },
+    {
+      "run": 6,
+      "group_id": "artifact_4331296feecc9e29",
+      "geometry_digest": "4331296feecc9e2970312a86b4ccd213ce10a67e1c95d1eaf54e0afc042f1a65",
+      "conditions": {
+        "speed": 30.0,
+        "velocity_world": [
+          30.0,
+          0.0,
+          0.0
+        ],
+        "mach": null,
+        "aoa": 0.0,
+        "sideslip": 0.0,
+        "density": 1.225,
+        "ref_area": 3.103504,
+        "su2_cd": 0.31621244,
+        "su2_cl": -0.1462527453095425,
+        "flow_aligned": true,
+        "source_vtu": "/tmp/domino-g2-wd3sv_6s/surface_flow.vtu",
+        "source_cfg": "/tmp/domino-g2-wd3sv_6s/mj0QA7YH2dLvotFahWU7EY_CFD.cfg"
+      },
+      "integrated": {
+        "cd": 0.3186926532515453,
+        "cl": -0.1462527453095425,
+        "pressure_cd": 0.31876471897172526,
+        "friction_cd": -7.20657201799818e-05,
+        "su2_cd": 0.31621244,
+        "su2_cl": -0.1462527453095425,
+        "su2_cd_source": "rbf_optimization_history.csv",
+        "su2_cl_source": "surface_field_only"
+      },
+      "cd_relative_error": 0.00784350309413916,
+      "cl_absolute_error": 0.0,
+      "accepted": true,
+      "source_kind": "s3_g2",
+      "source": {
+        "source_id": "mj0QA7YH2dLvotFahWU7EY:RBF_DSN_001",
+        "bucket": "aoxlabs-stage-static",
+        "output_prefix": "tenant/UvoRqVG5AVEYrZ80zn5BiL/team/LQAFJHx8cQ40NyJ0lteizy/project/K7Uk29yp3xICUC6nOYKjxZ/job/mj0QA7YH2dLvotFahWU7EY/output",
+        "status": "accepted",
+        "run": 6
+      },
+      "job_uid": "mj0QA7YH2dLvotFahWU7EY",
+      "variant_name": "rear_narrow_25mm"
+    },
+    {
+      "run": 7,
+      "group_id": "artifact_28d40092e258b381",
+      "geometry_digest": "28d40092e258b3816bad75561c41647d8613586268e4fab5185ee74a2072c052",
+      "conditions": {
+        "speed": 30.0,
+        "velocity_world": [
+          30.0,
+          0.0,
+          0.0
+        ],
+        "mach": null,
+        "aoa": 0.0,
+        "sideslip": 0.0,
+        "density": 1.225,
+        "ref_area": 3.104978,
+        "su2_cd": 0.31671468,
+        "su2_cl": -0.14553894432043754,
+        "flow_aligned": true,
+        "source_vtu": "/tmp/domino-g2-235v85vt/surface_flow.vtu",
+        "source_cfg": "/tmp/domino-g2-235v85vt/XTI9NyONnjbgmHyUHQBjbO_CFD.cfg"
+      },
+      "integrated": {
+        "cd": 0.32087367967031266,
+        "cl": -0.14553894432043754,
+        "pressure_cd": 0.32094674217355906,
+        "friction_cd": -7.306250324642343e-05,
+        "su2_cd": 0.31671468,
+        "su2_cl": -0.14553894432043754,
+        "su2_cd_source": "rbf_optimization_history.csv",
+        "su2_cl_source": "surface_field_only"
+      },
+      "cd_relative_error": 0.013131692128424976,
+      "cl_absolute_error": 0.0,
+      "accepted": true,
+      "source_kind": "s3_g2",
+      "source": {
+        "source_id": "XTI9NyONnjbgmHyUHQBjbO:RBF_DSN_001",
+        "bucket": "aoxlabs-stage-static",
+        "output_prefix": "tenant/UvoRqVG5AVEYrZ80zn5BiL/team/LQAFJHx8cQ40NyJ0lteizy/project/K7Uk29yp3xICUC6nOYKjxZ/job/XTI9NyONnjbgmHyUHQBjbO/output",
+        "status": "accepted",
+        "run": 7
+      },
+      "job_uid": "XTI9NyONnjbgmHyUHQBjbO",
+      "variant_name": "rear_wide_25mm"
+    }
+  ],
+  "validation_cases": [
+    {
+      "run": 3,
+      "group_id": "artifact_2d2aeeda3bf0e514",
+      "geometry_digest": "2d2aeeda3bf0e514b2363375fc3058c4c92bc06410f3ae07066a21b476c9fa59",
+      "conditions": {
+        "speed": 30.0,
+        "velocity_world": [
+          30.0,
+          0.0,
+          0.0
+        ],
+        "mach": null,
+        "aoa": 0.0,
+        "sideslip": 0.0,
+        "density": 1.225,
+        "ref_area": 3.112555,
+        "su2_cd": 0.3032832,
+        "su2_cl": -0.15897015461972774,
+        "flow_aligned": true,
+        "source_vtu": "/tmp/domino-g2-2wqtzwv6/surface_flow.vtu",
+        "source_cfg": "/tmp/domino-g2-2wqtzwv6/wLdnXlkLVMhGGnIbyZ7PQp_CFD.cfg"
+      },
+      "integrated": {
+        "cd": 0.30819590130797125,
+        "cl": -0.15897015461972774,
+        "pressure_cd": 0.3082698074297874,
+        "friction_cd": -7.390612181611632e-05,
+        "su2_cd": 0.3032832,
+        "su2_cl": -0.15897015461972774,
+        "su2_cd_source": "rbf_optimization_history.csv",
+        "su2_cl_source": "surface_field_only"
+      },
+      "cd_relative_error": 0.01619839578312046,
+      "cl_absolute_error": 0.0,
+      "accepted": true,
+      "source_kind": "s3_g2",
+      "source": {
+        "source_id": "wLdnXlkLVMhGGnIbyZ7PQp:RBF_DSN_001",
+        "bucket": "aoxlabs-stage-static",
+        "output_prefix": "tenant/UvoRqVG5AVEYrZ80zn5BiL/team/LQAFJHx8cQ40NyJ0lteizy/project/K7Uk29yp3xICUC6nOYKjxZ/job/wLdnXlkLVMhGGnIbyZ7PQp/output",
+        "status": "accepted",
+        "run": 3
+      },
+      "job_uid": "wLdnXlkLVMhGGnIbyZ7PQp",
+      "variant_name": "roof_raise_5mm"
+    }
+  ],
+  "test_cases": [
+    {
+      "run": 2,
+      "group_id": "artifact_8ea537270799ba83",
+      "geometry_digest": "8ea537270799ba838466b6d716dc690fa5832be8570086c36d65bf43f0e0dfc1",
+      "conditions": {
+        "speed": 30.0,
+        "velocity_world": [
+          30.0,
+          0.0,
+          0.0
+        ],
+        "mach": null,
+        "aoa": 0.0,
+        "sideslip": 0.0,
+        "density": 1.225,
+        "ref_area": 3.101683,
+        "su2_cd": 0.29150657,
+        "su2_cl": -0.14910159245001875,
+        "flow_aligned": true,
+        "source_vtu": "/tmp/domino-g2-rwffil8i/surface_flow.vtu",
+        "source_cfg": "/tmp/domino-g2-rwffil8i/wAm5EjaBV5Sri9CVPWt6Hs_CFD.cfg"
+      },
+      "integrated": {
+        "cd": 0.2939396897485606,
+        "cl": -0.14910159245001875,
+        "pressure_cd": 0.294013047895304,
+        "friction_cd": -7.335814674341993e-05,
+        "su2_cd": 0.29150657,
+        "su2_cl": -0.14910159245001875,
+        "su2_cd_source": "rbf_optimization_history.csv",
+        "su2_cl_source": "surface_field_only"
+      },
+      "cd_relative_error": 0.008346706383189188,
+      "cl_absolute_error": 0.0,
+      "accepted": true,
+      "source_kind": "s3_g2",
+      "source": {
+        "source_id": "wAm5EjaBV5Sri9CVPWt6Hs:RBF_DSN_001",
+        "bucket": "aoxlabs-stage-static",
+        "output_prefix": "tenant/UvoRqVG5AVEYrZ80zn5BiL/team/LQAFJHx8cQ40NyJ0lteizy/project/K7Uk29yp3xICUC6nOYKjxZ/job/wAm5EjaBV5Sri9CVPWt6Hs/output",
+        "status": "accepted",
+        "run": 2
+      },
+      "job_uid": "wAm5EjaBV5Sri9CVPWt6Hs",
+      "variant_name": "front_narrow_5mm"
+    }
+  ]
+}

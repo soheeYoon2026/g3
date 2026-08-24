@@ -1,0 +1,13 @@
+[Unit]
+Description=AOX G2 to DoMINO incremental quality-gated collection
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/g3-v2
+Environment=PYTHONPATH=/home/ubuntu/g3-v2:/home/ubuntu/g3-v2/scripts
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/g3/venv/bin/python scripts/run_domino_collection_nightly.py --root /home/ubuntu/g3-v2 --out data/domino-g2-reaudit-v1 --minimum-free-gb 10
+Nice=10

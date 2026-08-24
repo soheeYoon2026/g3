@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""Authenticated HTTP wrapper for the raw-STL DoMINO inference command."""
+from __future__ import annotations
+
+import asyncio
+import gzip
+import json
+import os
+import subprocess
+import tempfile
+import time
+import shutil
+from pathlib import Path
+
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
+
+ROOT = Path(os.environ.get("G3_DOMINO_ROOT", "/home/ubuntu/g3-v2"))
+PYTHON = Path(os.environ.get("G3_DOMINO_PYTHON", "/home/ubuntu/g3/venv/bin/python"))
+SCRIPT = Path(os.environ.get("G3_DOMINO_SCRIPT", ROOT / "scripts/infer_domino_stl.py"))
+RECOMMEND_SCRIPT = Path(
+    os.environ.get("G3_DOMINO_RECOMMEND_SCRIPT", ROOT / "scripts/recommend_domino_deformations.py")
+)
+CHECKPOINT = Path(
+    os.environ.get(
+        "G3_DOMINO_CHECKPOINT",
+        ROOT / "var/domino-automotive-runs/decoder-5epoch.pt",
+    )
+)
+TOKEN_FILE = Path(os.environ.get("G3_API_TOKEN_FILE", "/home/ubuntu/g3/.service-token"))
+MAX_UPLOAD_BYTES = int(os.environ.get("G3_MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
+TIMEOUT_SECONDS = int(os.environ.get("G3_DOMINO_TIMEOUT_SECONDS", "300"))
+INFERENCE_LOCK = asyncio.Lock()
+
+app = FastAPI(title="AOX G3 DoMINO Inference", version="0.1.0")
+
+
+def _model_name() -> str:
+    return f"DoMINO automotive decoder fine-tune - {CHECKPOINT.stem}"
+
+
+def _token() -> str:
+    configured = os.environ.get("G3_API_TOKEN", "").strip()
+    return configured or (TOKEN_FILE.read_text().strip() if TOKEN_FILE.is_file() else "")
+
+
+def _authorize(authorization: str | None) -> None:
+    token = _token()
+    if not token:
+        raise HTTPException(status_code=503, detail="G3 API token is unavailable")
+    if authorization != f"Bearer {token}":
+        raise HTTPException(status_code=401, detail="invalid inference token")
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "model": _model_name(),
+        "model_ready": CHECKPOINT.is_file(),
+        "script_ready": SCRIPT.is_file(),
+        "python_ready": PYTHON.is_file(),
+    }
+
+
+def _run(command: list[str]) -> None:
+    subprocess.run(
+        command,
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT_SECONDS,
+    )
+
+
+async def _save_upload(stl: UploadFile, directory: Path) -> Path:
+    name = (stl.filename or "").lower()
+    if not (name.endswith(".stl") or name.endswith(".stl.gz")):
+        raise HTTPException(status_code=400, detail="only STL uploads are accepted")
+    upload_path = directory / ("input.stl.gz" if name.endswith(".gz") else "input.stl")
+    size = 0
+    with upload_path.open("wb") as output:
+        while chunk := await stl.read(8 * 1024 * 1024):
+            size += len(chunk)
+            if size > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=400, detail="STL exceeds the 2048 MB upload limit")
+            output.write(chunk)
+    if size == 0:
+        raise HTTPException(status_code=400, detail="STL is empty")
+    if not name.endswith(".gz"):
+        return upload_path
+    stl_path = directory / "input.stl"
+    try:
+        with gzip.open(upload_path, "rb") as source, stl_path.open("wb") as output:
+            shutil.copyfileobj(source, output, length=8 * 1024 * 1024)
+    except (OSError, EOFError) as exc:
+        raise HTTPException(status_code=400, detail="invalid compressed STL") from exc
+    return stl_path
+
+
+@app.post("/v1/recommend")
+async def recommend(
+    stl: UploadFile = File(...),
+    density: float = Form(1.225),
+    flow_axis: str = Form("+x"),
+    top: int = Form(3),
+    authorization: str | None = Header(default=None),
+):
+    _authorize(authorization)
+    if flow_axis not in {"+x", "-x", "+y", "-y", "+z", "-z"}:
+        raise HTTPException(status_code=400, detail="invalid flow_axis")
+    if density <= 0 or not 1 <= top <= 5:
+        raise HTTPException(status_code=400, detail="invalid density or top")
+    started = time.perf_counter()
+    with tempfile.TemporaryDirectory(prefix="aox-domino-recommend-") as temp_dir:
+        temp = Path(temp_dir)
+        try:
+            stl_path = await _save_upload(stl, temp)
+            output_dir = temp / "recommendations"
+            command = [
+                str(PYTHON), "-m", "scripts.recommend_domino_deformations",
+                "--stl", str(stl_path),
+                "--checkpoint", str(CHECKPOINT),
+                "--out", str(output_dir),
+                "--amounts=-0.01,0.01",
+                "--density", str(density),
+                "--flow-axis", flow_axis,
+                "--top", str(top),
+            ]
+            async with INFERENCE_LOCK:
+                await run_in_threadpool(_run, command)
+            result = json.loads((output_dir / "recommendations.json").read_text())
+        except subprocess.TimeoutExpired as exc:
+            raise HTTPException(status_code=504, detail="recommendation timed out") from exc
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or str(exc)).strip().splitlines()[-1]
+            raise HTTPException(status_code=422, detail=f"recommendation failed: {detail}") from exc
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=422, detail=f"recommendation failed: {exc}") from exc
+    return {
+        "model": _model_name(),
+        "device": "cuda:0",
+        "elapsed_seconds": round(time.perf_counter() - started, 3),
+        "baseline": result["baseline"],
+        "recommendations": result["recommendations"],
+        "candidate_count": len(result["candidates"]) - 1,
+        "limitations": ["Experimental surrogate ranking; validate selected candidates with G2 CFD."],
+    }
+
+
+@app.post("/v1/infer")
+async def infer(
+    stl: UploadFile = File(...),
+    speed: float = Form(30.0),
+    u_x: float | None = Form(None),
+    density: float = Form(1.225),
+    flow_axis: str = Form("+x"),
+    authorization: str | None = Header(default=None),
+):
+    _authorize(authorization)
+    if not all((CHECKPOINT.is_file(), SCRIPT.is_file(), PYTHON.is_file())):
+        raise HTTPException(status_code=503, detail="DoMINO service files are unavailable")
+    if flow_axis not in {"+x", "-x", "+y", "-y", "+z", "-z"}:
+        raise HTTPException(status_code=400, detail="invalid flow_axis")
+    if speed <= 0 or density <= 0:
+        raise HTTPException(status_code=400, detail="speed and density must be positive")
+
+    name = (stl.filename or "").lower()
+    if not (name.endswith(".stl") or name.endswith(".stl.gz")):
+        raise HTTPException(status_code=400, detail="only STL uploads are accepted")
+    started = time.perf_counter()
+    with tempfile.TemporaryDirectory(prefix="aox-domino-") as temp_dir:
+        temp = Path(temp_dir)
+        upload_path = temp / ("input.stl.gz" if name.endswith(".gz") else "input.stl")
+        size = 0
+        with upload_path.open("wb") as output:
+            while chunk := await stl.read(8 * 1024 * 1024):
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=400, detail="STL exceeds the 2048 MB upload limit")
+                output.write(chunk)
+        if size == 0:
+            raise HTTPException(status_code=400, detail="STL is empty")
+
+        stl_path = temp / "input.stl"
+        if name.endswith(".gz"):
+            try:
+                with gzip.open(upload_path, "rb") as source, stl_path.open("wb") as output:
+                    shutil.copyfileobj(source, output, length=8 * 1024 * 1024)
+            except (OSError, EOFError) as exc:
+                raise HTTPException(status_code=400, detail="invalid compressed STL") from exc
+        result_path = temp / "result.json"
+        command = [
+            str(PYTHON),
+            str(SCRIPT),
+            "--stl", str(stl_path),
+            "--checkpoint", str(CHECKPOINT),
+            "--out", str(result_path),
+            "--speed", str(speed if u_x is None else u_x),
+            "--density", str(density),
+            "--flow-axis", flow_axis,
+            "--device", "cuda:0",
+        ]
+        try:
+            async with INFERENCE_LOCK:
+                await run_in_threadpool(_run, command)
+            result = json.loads(result_path.read_text())
+        except subprocess.TimeoutExpired as exc:
+            raise HTTPException(status_code=504, detail="DoMINO inference timed out") from exc
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or str(exc)).strip().splitlines()[-1]
+            raise HTTPException(status_code=422, detail=f"DoMINO inference failed: {detail}") from exc
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=422, detail=f"DoMINO result is invalid: {exc}") from exc
+
+    return {
+        "model": _model_name(),
+        "device": "cuda:0",
+        "elapsed_seconds": round(time.perf_counter() - started, 3),
+        "inference_seconds": result.get("inference_seconds"),
+        "drag_coefficient": result.get("cd"),
+        "lift_coefficient": result.get("cl"),
+        "reference_area": result.get("reference_area_m2"),
+        "reference_area_source": result.get("reference_area_source"),
+        "flow_axis": result.get("flow_axis"),
+        "speed": result.get("speed_mps"),
+        "density": result.get("density_kg_m3"),
+        "limitations": result.get("limitations", []),
+    }

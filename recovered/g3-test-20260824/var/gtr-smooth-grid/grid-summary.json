@@ -1,0 +1,57 @@
+{
+  "results": [
+    {
+      "name": "lr3e-06-epoch1",
+      "path": "/home/ubuntu/g3-v2/var/gtr-smooth-grid/lr3e-06-epoch1",
+      "pretrained": {
+        "cd_mae": 0.011932327284456886,
+        "cl_mae": 0.10344165888355954
+      },
+      "finetuned": {
+        "cd_mae": 0.008999602343889876,
+        "cl_mae": 0.09112556851830862
+      },
+      "improved_both": true
+    },
+    {
+      "name": "lr3e-06-epoch3",
+      "path": "/home/ubuntu/g3-v2/var/gtr-smooth-grid/lr3e-06-epoch3",
+      "pretrained": {
+        "cd_mae": 0.011932327284456886,
+        "cl_mae": 0.10344165888355954
+      },
+      "finetuned": {
+        "cd_mae": 0.008228899475148524,
+        "cl_mae": 0.06780802038239223
+      },
+      "improved_both": true
+    },
+    {
+      "name": "lr1e-06-epoch3",
+      "path": "/home/ubuntu/g3-v2/var/gtr-smooth-grid/lr1e-06-epoch3",
+      "pretrained": {
+        "cd_mae": 0.011932327284456886,
+        "cl_mae": 0.10344165888355954
+      },
+      "finetuned": {
+        "cd_mae": 0.009198120580368044,
+        "cl_mae": 0.09115616805282019
+      },
+      "improved_both": true
+    }
+  ],
+  "selected": {
+    "name": "lr3e-06-epoch3",
+    "path": "/home/ubuntu/g3-v2/var/gtr-smooth-grid/lr3e-06-epoch3",
+    "pretrained": {
+      "cd_mae": 0.011932327284456886,
+      "cl_mae": 0.10344165888355954
+    },
+    "finetuned": {
+      "cd_mae": 0.008228899475148524,
+      "cl_mae": 0.06780802038239223
+    },
+    "improved_both": true
+  },
+  "promoted": false
+}

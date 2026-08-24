@@ -1,0 +1,626 @@
+diff --git a/scripts/evaluate_domino_v3.py b/scripts/evaluate_domino_v3.py
+index ea0c8d2..5579645 100644
+--- a/scripts/evaluate_domino_v3.py
++++ b/scripts/evaluate_domino_v3.py
+@@ -5,12 +5,38 @@ from __future__ import annotations
+ 
+ import argparse
+ import json
++import time
+ from pathlib import Path
+ 
+ import numpy as np
+ import torch
+ 
+ 
++def spearman(actual, predicted):
++    """Return Spearman rank correlation, including average ranks for ties."""
++    actual = np.asarray(actual, dtype=float)
++    predicted = np.asarray(predicted, dtype=float)
++
++    def ranks(values):
++        order = np.argsort(values, kind="mergesort")
++        result = np.empty(len(values), dtype=float)
++        start = 0
++        while start < len(values):
++            end = start + 1
++            while end < len(values) and values[order[end]] == values[order[start]]:
++                end += 1
++            result[order[start:end]] = 0.5 * (start + end - 1) + 1.0
++            start = end
++        return result
++
++    if len(actual) < 2:
++        return None
++    actual_rank, predicted_rank = ranks(actual), ranks(predicted)
++    if np.std(actual_rank) == 0 or np.std(predicted_rank) == 0:
++        return None
++    return float(np.corrcoef(actual_rank, predicted_rank)[0, 1])
++
++
+ def forward_surface(model, data):
+     smin, smax = data["surface_min_max"][:, 0], data["surface_min_max"][:, 1]
+     geometry = 2.0 * (data["geometry_coordinates"] - smin) / (smax - smin) - 1
+@@ -53,6 +79,8 @@ def main():
+     parser = argparse.ArgumentParser()
+     parser.add_argument("--root", type=Path, required=True)
+     parser.add_argument("--fine-tuned", type=Path, required=True)
++    parser.add_argument("--split", type=Path)
++    parser.add_argument("--partition", choices=("train", "test"), default="test")
+     parser.add_argument("--device", default="cuda:0")
+     args = parser.parse_args()
+ 
+@@ -68,6 +96,12 @@ def main():
+     pretrained = {key: value.detach().clone() for key, value in model.state_dict().items()}
+     adapter = DrivAerMLAdapter(root=str(args.root))
+     cases = adapter.list_cases()
++    if args.split:
++        split = json.loads(args.split.read_text())
++        selected = {
++            f"run_{row['run']}" for row in split[f"{args.partition}_cases"]
++        }
++        cases = [case_id for case_id in cases if case_id in selected]
+ 
+     def evaluate(label, state):
+         model.load_state_dict(state)
+@@ -79,14 +113,21 @@ def main():
+                 (args.root / case_id / f"conditions_{suffix}.json").read_text()
+             )
+             data = wrapper.prepare_inputs(adapter.load_case(case_id))["data_dict"]
++            if torch.cuda.is_available():
++                torch.cuda.synchronize()
++            started = time.perf_counter()
+             with torch.no_grad():
+                 prediction = forward_surface(model, data)[0]
++            if torch.cuda.is_available():
++                torch.cuda.synchronize()
++            elapsed = time.perf_counter() - started
+             cd, cl = integrate_prediction(prediction, data, factors, conditions)
+             row = {
+                 "model": label, "case": case_id, "pred_cd": cd, "true_cd": conditions["su2_cd"],
+                 "pred_cl": cl, "true_cl": conditions["su2_cl"],
+                 "cd_abs_error": abs(cd - conditions["su2_cd"]),
+                 "cl_abs_error": abs(cl - conditions["su2_cl"]),
++                "inference_seconds": elapsed,
+             }
+             rows.append(row)
+             print(json.dumps(row))
+@@ -94,6 +135,15 @@ def main():
+             "model": label,
+             "cd_mae": float(np.mean([row["cd_abs_error"] for row in rows])),
+             "cl_mae": float(np.mean([row["cl_abs_error"] for row in rows])),
++            "cd_spearman": spearman(
++                [row["true_cd"] for row in rows], [row["pred_cd"] for row in rows]
++            ),
++            "cl_spearman": spearman(
++                [row["true_cl"] for row in rows], [row["pred_cl"] for row in rows]
++            ),
++            "mean_inference_seconds": float(
++                np.mean([row["inference_seconds"] for row in rows])
++            ),
+             "cases": len(rows),
+         }))
+ 
+diff --git a/scripts/finetune_domino_v3.py b/scripts/finetune_domino_v3.py
+old mode 100644
+new mode 100755
+index e9bc7f0..ce46f88
+--- a/scripts/finetune_domino_v3.py
++++ b/scripts/finetune_domino_v3.py
+@@ -45,10 +45,20 @@ def main():
+     parser.add_argument("--out", required=True)
+     parser.add_argument("--epochs", type=int, default=5)
+     parser.add_argument("--device", default="cuda:0")
++    parser.add_argument("--train-mode", choices=("decoder", "encoder-tail", "full"), default="decoder")
++    parser.add_argument("--base-checkpoint",
++                        help="optional fine-tuned state dict to use instead of NVIDIA pretrained weights")
++    parser.add_argument("--learning-rate", type=float, default=2e-4)
++    parser.add_argument("--seed", type=int, default=20260813)
+     args = parser.parse_args()
++    np.random.seed(args.seed)
++    torch.manual_seed(args.seed)
++    if torch.cuda.is_available():
++        torch.cuda.manual_seed_all(args.seed)
+     root = os.path.abspath(args.root)
+     split = json.load(open(args.split))
+     train_ids = [str(row["run"]) for row in split["train_cases"]]
++    validation_ids = [str(row["run"]) for row in split.get("validation_cases", [])]
+     test_ids = [str(row["run"]) for row in split["test_cases"]]
+ 
+     ck = snapshot_download("nvidia/domino_drivaerml")
+@@ -57,6 +67,8 @@ def main():
+                             stats_path=f"{surf}/scaling_factors.pkl",
+                             device=args.device, domino_config=f"{surf}/config.yaml")
+     model, sf = w._model, w._surf_factors
++    if args.base_checkpoint:
++        model.load_state_dict(torch.load(args.base_checkpoint, map_location=args.device))
+     pre = {k: v.detach().clone() for k, v in model.state_dict().items()}
+ 
+     ad = DrivAerMLAdapter(root=root)
+@@ -66,6 +78,12 @@ def main():
+       for rid in ids:
+         try:
+             g = geo(root, rid)
++            required = ("speed", "density", "ref_area", "su2_cd", "su2_cl")
++            invalid = [key for key in required if key not in g or not np.isfinite(float(g[key]))]
++            invalid += [key for key in ("speed", "density", "ref_area")
++                        if key in g and np.isfinite(float(g[key])) and float(g[key]) <= 0]
++            if invalid:
++                raise ValueError(f"invalid required conditions: {sorted(set(invalid))}")
+             dd = w.prepare_inputs(ad.load_case(f"run_{rid}"))["data_dict"]
+             N = dd["surface_mesh_centers"].shape[1]
+             smin, smax = dd["surface_min_max"][:, 0], dd["surface_min_max"][:, 1]
+@@ -73,27 +91,31 @@ def main():
+             with torch.no_grad():
+                 enc = model.geo_rep_surface(gc, dd["surf_grid"], dd["sdf_surf_grid"]).detach()
+             tgt = normalize(dd["surface_fields"] / (g["speed"] ** 2 * g["density"]), sf[0], sf[1])
+-            samples.append(dict(dd=dd, enc=enc, tgt=tgt, N=N, g=g, rid=rid))
++            samples.append(dict(dd=dd, gc=gc, enc=enc, tgt=tgt, N=N, g=g, rid=rid))
+         except Exception as e:
+             raise RuntimeError(f"failed to load run_{rid}: {type(e).__name__}: {e}") from e
+       return samples
+ 
+-    print(f"preprocessing train={len(train_ids)} test={len(test_ids)}...", flush=True)
+-    tr, val = load_samples(train_ids), load_samples(test_ids)
+-    print(f"train {len(tr)} / isolated test {len(val)}", flush=True)
++    print(f"preprocessing train={len(train_ids)} validation={len(validation_ids)} test={len(test_ids)}...", flush=True)
++    tr = load_samples(train_ids)
++    val = load_samples(validation_ids) if validation_ids else []
++    test = load_samples(test_ids)
++    print(f"train {len(tr)} / validation {len(val)} / isolated test {len(test)}", flush=True)
+ 
+     K = 4096
+     lossf = torch.nn.MSELoss()
+ 
+-    def val_report(tag):
++    def evaluate(samples, tag):
+         model.eval(); cd_errs, cl_errs = [], []
+-        for s in val:
++        for s in samples:
+             with torch.no_grad():
+                 pred = forward_all(model, s["dd"])[0]
+             cpcf = unnormalize(pred, sf[0], sf[1]) * (2.0 * s["g"]["density"])
+             centers = s["dd"]["surface_mesh_centers"][0]
+             n = s["dd"]["surface_normals"][0]; A = s["dd"]["surface_areas"][0]
+             cd, cl = coefficients_from_cpcf(cpcf, centers, n, A, s["g"]["ref_area"])
++            if not np.isfinite(cd) or not np.isfinite(cl):
++                raise ValueError(f"non-finite prediction for run_{s['rid']}: Cd={cd}, Cl={cl}")
+             cd_errs.append(abs(cd - s["g"]["su2_cd"]))
+             cl_errs.append(abs(cl - s["g"]["su2_cl"]))
+         result = {"cd_mae": float(np.mean(cd_errs)), "cl_mae": float(np.mean(cl_errs))}
+@@ -101,9 +123,36 @@ def main():
+         return result
+ 
+     model.load_state_dict(pre); model.eval()
+-    base = val_report("PRETRAINED")
+-    opt = torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=2e-4)
++    base_val = evaluate(val, "PRETRAINED-VALIDATION") if val else None
++    base = evaluate(test, "PRETRAINED-ISOLATED-TEST")
++    if args.train_mode in {"decoder", "encoder-tail"}:
++        for parameter in model.parameters():
++            parameter.requires_grad_(False)
++        for module in (model.fc_p_surf, model.solution_calculator_surf):
++            for parameter in module.parameters():
++                parameter.requires_grad_(True)
++        if args.train_mode == "encoder-tail":
++            for modules in (
++                model.geo_rep_surface.geo_conv_out,
++                model.geo_rep_surface.geo_processors,
++                model.geo_rep_surface.geo_processor_out,
++            ):
++                for parameter in modules[-1].parameters():
++                    parameter.requires_grad_(True)
++    trainable = [p for p in model.parameters() if p.requires_grad]
++    print(f"train_mode={args.train_mode} trainable={sum(p.numel() for p in trainable):,} total={sum(p.numel() for p in model.parameters()):,}", flush=True)
++    if args.train_mode == "encoder-tail":
++        decoder_parameters = list(model.fc_p_surf.parameters()) + list(model.solution_calculator_surf.parameters())
++        decoder_ids = {id(parameter) for parameter in decoder_parameters}
++        encoder_parameters = [parameter for parameter in trainable if id(parameter) not in decoder_ids]
++        opt = torch.optim.Adam([
++            {"params": decoder_parameters, "lr": 2e-4},
++            {"params": encoder_parameters, "lr": 2e-5},
++        ])
++    else:
++        opt = torch.optim.Adam(trainable, lr=args.learning_rate)
+     t0 = time.time()
++    best_state, best_validation, validation_history = None, float("inf"), []
+     for ep in range(args.epochs):
+         model.train()
+         for j in torch.randperm(len(tr)):
+@@ -113,17 +162,41 @@ def main():
+                      sn=s["dd"]["surface_normals"][:, idx], snn=s["dd"]["surface_neighbors_normals"][:, idx],
+                      sa=s["dd"]["surface_areas"][:, idx].unsqueeze(-1), sna=s["dd"]["surface_neighbors_areas"][:, idx].unsqueeze(-1),
+                      pos=s["dd"]["pos_surface_center_of_mass"][:, idx])
+-            gl = model.surface_local_geo_encodings(0.5 * s["enc"], b["smc"], s["dd"]["surf_grid"])
++            enc = (
++                model.geo_rep_surface(s["gc"], s["dd"]["surf_grid"], s["dd"]["sdf_surf_grid"])
++                if args.train_mode == "encoder-tail" else s["enc"]
++            )
++            gl = model.surface_local_geo_encodings(0.5 * enc, b["smc"], s["dd"]["surf_grid"])
+             pe = model.fc_p_surf(b["pos"])
+             pred = model.solution_calculator_surf(b["smc"], gl, pe, b["smn"], b["sn"], b["snn"], b["sa"], b["sna"],
+                                                   s["dd"]["global_params_values"], s["dd"]["global_params_reference"])
+             opt.zero_grad(); loss = lossf(pred, s["tgt"][:, idx]); loss.backward()
+             torch.nn.utils.clip_grad_norm_(model.parameters(), 2.0); opt.step()
+         print(f"epoch {ep + 1}/{args.epochs}", flush=True)
++        if val:
++            metrics = evaluate(val, f"VALIDATION-EPOCH-{ep + 1}")
++            validation_history.append({"epoch": ep + 1, **metrics})
++            score = metrics["cd_mae"] + metrics["cl_mae"]
++            if score < best_validation:
++                best_validation = score
++                best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+     print(f"{args.epochs} epochs in {time.time()-t0:.0f}s", flush=True)
+-    model.eval(); ft = val_report("FINE-TUNED")
++    if best_state is not None:
++        model.load_state_dict(best_state)
++    model.eval()
++    ft_val = evaluate(val, "FINE-TUNED-VALIDATION") if val else None
++    ft = evaluate(test, "FINE-TUNED-ISOLATED-TEST")
++    required_metrics = [base["cd_mae"], base["cl_mae"], ft["cd_mae"], ft["cl_mae"]]
++    if ft_val:
++        required_metrics += [ft_val["cd_mae"], ft_val["cl_mae"]]
++    if not all(np.isfinite(value) for value in required_metrics):
++        raise RuntimeError("refusing to save checkpoint with non-finite validation metrics")
+     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+     torch.save(model.state_dict(), args.out)
++    with open(args.out + ".metrics.json", "w") as stream:
++        json.dump({"train_mode": args.train_mode, "seed": args.seed, "pretrained_validation": base_val,
++                   "validation_history": validation_history, "finetuned_validation": ft_val,
++                   "pretrained_test": base, "finetuned_test": ft}, stream, indent=2)
+     print("=" * 60)
+     print(f"  Cd MAE {base['cd_mae']:.6f} -> {ft['cd_mae']:.6f}")
+     print(f"  Cl MAE {base['cl_mae']:.6f} -> {ft['cl_mae']:.6f}")
+diff --git a/scripts/prepare_domino_su2_v3.py b/scripts/prepare_domino_su2_v3.py
+index 6a113ab..5d0fd5a 100644
+--- a/scripts/prepare_domino_su2_v3.py
++++ b/scripts/prepare_domino_su2_v3.py
+@@ -111,9 +111,16 @@ def read_su2_coefficients(case_dir: str | Path) -> tuple[float, float]:
+         if "CD" in header:
+             cd_index = header.index("CD")
+             cl_index = header.index("CL") if "CL" in header else None
+-            return float(rows[-1][cd_index]), (
+-                float(rows[-1][cl_index]) if cl_index is not None else float("nan")
+-            )
++            # SU2 can leave a partial/non-finite final row when a worker exits.
++            # Walk backwards and use the last complete, finite coefficient row.
++            for row in reversed(rows[1:]):
++                try:
++                    cd = float(row[cd_index])
++                    cl = float(row[cl_index]) if cl_index is not None else float("nan")
++                except (IndexError, TypeError, ValueError):
++                    continue
++                if math.isfinite(cd) and (cl_index is None or math.isfinite(cl)):
++                    return cd, cl
+     return float("nan"), float("nan")
+ 
+ 
+diff --git a/scripts/prepare_smoke_g2_s3.py b/scripts/prepare_smoke_g2_s3.py
+index 67b830c..8bae8e3 100644
+--- a/scripts/prepare_smoke_g2_s3.py
++++ b/scripts/prepare_smoke_g2_s3.py
+@@ -21,6 +21,8 @@ from pathlib import Path
+ 
+ import boto3
+ from prepare_g2_fields import prepare_case
++from training_event_inventory import load_event_rows
++from aox_g3.geometry.surface_sampling import GEOMETRY_PREPROCESSING_VERSION
+ 
+ 
+ REQUIRED_NAMES = {"flow.vtu", "surface_flow.vtu", "history.csv"}
+@@ -37,6 +39,14 @@ def normalize_inventory_row(row: dict[str, str]) -> dict[str, str]:
+         row.get("test_case") or row.get("project_uid") or row.get("job_uid", "")
+     )
+     normalized["source_kind"] = "smoke" if row.get("test_case") else "inventory"
++    # Full-resolution recommendation reports already contain the canonical
++    # G2 job id and S3 output prefix, but name the completion column `status`.
++    # Accept that report directly so completed recommendation jobs do not need
++    # a hand-maintained intermediary inventory CSV.
++    if not normalized.get("job_status"):
++        normalized["job_status"] = row.get("status", "")
++    if not normalized.get("solver") and normalized.get("job_uid") and normalized.get("s3_output_prefix"):
++        normalized["solver"] = "G2"
+     return normalized
+ 
+ 
+@@ -79,7 +89,9 @@ def file_digest(path: Path) -> str:
+ 
+ def main() -> None:
+     parser = argparse.ArgumentParser(description=__doc__)
+-    parser.add_argument("--csv", type=Path, required=True)
++    inputs = parser.add_mutually_exclusive_group(required=True)
++    inputs.add_argument("--csv", type=Path)
++    inputs.add_argument("--event-inventory", action="append", type=Path)
+     parser.add_argument("--out-dir", type=Path, required=True)
+     parser.add_argument("--manifest", type=Path, required=True)
+     parser.add_argument("--n-volume", type=int, default=200_000)
+@@ -88,10 +100,9 @@ def main() -> None:
+     parser.add_argument("--seed", type=int, default=0)
+     args = parser.parse_args()
+ 
+-    rows = [
+-        normalize_inventory_row(row)
+-        for row in csv.DictReader(args.csv.open(newline="", encoding="utf-8-sig"))
+-    ]
++    raw_rows = (load_event_rows(args.event_inventory) if args.event_inventory else
++                list(csv.DictReader(args.csv.open(newline="", encoding="utf-8-sig"))))
++    rows = [normalize_inventory_row(row) for row in raw_rows]
+     rows = [
+         row for row in rows
+         if row.get("solver") == "G2"
+@@ -166,7 +177,9 @@ def main() -> None:
+     payload = {
+         "schema_version": 2,
+         "format": "g2-smoke-fields-v1",
+-        "source_csv": str(args.csv),
++        "geometry_preprocessing_version": GEOMETRY_PREPROCESSING_VERSION,
++        "source_csv": str(args.csv) if args.csv else None,
++        "source_event_inventories": [str(path) for path in (args.event_inventory or [])],
+         "quality_gate": {"min_surface_points": args.min_surface_points},
+         "cases": cases,
+         "skipped": skipped,
+diff --git a/scripts/split_domino_v3_groups.py b/scripts/split_domino_v3_groups.py
+index 63170b2..d00b5f8 100644
+--- a/scripts/split_domino_v3_groups.py
++++ b/scripts/split_domino_v3_groups.py
+@@ -1,53 +1,41 @@
+-#!/usr/bin/env python
+-"""Create a deterministic geometry-group split for a DoMINO v3 manifest."""
+-
++#!/usr/bin/env python3
++"""Create leakage-resistant train/validation/test splits by design family."""
+ from __future__ import annotations
+-
+-import argparse
+-import hashlib
+-import json
++import argparse, hashlib, json, re
+ from pathlib import Path
+ 
+-
+-def group_score(group_id: str, seed: str) -> str:
+-    return hashlib.sha256(f"{seed}:{group_id}".encode()).hexdigest()
+-
+-
+-def main() -> None:
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument("--manifest", type=Path, required=True)
+-    parser.add_argument("--out", type=Path, required=True)
+-    parser.add_argument("--test-groups", type=int, default=8)
+-    parser.add_argument("--seed", default="g3-domino-v3-20260810")
+-    args = parser.parse_args()
+-
+-    manifest = json.loads(args.manifest.read_text())
+-    cases = [row for row in manifest["cases"] if row["accepted"]]
+-    groups = sorted({row["group_id"] for row in cases}, key=lambda value: group_score(value, args.seed))
+-    if not 0 < args.test_groups < len(groups):
+-        raise SystemExit("test-groups must leave at least one train and one test group")
+-    test_groups = set(groups[: args.test_groups])
+-    train = [row for row in cases if row["group_id"] not in test_groups]
+-    test = [row for row in cases if row["group_id"] in test_groups]
+-    output = {
+-        "schema_version": 1,
+-        "seed": args.seed,
+-        "source_manifest": str(args.manifest.resolve()),
+-        "train_groups": len({row["group_id"] for row in train}),
+-        "test_groups": len({row["group_id"] for row in test}),
+-        "train_cases": train,
+-        "test_cases": test,
+-    }
+-    args.out.parent.mkdir(parents=True, exist_ok=True)
+-    args.out.write_text(json.dumps(output, indent=2) + "\n")
+-    print(json.dumps({
+-        "train_groups": output["train_groups"], "train_cases": len(train),
+-        "test_groups": output["test_groups"], "test_cases": len(test),
+-        "group_overlap": len(
+-            {row["group_id"] for row in train} & {row["group_id"] for row in test}
+-        ),
+-    }, indent=2))
+-
+-
+-if __name__ == "__main__":
+-    main()
++def score(value, seed):
++    return hashlib.sha256(f"{seed}:{value}".encode()).hexdigest()
++
++def family(row):
++    source = row.get("source") or {}
++    prefix = str(source.get("output_prefix") or "")
++    match = re.search(r"/project/([^/]+)", "/" + prefix.lstrip("/"))
++    if match:
++        return "s3_project_" + match.group(1)
++    path = str((row.get("conditions") or {}).get("source_vtu") or "")
++    if "/DESIGNS/" in path:
++        origin = path.split("/DESIGNS/", 1)[0]
++        return "su2_origin_" + hashlib.sha256(origin.encode()).hexdigest()[:20]
++    return str(row.get("group_id") or "run_" + str(row["run"]))
++
++def main():
++    p=argparse.ArgumentParser(); p.add_argument("--manifest",type=Path,required=True)
++    p.add_argument("--out",type=Path,required=True); p.add_argument("--validation-fraction",type=float,default=.15)
++    p.add_argument("--test-fraction",type=float,default=.15); p.add_argument("--seed",default="g3-domino-family-v1")
++    a=p.parse_args(); source=json.loads(a.manifest.read_text())
++    cases=[dict(row, family_group=family(row)) for row in source["cases"] if row.get("accepted")]
++    groups=sorted({r["family_group"] for r in cases},key=lambda x:score(x,a.seed)); n=len(groups)
++    ntest=max(1,round(n*a.test_fraction)); nval=max(1,round(n*a.validation_fraction))
++    if ntest+nval>=n: raise SystemExit("not enough independent families")
++    test=set(groups[:ntest]); val=set(groups[ntest:ntest+nval]); train=set(groups[ntest+nval:])
++    bucket=lambda selected:[r for r in cases if r["family_group"] in selected]
++    payload={"schema_version":2,"seed":a.seed,"source_manifest":str(a.manifest.resolve()),
++             "grouping":"S3 project UID or pre-DESIGNS SU2 origin directory",
++             "train_groups":len(train),"validation_groups":len(val),"test_groups":len(test),
++             "train_cases":bucket(train),"validation_cases":bucket(val),"test_cases":bucket(test)}
++    a.out.parent.mkdir(parents=True,exist_ok=True); a.out.write_text(json.dumps(payload,indent=2)+"\n")
++    print(json.dumps({k:payload[k] for k in ("train_groups","validation_groups","test_groups")}|{
++      "train_cases":len(payload["train_cases"]),"validation_cases":len(payload["validation_cases"]),
++      "test_cases":len(payload["test_cases"]),"group_overlap":0},indent=2))
++if __name__=="__main__": main()
+diff --git a/scripts/sync_training_events.py b/scripts/sync_training_events.py
+index c0a6b85..7fd579c 100644
+--- a/scripts/sync_training_events.py
++++ b/scripts/sync_training_events.py
+@@ -45,15 +45,15 @@ def _find_number(value: Any, keys: tuple[str, ...]) -> float | None:
+     return None
+ 
+ 
+-def list_event_keys(client, bucket: str, prefix: str) -> list[str]:
+-    keys = []
++def list_event_objects(client, bucket: str, prefix: str) -> list[dict]:
++    objects = []
+     paginator = client.get_paginator("list_objects_v2")
+     for page in paginator.paginate(Bucket=bucket, Prefix=prefix.rstrip("/") + "/"):
+-        keys.extend(
+-            row["Key"] for row in page.get("Contents", [])
++        objects.extend(
++            row for row in page.get("Contents", [])
+             if row["Key"].lower().endswith(".json")
+         )
+-    return sorted(keys)
++    return sorted(objects, key=lambda row: row["Key"])
+ 
+ 
+ def main():
+@@ -67,14 +67,32 @@ def main():
+         default=os.environ.get("G3_TRAINING_EVENT_PREFIX", "_private/g3/training-events"),
+     )
+     parser.add_argument("--out-json", type=Path, required=True)
+-    parser.add_argument("--out-csv", type=Path, required=True)
++    parser.add_argument("--out-csv", type=Path)
++    parser.add_argument("--state-json", type=Path)
++    parser.add_argument("--initialize-state-only", action="store_true")
+     args = parser.parse_args()
+     if not args.bucket:
+         parser.error("--bucket or G3_TRAINING_BUCKET is required")
+ 
+     client = boto3.client("s3")
++    previous = {}
++    if args.state_json and args.state_json.exists():
++        previous = json.loads(args.state_json.read_text()).get("objects", {})
++    current = {}
++    changed = []
++    for row in list_event_objects(client, args.bucket, args.prefix):
++        key = row["Key"]
++        signature = {
++            "etag": str(row.get("ETag") or "").strip('"'),
++            "size": int(row.get("Size") or 0),
++            "last_modified": row["LastModified"].isoformat(),
++        }
++        current[key] = signature
++        if previous.get(key) != signature:
++            changed.append(key)
++
+     events, rejected = {}, []
+-    for key in list_event_keys(client, args.bucket, args.prefix):
++    for key in ([] if args.initialize_state_only else changed):
+         try:
+             event = json.loads(
+                 client.get_object(Bucket=args.bucket, Key=key)["Body"].read()
+@@ -111,6 +129,11 @@ def main():
+     }
+     args.out_json.parent.mkdir(parents=True, exist_ok=True)
+     args.out_json.write_text(json.dumps(payload, indent=2) + "\n")
++    if args.state_json:
++        args.state_json.parent.mkdir(parents=True, exist_ok=True)
++        temporary = args.state_json.with_name(f".{args.state_json.name}.{os.getpid()}")
++        temporary.write_text(json.dumps({"bucket": args.bucket, "objects": current}, indent=2) + "\n")
++        os.replace(temporary, args.state_json)
+ 
+     fieldnames = [
+         "solver",
+@@ -130,38 +153,40 @@ def main():
+         "cl_final",
+         "run_config",
+     ]
+-    args.out_csv.parent.mkdir(parents=True, exist_ok=True)
+-    with args.out_csv.open("w", newline="") as handle:
+-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+-        writer.writeheader()
+-        for event_id, event in sorted(events.items()):
+-            summary = event.get("result_summary") or {}
+-            objective = str(event.get("objective") or "drag").lower()
+-            cd_final = _find_number(summary, ("cd_final", "cd_best", "best_cd", "cd"))
+-            cl_final = _find_number(summary, ("cl_final", "cl_best", "best_cl", "cl"))
+-            target_final = cl_final if objective == "lift" else cd_final
+-            writer.writerow({
+-                "solver": event["solver"],
+-                "job_status": "succeeded",
+-                "test_case": event_id.replace(":", "_"),
+-                "job_id": event.get("job_id"),
+-                "job_uid": event.get("job_uid"),
+-                "project_uid": event_id,
+-                "tenant_uid": event.get("tenant_schema"),
+-                "team_uid": "",
+-                "s3_bucket": event.get("s3_output_bucket"),
+-                "s3_output_prefix": str(event.get("s3_output_prefix") or "").rstrip("/"),
+-                "output_s3_key": str(event.get("s3_output_prefix") or "").rstrip("/") + "/",
+-                "objective_function": objective,
+-                "cd_initial": "",
+-                "cd_final": target_final if target_final is not None else "",
+-                "cl_final": cl_final if cl_final is not None else "",
+-                "run_config": json.dumps({
+-                    **(event.get("conditions") or {}),
+-                    "objective": objective,
+-                }),
+-            })
+-    print(json.dumps({"events": len(cases), "rejected": len(rejected)}, indent=2))
++    if args.out_csv:
++        args.out_csv.parent.mkdir(parents=True, exist_ok=True)
++        with args.out_csv.open("w", newline="") as handle:
++            writer = csv.DictWriter(handle, fieldnames=fieldnames)
++            writer.writeheader()
++            for event_id, event in sorted(events.items()):
++                summary = event.get("result_summary") or {}
++                objective = str(event.get("objective") or "drag").lower()
++                cd_final = _find_number(summary, ("cd_final", "cd_best", "best_cd", "cd"))
++                cl_final = _find_number(summary, ("cl_final", "cl_best", "best_cl", "cl"))
++                target_final = cl_final if objective == "lift" else cd_final
++                writer.writerow({
++                    "solver": event["solver"],
++                    "job_status": "succeeded",
++                    "test_case": event_id.replace(":", "_"),
++                    "job_id": event.get("job_id"),
++                    "job_uid": event.get("job_uid"),
++                    "project_uid": event_id,
++                    "tenant_uid": event.get("tenant_schema"),
++                    "team_uid": "",
++                    "s3_bucket": event.get("s3_output_bucket"),
++                    "s3_output_prefix": str(event.get("s3_output_prefix") or "").rstrip("/"),
++                    "output_s3_key": str(event.get("s3_output_prefix") or "").rstrip("/") + "/",
++                    "objective_function": objective,
++                    "cd_initial": "",
++                    "cd_final": target_final if target_final is not None else "",
++                    "cl_final": cl_final if cl_final is not None else "",
++                    "run_config": json.dumps({
++                        **(event.get("conditions") or {}),
++                        "objective": objective,
++                    }),
++                })
++    print(json.dumps({"listed": len(current), "changed": len(changed),
++                      "events": len(cases), "rejected": len(rejected)}, indent=2))
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/tests/test_inventory_schema.py b/tests/test_inventory_schema.py
+index 8bc3118..5e1db27 100644
+--- a/tests/test_inventory_schema.py
++++ b/tests/test_inventory_schema.py
+@@ -32,6 +32,19 @@ def test_g2_all_buckets_inventory_schema():
+     assert row["source_kind"] == "inventory"
+ 
+ 
++def test_g2_recommendation_comparison_schema_infers_solver():
++    module = load_script("prepare_smoke_g2_s3.py")
++    row = module.normalize_inventory_row({
++        "status": "succeeded",
++        "s3_bucket": "aoxlabs-stage-static",
++        "s3_output_prefix": "tenant/t/team/a/project/p/job/j/output",
++        "job_uid": "j",
++        "g2_cd": "0.31",
++    })
++    assert row["job_status"] == "succeeded"
++    assert row["solver"] == "G2"
++
++
+ def test_g4_smoke_schema_is_preserved():
+     module = load_script("prepare_smoke_g4_geometry.py")
+     row = module.normalize_inventory_row({

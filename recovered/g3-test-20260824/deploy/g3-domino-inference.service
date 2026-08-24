@@ -1,0 +1,19 @@
+[Unit]
+Description=AOX G3 DoMINO STL inference API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/g3-v2
+Environment=G3_DOMINO_ROOT=/home/ubuntu/g3-v2
+Environment=G3_API_TOKEN_FILE=/home/ubuntu/g3/.service-token
+Environment=G3_API_TOKEN=local-domino-development
+Environment=G3_MAX_UPLOAD_BYTES=2147483648
+ExecStart=/home/ubuntu/venv_g3/bin/uvicorn scripts.domino_stl_service:app --host 127.0.0.1 --port 8005
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

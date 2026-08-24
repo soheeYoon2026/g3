@@ -1,0 +1,17 @@
+{
+  "stl": "/home/ubuntu/g3-v2/data/domino-g2-reaudit-v1/run_60/drivaer_60.stl",
+  "checkpoint": "/home/ubuntu/g3-v2/var/domino-automotive-runs/decoder-5epoch.pt",
+  "cd": 0.26322394609451294,
+  "cl": -0.1418910026550293,
+  "speed_mps": 30.0,
+  "density_kg_m3": 1.225,
+  "reference_area_m2": 4.209558453993677,
+  "reference_area_source": "STL frontal projection",
+  "flow_axis": "+x",
+  "inference_seconds": 0.3426618499797769,
+  "predicted_surface": "/home/ubuntu/g3-v2/var/domino-automotive-runs/raw-stl-run60-auto-area.vtp",
+  "limitations": [
+    "checkpoint is trained near its dataset conditions; speed is recorded but is not a broadly validated conditioning variable",
+    "STL units must be metres and the selected flow axis must be correct"
+  ]
+}

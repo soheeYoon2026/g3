@@ -1,0 +1,11 @@
+[Unit]
+Description=Collect new G2 DoMINO data every midnight Korea time
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 Asia/Seoul
+Persistent=true
+RandomizedDelaySec=300
+Unit=g3-domino-collection.service
+
+[Install]
+WantedBy=timers.target

@@ -170,3 +170,37 @@ python scripts/verify_case_identity.py \
 
 **남은 것:** #1의 NISMO 본 실행(G3_TEST 자료 필요), #2의 서버 코드 회수,
 #3 이후 (변형 G2 계산, 타 차종 추가, challenger 게이트).
+
+### 2026-08-24 (2차) — G3_TEST 접속: 관문 1 판정 + 서버 자료 회수
+
+**관문 1 (NISMO 규약 검증) 결과 — 오차는 규약 문제가 아니라 진짜 모델 오차:**
+
+- 인용값 "G2 기준 0.3207"의 원본 기록을 **어느 G2 산출물에서도 찾지 못함**.
+  실측된 NISMO 계열 풀카 G2 값: run_60(원시 GT-R) su2_cd `0.3025`,
+  gtr-smooth baseline 라벨 `0.30790`(history 최종=rbf 소스), 같은 형상 VTU
+  적분 `0.31232`(+1.4%), 고항력 변형들의 적분값 `0.3202~0.3209`.
+- 규약 차이 정량화: ref_area AI `3.1201`(bbox 전면적) vs G2 cfg `3.104241`
+  (**0.5%**); history 라벨 vs VTU 적분 (**+1.4%**); G2 수렴 노이즈 tail std
+  `1.5e-5` (무시 가능). 합쳐도 몇 % 수준 —
+  **AI `0.4723` vs G2 `0.30~0.31`의 ~50% 오차는 분포 밖(OOD) 모델 오차.**
+- 메시 동일성: AI 입력 `gtr-nismo-latest.stl`(419,428 tri)과 캠페인 baseline
+  STL(511,548 tri)은 **다른 메시**. 향후 비교는 반드시 같은 메시로.
+- G2 스케일 규약 발견: 잡의 `geometry_scale.json` — 소스 mm, 솔버 공간
+  최대치수 5.000m 정규화(`solver_units_per_meter 0.99782`).
+
+**보너스 — 실전 ΔCd 쌍 캠페인 발견:** `gtr-smooth` G2 캠페인 7케이스
+(baseline + 변형 6종, ΔCd −0.0164~+0.0095, 노이즈 대비 100배 이상) →
+[benchmarks/gtr_smooth_pairs.json](benchmarks/gtr_smooth_pairs.json)으로 동결.
+`--pairs` 평가의 1호 실데이터이자 P1 캠페인의 기존 절반. 업로드만 되고
+계산 안 된 변형 STL 7종이 S3에 대기 중 (P1 확장분).
+LOO 파인튠 실험 기록: 5케이스 학습 → 홀드아웃 Cd MAE 0.0119→0.0082.
+
+**#2 서버 자료 회수:** G3_TEST `~/g3-v2`의 미커밋 코드 47파일(서빙 스택,
+ΔCd 빌더들, systemd 유닛) + 추적파일 수정 패치(626줄) + 소형 실험 기록을
+`recovered/g3-test-20260824/`로 회수. 서버의 `evaluate_domino_v3.py` 수정본은
+로컬 버전과 **별도 계보**이므로 병합 전 대조 필요
+(`recovered/g3-test-20260824/g3v2-tracked-modifications.patch`).
+
+**다음 실행 순서:** ① gtr-smooth 7케이스에 현행 decoder-30epoch를 돌려
+`--pairs` ΔCd 방향 정확도 측정 (서버 GPU, 케이스당 ~1.5s) ② 미계산 변형
+7종 G2 제출(P1 확장) ③ LES 파일럿 P0/P1.

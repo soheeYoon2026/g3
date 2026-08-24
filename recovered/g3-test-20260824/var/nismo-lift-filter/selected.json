@@ -1,0 +1,26 @@
+{
+  "selected": [
+    {
+      "job_uid": "7EN2uD0az0v88YbTknMtEM",
+      "objective": "lift",
+      "cl_final": "-0.459504",
+      "status": "succeeded"
+    },
+    {
+      "job_uid": "CLHql1cL86DRQKA1HzRjPS",
+      "objective": "lift",
+      "cl_final": "-0.534711",
+      "status": "succeeded"
+    },
+    {
+      "job_uid": "ju3vlFHgXVBNl73wFgBVuo",
+      "objective": "lift",
+      "cl_final": "-0.55339",
+      "status": "succeeded"
+    }
+  ],
+  "excluded": {
+    "UQCAYyLCQ9fEuy9NEUChB3": "successful drag, not lift",
+    "cG6IjuKZpIiWAYlknM2CHG": "running, not successful"
+  }
+}

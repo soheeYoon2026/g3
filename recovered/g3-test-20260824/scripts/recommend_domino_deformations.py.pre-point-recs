@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Generate smooth vehicle-width candidates and rank them with resident DoMINO."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import time
+from pathlib import Path
+
+import numpy as np
+import pyvista as pv
+
+from scripts.domino_resident_engine import ResidentDominoEngine
+
+
+REGIONS = (("nose", 0.1), ("front", 0.3), ("cabin", 0.5), ("rear", 0.7), ("tail", 0.9))
+
+
+def deform_width(mesh: pv.PolyData, center: float, amount: float, sigma: float = 0.14) -> pv.PolyData:
+    result = mesh.copy(deep=True)
+    points = np.asarray(result.points, dtype=np.float64)
+    minimum, maximum = points.min(0), points.max(0)
+    length = max(float(maximum[0] - minimum[0]), 1e-9)
+    x = (points[:, 0] - minimum[0]) / length
+    weight = np.exp(-0.5 * ((x - center) / sigma) ** 2)
+    lateral_center = (minimum[1] + maximum[1]) * 0.5
+    points[:, 1] = lateral_center + (points[:, 1] - lateral_center) * (1.0 + amount * weight)
+    result.points = points
+    return result
+
+
+def candidates(mesh: pv.PolyData, amounts: tuple[float, ...]):
+    yield "baseline", "baseline", 0.0, mesh
+    for region, center in REGIONS:
+        for amount in amounts:
+            label = f"{region}_{amount:+.3f}"
+            yield label, region, amount, deform_width(mesh, center, amount)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--stl", type=Path, required=True)
+    parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--amounts", default="-0.02,-0.01,0.01,0.02")
+    parser.add_argument("--density", type=float, default=1.225)
+    parser.add_argument("--flow-axis", default="+x")
+    parser.add_argument("--top", type=int, default=3)
+    args = parser.parse_args()
+    amounts = tuple(float(value) for value in args.amounts.split(","))
+    mesh = pv.read(args.stl).extract_surface().triangulate().clean()
+    args.out.mkdir(parents=True, exist_ok=True)
+    engine = ResidentDominoEngine(args.checkpoint)
+    rows, started = [], time.perf_counter()
+    for index, (label, region, amount, candidate) in enumerate(candidates(mesh, amounts)):
+        path = args.out / f"{label}.stl"
+        candidate.save(path)
+        prediction = engine.predict(path, label, args.flow_axis, args.density, None)
+        rows.append({"label": label, "region": region, "width_change": amount, "stl": path.name, **prediction})
+        print(json.dumps({"candidate": index + 1, "label": label, "cd": prediction["cd"]}), flush=True)
+    baseline = rows[0]
+    for row in rows:
+        row["delta_cd"] = row["cd"] - baseline["cd"]
+        row["delta_cl"] = row["cl"] - baseline["cl"]
+    ranked = sorted(rows[1:], key=lambda row: row["cd"])
+    payload = {
+        "format": "domino-candidate-recommendation-v1",
+        "baseline": baseline,
+        "recommendations": ranked[: args.top],
+        "candidates": rows,
+        "elapsed_seconds": time.perf_counter() - started,
+        "limitations": ["Experimental surrogate ranking; validate selected candidates with G2 CFD."],
+    }
+    (args.out / "recommendations.json").write_text(json.dumps(payload, indent=2) + "\n")
+    print(json.dumps({"elapsed_seconds": payload["elapsed_seconds"], "recommendations": payload["recommendations"]}, indent=2))
+
+
+if __name__ == "__main__":
+    main()

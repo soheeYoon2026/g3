@@ -1,0 +1,18 @@
+{
+  "run_id": "20260823T150305Z",
+  "started_at": "2026-08-23T15:03:05.980341+00:00",
+  "training_requested": true,
+  "training_started": false,
+  "status": "complete",
+  "exit_code": 0,
+  "collection": {
+    "accepted": 209,
+    "attempted_sources": 342,
+    "accepted_this_run": 0,
+    "rejected_sources": 133,
+    "unique_groups": 199
+  },
+  "new_accepted_cases": 0,
+  "training_skip_reason": "new accepted cases 0 < minimum 5",
+  "finished_at": "2026-08-23T15:04:10.923659+00:00"
+}
