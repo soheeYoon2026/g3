@@ -83,6 +83,9 @@ Seoul GPU EC2에서 학습·추론을 실행하는 운영 명령과 현재 재�
 주의사항은 [G3 학습·추론 운영 Runbook](docs/G3_TRAINING_INFERENCE_RUNBOOK.md)에
 정리해 두었다.
 
+G3에서 사용한 NVIDIA 라이브러리는
+[NVIDIA 라이브러리 목록](LIBRARIES.md)에 정리되어 있다.
+
 ## Layout
 
 ```
