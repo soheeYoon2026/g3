@@ -124,11 +124,26 @@ def main() -> None:
                 deci = mesh
             # Decimation leaves zero-area slivers; DoMINO's solver head divides
             # by cell area, so they poison predictions with NaN (2026-08-26).
+            # Re-triangulation can mint new slivers, so iterate to convergence,
+            # and never accept a pass that collapses the mesh.
             import numpy as np
-            sized = deci.compute_cell_sizes(length=False, volume=False)
-            keep = np.asarray(sized.cell_data["Area"]) > 1e-12
-            if not keep.all():
-                deci = deci.extract_cells(np.where(keep)[0]).extract_surface().triangulate()
+            for _ in range(4):
+                sized = deci.compute_cell_sizes(length=False, volume=False)
+                keep = np.asarray(sized.cell_data["Area"]) > 1e-12
+                if keep.all():
+                    break
+                # Rebuild from the faces array directly — extract_cells collapsed
+                # on some decimated meshes (199,999 -> 711 on drivaerml run_6).
+                faces = deci.faces.reshape(-1, 4)[keep]
+                cleaned = pv.PolyData(deci.points.copy(), faces.ravel())
+                for key in deci.point_data:
+                    cleaned.point_data[key] = deci.point_data[key]
+                if cleaned.n_cells < 0.9 * deci.n_cells:
+                    raise ValueError(
+                        f"zero-area cleanup collapsed mesh {deci.n_cells} -> {cleaned.n_cells}")
+                deci = cleaned
+            else:
+                raise ValueError("zero-area cells persist after cleanup iterations")
             import numpy as np
             dyn = 0.5 * args.speed ** 2 * args.density   # kinematic when density=1
             if "pMeanTrim" not in deci.point_data:
