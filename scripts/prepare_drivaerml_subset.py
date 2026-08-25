@@ -122,9 +122,18 @@ def main() -> None:
                 deci = deci.sample(mesh, snap_to_closest_point=True)
             else:
                 deci = mesh
-            for name in ("pMeanTrim", "wallShearStressMeanTrim"):
-                if name not in deci.point_data:
-                    raise ValueError(f"field {name} missing after decimation")
+            aliases = {
+                "pMeanTrim": ("pMeanTrim", "pMean", "pMeanAvg", "p"),
+                "wallShearStressMeanTrim": (
+                    "wallShearStressMeanTrim", "wallShearStressMean", "wallShearStress"),
+            }
+            for canonical, candidates in aliases.items():
+                found = next((c for c in candidates if c in deci.point_data), None)
+                if found is None:
+                    raise ValueError(
+                        f"no candidate for {canonical}; fields={list(deci.point_data)}")
+                if found != canonical:
+                    deci.point_data[canonical] = deci.point_data[found]
 
             run_dir = args.out / f"run_{run}"
             run_dir.mkdir(exist_ok=True)
