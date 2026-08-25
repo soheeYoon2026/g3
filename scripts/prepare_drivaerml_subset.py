@@ -87,20 +87,27 @@ def main() -> None:
             break
         record = {"run": run, "repo": args.repo}
         try:
-            force = read_csv_row(Path(hf_hub_download(
-                args.repo, f"run_{run}/force_mom_{run}.csv",
-                repo_type="dataset", cache_dir=str(args.cache))))
+            def fetch(candidates):
+                last = None
+                for name in candidates:
+                    try:
+                        return name, Path(hf_hub_download(
+                            args.repo, f"run_{run}/{name}",
+                            repo_type="dataset", cache_dir=str(args.cache)))
+                    except Exception as exc:
+                        last = exc
+                raise last
+
+            force = read_csv_row(fetch([f"force_mom_{run}.csv"])[1])
             try:
-                geo = read_csv_row(Path(hf_hub_download(
-                    args.repo, f"run_{run}/geo_ref_{run}.csv",
-                    repo_type="dataset", cache_dir=str(args.cache))))
+                geo = read_csv_row(
+                    fetch([f"geo_ref_{run}.csv", f"geo_parameters_{run}.csv"])[1])
             except Exception:
                 geo = {}
-            vtp_path = Path(hf_hub_download(
-                args.repo, f"run_{run}/boundary_{run}.vtp",
-                repo_type="dataset", cache_dir=str(args.cache)))
-            # HF cache may hand back an extension-less blob; give VTK a real .vtp name.
-            readable = args.cache / f"b_{run}.vtp"
+            surf_name, vtp_path = fetch([f"boundary_{run}.vtp", f"boundary_{run}.vtu"])
+            ext = surf_name[surf_name.rfind("."):]
+            # HF cache may hand back an extension-less blob; give VTK a real extension.
+            readable = args.cache / f"b_{run}{ext}"
             readable.unlink(missing_ok=True)
             try:
                 readable.hardlink_to(vtp_path.resolve())
