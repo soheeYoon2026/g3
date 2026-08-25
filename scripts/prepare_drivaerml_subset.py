@@ -122,18 +122,32 @@ def main() -> None:
                 deci = deci.sample(mesh, snap_to_closest_point=True)
             else:
                 deci = mesh
-            aliases = {
-                "pMeanTrim": ("pMeanTrim", "pMean", "pMeanAvg", "p"),
-                "wallShearStressMeanTrim": (
-                    "wallShearStressMeanTrim", "wallShearStressMean", "wallShearStress"),
-            }
-            for canonical, candidates in aliases.items():
-                found = next((c for c in candidates if c in deci.point_data), None)
-                if found is None:
-                    raise ValueError(
-                        f"no candidate for {canonical}; fields={list(deci.point_data)}")
-                if found != canonical:
-                    deci.point_data[canonical] = deci.point_data[found]
+            # Decimation leaves zero-area slivers; DoMINO's solver head divides
+            # by cell area, so they poison predictions with NaN (2026-08-26).
+            import numpy as np
+            sized = deci.compute_cell_sizes(length=False, volume=False)
+            keep = np.asarray(sized.cell_data["Area"]) > 1e-12
+            if not keep.all():
+                deci = deci.extract_cells(np.where(keep)[0]).extract_surface().triangulate()
+            import numpy as np
+            dyn = 0.5 * args.speed ** 2 * args.density   # kinematic when density=1
+            if "pMeanTrim" not in deci.point_data:
+                if "pMean" in deci.point_data:
+                    deci.point_data["pMeanTrim"] = deci.point_data["pMean"]
+                elif "cpavg" in deci.point_data:   # WindsorML stores coefficients
+                    deci.point_data["pMeanTrim"] = (
+                        np.asarray(deci.point_data["cpavg"], dtype=float) * dyn)
+                else:
+                    raise ValueError(f"no pressure field; fields={list(deci.point_data)}")
+            if "wallShearStressMeanTrim" not in deci.point_data:
+                if "wallShearStressMean" in deci.point_data:
+                    deci.point_data["wallShearStressMeanTrim"] = deci.point_data["wallShearStressMean"]
+                elif all(k in deci.point_data for k in ("cfxavg", "cfyavg", "cfzavg")):
+                    deci.point_data["wallShearStressMeanTrim"] = np.stack(
+                        [np.asarray(deci.point_data[k], dtype=float) for k in ("cfxavg", "cfyavg", "cfzavg")],
+                        axis=1) * dyn
+                else:
+                    raise ValueError(f"no shear field; fields={list(deci.point_data)}")
 
             run_dir = args.out / f"run_{run}"
             run_dir.mkdir(exist_ok=True)
