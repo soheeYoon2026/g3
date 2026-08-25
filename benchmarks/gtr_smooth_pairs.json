@@ -6,29 +6,134 @@
     "bucket": "aoxlabs-stage-static",
     "project": "K7Uk29yp3xICUC6nOYKjxZ",
     "jobs_csv": "recovered/g3-test-20260824/var/gtr-smooth-jobs.csv",
-    "conditions": {"speed": 30.0, "density": 1.225, "ref_area": 3.104241, "aoa": 0.0},
+    "conditions": {
+      "speed": 30.0,
+      "density": 1.225,
+      "ref_area": 3.104241,
+      "aoa": 0.0
+    },
     "g2_convergence_tail_std": 1.5e-05
   },
   "cases": [
-    {"run": 1, "variant": "baseline_original", "job_uid": "s5RbiXcGAWB0kPDi1EIZR2", "su2_cd": 0.3078909, "integrated_cd": 0.3123211},
-    {"run": 2, "variant": "front_narrow_5mm", "job_uid": "wAm5EjaBV5Sri9CVPWt6Hs", "su2_cd": 0.2915002},
-    {"run": 3, "variant": "roof_raise_5mm", "job_uid": "wLdnXlkLVMhGGnIbyZ7PQp", "su2_cd": 0.3032731},
-    {"run": 4, "variant": "rear_narrow_10mm", "job_uid": "K28TT2t2253p5D8nMNrnC1", "su2_cd": 0.3060363},
-    {"run": 5, "variant": "roof_lower_10mm", "job_uid": "SzbJaO0tmftP44hokzSNWm", "su2_cd": 0.3174034},
-    {"run": 6, "variant": "rear_narrow_25mm", "job_uid": "mj0QA7YH2dLvotFahWU7EY", "su2_cd": 0.3162065},
-    {"run": 7, "variant": "rear_wide_25mm", "job_uid": "XTI9NyONnjbgmHyUHQBjbO", "su2_cd": 0.3167105}
+    {
+      "run": 1,
+      "variant": "baseline_original",
+      "job_uid": "s5RbiXcGAWB0kPDi1EIZR2",
+      "su2_cd": 0.3078909,
+      "integrated_cd": 0.3123211
+    },
+    {
+      "run": 2,
+      "variant": "front_narrow_5mm",
+      "job_uid": "wAm5EjaBV5Sri9CVPWt6Hs",
+      "su2_cd": 0.2915002
+    },
+    {
+      "run": 3,
+      "variant": "roof_raise_5mm",
+      "job_uid": "wLdnXlkLVMhGGnIbyZ7PQp",
+      "su2_cd": 0.3032731
+    },
+    {
+      "run": 4,
+      "variant": "rear_narrow_10mm",
+      "job_uid": "K28TT2t2253p5D8nMNrnC1",
+      "su2_cd": 0.3060363
+    },
+    {
+      "run": 5,
+      "variant": "roof_lower_10mm",
+      "job_uid": "SzbJaO0tmftP44hokzSNWm",
+      "su2_cd": 0.3174034
+    },
+    {
+      "run": 6,
+      "variant": "rear_narrow_25mm",
+      "job_uid": "mj0QA7YH2dLvotFahWU7EY",
+      "su2_cd": 0.3162065
+    },
+    {
+      "run": 7,
+      "variant": "rear_wide_25mm",
+      "job_uid": "XTI9NyONnjbgmHyUHQBjbO",
+      "su2_cd": 0.3167105
+    }
   ],
   "pairs": [
-    {"baseline": 1, "variant": 2, "true_delta_cd": -0.0163906, "note": "front_narrow_5mm"},
-    {"baseline": 1, "variant": 3, "true_delta_cd": -0.0046178, "note": "roof_raise_5mm"},
-    {"baseline": 1, "variant": 4, "true_delta_cd": -0.0018545, "note": "rear_narrow_10mm"},
-    {"baseline": 1, "variant": 5, "true_delta_cd": 0.0095126, "note": "roof_lower_10mm"},
-    {"baseline": 1, "variant": 6, "true_delta_cd": 0.0083157, "note": "rear_narrow_25mm"},
-    {"baseline": 1, "variant": 7, "true_delta_cd": 0.0088196, "note": "rear_wide_25mm"}
+    {
+      "baseline": 1,
+      "variant": 2,
+      "true_delta_cd": -0.0163906,
+      "note": "front_narrow_5mm",
+      "les_delta_cd": -0.0097,
+      "les_note": "v7 main set (cs0.16, baseline-frozen grids)",
+      "direction_agree_g2_les": true
+    },
+    {
+      "baseline": 1,
+      "variant": 3,
+      "true_delta_cd": -0.0046178,
+      "note": "roof_raise_5mm",
+      "les_delta_cd": -0.014,
+      "les_note": "v7 main set",
+      "direction_agree_g2_les": true
+    },
+    {
+      "baseline": 1,
+      "variant": 4,
+      "true_delta_cd": -0.0018545,
+      "note": "rear_narrow_10mm",
+      "les_delta_cd": -0.035,
+      "les_note": "v7 main set",
+      "direction_agree_g2_les": true
+    },
+    {
+      "baseline": 1,
+      "variant": 5,
+      "true_delta_cd": 0.0095126,
+      "note": "roof_lower_10mm",
+      "les_delta_cd": -0.0262,
+      "les_note": "v7 main set; sign replicated in 3 configs (-0.0287/-0.0176/-0.0262)",
+      "direction_agree_g2_les": false
+    },
+    {
+      "baseline": 1,
+      "variant": 6,
+      "true_delta_cd": 0.0083157,
+      "note": "rear_narrow_25mm",
+      "les_delta_cd": 0.0143,
+      "les_note": "v7 main set",
+      "direction_agree_g2_les": true
+    },
+    {
+      "baseline": 1,
+      "variant": 7,
+      "true_delta_cd": 0.0088196,
+      "note": "rear_wide_25mm",
+      "les_delta_cd": -0.0029,
+      "les_note": "pair-internal grid (plain STL own boxes, baseline recomputed on same grid 0.3588); v5 replication -0.0026",
+      "direction_agree_g2_les": false
+    }
   ],
   "notes": [
     "planned-but-unrun variants (uploaded STL만 존재): cabin_narrow_5mm, front_narrow_10/20mm, front_wide_10/20mm, roof_lower_5/20mm — P1 확장 후보",
     "|ΔCd| 최소 0.0019 — G2 수렴 노이즈(1.5e-5)보다 100배 이상 커서 방향 평가 유효",
     "AI 쪽 평가 시 같은 메시를 써야 함: gtr-nismo-latest.stl(419k tri)은 캠페인 baseline STL(512k tri)과 다른 메시"
-  ]
+  ],
+  "les_campaign": {
+    "date": "2026-08-25",
+    "solver": "AMR-LBM 3-level standard, 18k samples, free placement, u_inf 0.10, cs_l2 0.16",
+    "grids": "L0 400x144x144 fixed; refine1/2 frozen from baseline (LES_FIX_REFINE_JSON); rear_wide pair on its own frozen grid (micro-triangle bbox pin destabilized that geometry)",
+    "baseline_cd": {
+      "main_set": 0.3532,
+      "rear_wide_pair": 0.3588,
+      "cd_std": 0.0004
+    },
+    "per_run_cd_std": "0.0003-0.0007",
+    "direction_agreement_g2_vs_les": "4/6",
+    "disagreements": [
+      "roof_lower_10mm (G2 +0.0095 / LES -0.0262, sign stable across 3 configs)",
+      "rear_wide_25mm (G2 +0.0088 / LES -0.0029, |LES| small)"
+    ]
+  }
 }
