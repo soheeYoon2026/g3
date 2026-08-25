@@ -96,6 +96,12 @@ async def infer(
         stl_path = temp / "input.stl"
         output_dir = temp / "result"
         stl_path.write_bytes(payload)
+        try:
+            from .upload_gate import classify_stl
+            upload_gate = classify_stl(str(stl_path))
+            upload_gate.pop("path", None)
+        except Exception as exc:  # the gate must never block inference
+            upload_gate = {"verdict": "unsure", "reasons": [f"gate error: {exc}"], "features": {}}
         argv = [
             "--stl", str(stl_path),
             "--model", str(MODEL_PATH),
@@ -127,6 +133,7 @@ async def infer(
 
     response = {
         "model": MODEL_PATH.resolve().name,
+        "upload_gate": upload_gate,
         "elapsed_seconds": round(time.perf_counter() - started, 3),
         "grid": summary["grid"],
         "drag_coefficient": summary["drag_coefficient"],
