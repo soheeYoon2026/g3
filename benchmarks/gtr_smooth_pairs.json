@@ -135,5 +135,28 @@
       "roof_lower_10mm (G2 +0.0095 / LES -0.0262, sign stable across 3 configs)",
       "rear_wide_25mm (G2 +0.0088 / LES -0.0029, |LES| small)"
     ]
+  },
+  "les_campaign_v8_uploads": {
+    "date": "2026-08-26",
+    "geometry": "Workbench upload STLs, vertex-welded (1554 open edges remain) + union-bbox pinned",
+    "protocol": "AMR-LBM 3-level standard, 18k samples, free placement, u_inf 0.10, cs_l2 0.16, refine boxes frozen from baseline",
+    "baseline_cd": 0.2884,
+    "run_cd_std": "0.0032-0.0036 (4x the watertight-geometry runs)",
+    "verdict": "only roof_lower_20mm cleared S/N 2; the six small-deformation pairs are indistinguishable from noise",
+    "pairs": {
+      "front_narrow_10mm": -0.0025,
+      "front_narrow_20mm": -0.0008,
+      "front_wide_10mm": -0.0039,
+      "front_wide_20mm": -0.0024,
+      "roof_lower_5mm": 0.0002,
+      "roof_lower_20mm": -0.0101,
+      "cabin_narrow_5mm": -0.0003
+    },
+    "lessons": [
+      "open-shell geometry raises plateau sd ~4x (0.0035 vs 0.0005 on G2-derived watertight surfaces)",
+      "bbox pinning fixes the grid but also freezes the reference area, erasing the frontal-area share of narrow/wide deformations",
+      "roof deformations keep signal because they change the wake without changing frontal area",
+      "roof_lower is the third independent LES result contradicting G2 on roof-lowering direction"
+    ]
   }
 }
