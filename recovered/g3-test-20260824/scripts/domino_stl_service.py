@@ -31,12 +31,20 @@ CHECKPOINT = Path(
         ROOT / "var/domino-automotive-runs/decoder-30epoch.pt",
     )
 )
+# Recommendations only need ΔCd between deformations of one car, and the
+# 2026-08-26 gates showed challenger-mixed-v1 wins that axis (5/6 direction,
+# ΔCd MAE 0.0051) while losing on absolute Cd. Route the two tasks separately;
+# unset the env var to fall back to a single model.
+RECOMMEND_CHECKPOINT = Path(
+    os.environ.get("G3_DOMINO_RECOMMEND_CHECKPOINT", str(CHECKPOINT))
+)
 TOKEN_FILE = Path(os.environ.get("G3_API_TOKEN_FILE", "/home/ubuntu/g3/.service-token"))
 MAX_UPLOAD_BYTES = int(os.environ.get("G3_MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
 TIMEOUT_SECONDS = int(os.environ.get("G3_DOMINO_TIMEOUT_SECONDS", "300"))
 INFERENCE_LOCK = asyncio.Lock()
 RESIDENT_ENABLED = os.environ.get("G3_DOMINO_RESIDENT", "1") != "0"
 RESIDENT_ENGINE = None
+RECOMMEND_ENGINE = None
 TRAINING_SCRIPT = ROOT / "scripts/run_domino_collection_nightly.py"
 TRAINING_RUNTIME = ROOT / "var/domino-collector"
 TRAINING_SPLIT = ROOT / "data/domino-g2-reaudit-v1/split.automotive-reviewed.json"
@@ -52,6 +60,17 @@ def _load_resident_engine():
 
         RESIDENT_ENGINE = ResidentDominoEngine(CHECKPOINT, device="cuda:0")
     return RESIDENT_ENGINE
+
+
+def _load_recommend_engine():
+    global RECOMMEND_ENGINE
+    if RECOMMEND_CHECKPOINT == CHECKPOINT:
+        return _load_resident_engine()
+    if RECOMMEND_ENGINE is None:
+        from scripts.domino_resident_engine import ResidentDominoEngine
+
+        RECOMMEND_ENGINE = ResidentDominoEngine(RECOMMEND_CHECKPOINT, device="cuda:0")
+    return RECOMMEND_ENGINE
 
 
 @app.on_event("startup")
@@ -93,6 +112,10 @@ def health():
         "python_ready": PYTHON.is_file(),
         "resident_enabled": RESIDENT_ENABLED,
         "resident_ready": RESIDENT_ENGINE is not None,
+        "checkpoint": CHECKPOINT.name,
+        "recommend_checkpoint": RECOMMEND_CHECKPOINT.name,
+        "recommend_expert_split": RECOMMEND_CHECKPOINT != CHECKPOINT,
+        "recommend_ready": RECOMMEND_CHECKPOINT.is_file(),
     }
 
 
@@ -118,11 +141,11 @@ def _recommend_with_resident_engine(
 ) -> dict:
     from scripts.recommend_domino_deformations import main as generate_recommendations
 
-    return generate_recommendations(
-        engine=_load_resident_engine(),
+    result = generate_recommendations(
+        engine=_load_recommend_engine(),
         argv=[
             "--stl", str(stl_path),
-            "--checkpoint", str(CHECKPOINT),
+            "--checkpoint", str(RECOMMEND_CHECKPOINT),
             "--out", str(output_dir),
             "--density", str(density),
             "--flow-axis", flow_axis,
@@ -130,6 +153,43 @@ def _recommend_with_resident_engine(
             "--symmetric" if symmetric else "--no-symmetric",
         ] + (["--control-points-json", control_points] if control_points else []),
     )
+    return _reanchor_to_absolute_model(result, stl_path, density, flow_axis)
+
+
+def _reanchor_to_absolute_model(result: dict, stl_path: Path, density: float, flow_axis: str) -> dict:
+    """Keep the expert's ΔCd but report absolutes from the serving model.
+
+    With two models, the expert's own baseline Cd would contradict the number
+    /v1/infer shows for the same car. Anchor every absolute on the serving
+    model and add the expert's deltas, so one car has one Cd everywhere.
+    """
+    if RECOMMEND_CHECKPOINT == CHECKPOINT:
+        return result
+    baseline = result.get("baseline") or {}
+    expert_cd, expert_cl = baseline.get("cd"), baseline.get("cl")
+    if expert_cd is None or expert_cl is None:
+        return result
+    engine = _load_resident_engine()
+    anchor = engine.predict(
+        stl_path,
+        geometry_key=f"anchor:{stl_path}",
+        flow_axis=flow_axis,
+        density=density,
+        reference_area=baseline.get("reference_area_m2"),
+    )
+    anchor_cd, anchor_cl = anchor["cd"], anchor["cl"]
+    baseline.update({"cd": anchor_cd, "cl": anchor_cl,
+                     "expert_cd": expert_cd, "expert_cl": expert_cl})
+    for row in result.get("recommendations") or []:
+        for field, offset in (("cd", anchor_cd - expert_cd), ("cl", anchor_cl - expert_cl)):
+            if row.get(field) is not None:
+                row[f"expert_{field}"] = row[field]
+                row[field] = row[field] + offset
+        if row.get("coarse_cd") is not None:
+            row["coarse_cd"] = row["coarse_cd"] + (anchor_cd - expert_cd)
+    result["absolute_model"] = CHECKPOINT.name
+    result["delta_model"] = RECOMMEND_CHECKPOINT.name
+    return result
 
 
 def _read_json(path: Path, default=None):
@@ -311,6 +371,8 @@ async def recommend(
         "overview_bounds": result.get("overview_bounds"),
         "recommendations": result["recommendations"],
         "candidate_count": len(result["candidates"]),
+        "absolute_model": result.get("absolute_model", CHECKPOINT.name),
+        "delta_model": result.get("delta_model", CHECKPOINT.name),
         "limitations": ["Surface-control sensitivity screening; validate the applied shape with G2 CFD."],
     }
 

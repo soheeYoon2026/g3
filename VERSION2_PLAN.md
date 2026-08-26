@@ -356,3 +356,27 @@ base-checkpoint 이어받기). B단계 SU2 검증 0.0109 / 격리 test 0.0358.
 계열 사전학습은 이 규모(SU2 54)에서 미접촉 개선을 사지 못함 — 공정 게이트의
 진짜 지렛대는 **AOX 도메인 완전체 차 수집 확대** (야간 수집기 + 업로드
 게이트 연동: full_car 판정 신규 G2 결과만 자동 편입).
+
+### 2026-08-26 (4차) — 추천 전용 expert 배선 (서버 서비스)
+
+`recovered/g3-test-20260824/scripts/domino_stl_service.py`(= G3_TEST 배포본)에
+**작업별 모델 라우팅** 추가:
+
+- `G3_DOMINO_RECOMMEND_CHECKPOINT` env로 추천 경로만 다른 체크포인트 사용
+  (미설정 시 기존과 완전 동일 — 무변경 배포 확인 `recommend_expert_split:false`)
+- 별도 resident engine(`_load_recommend_engine`)으로 두 모델 상주
+- **재앵커링**(`_reanchor_to_absolute_model`): expert의 baseline Cd가 미리보기
+  (/v1/infer, 서빙 모델)와 어긋나 **같은 차에 두 Cd가 표시되는 문제**를 발견 →
+  절대값은 서빙 모델 앵커, ΔCd는 expert 값을 유지하고 후보 절대 Cd를
+  `앵커 + ΔCd`로 재계산. 원본은 `expert_cd/expert_cl`로 보존.
+- `/health`에 `checkpoint`·`recommend_checkpoint`·`recommend_expert_split`,
+  추천 응답에 `absolute_model`·`delta_model` 노출.
+
+검증 (NISMO, shadow 8011 vs 8012 동일 코드):
+baseline 0.4723로 통일(expert 자체값 0.3608 보존), 후보 절대 Cd = baseline+ΔCd
+일관성 OK, 상위 후보 2개는 두 모델 공통(point_00_out/point_03_out), 3위만 상이.
+
+**프로덕션은 아직 미적용** — env 한 줄(`G3_DOMINO_RECOMMEND_CHECKPOINT=...
+challenger-mixed-v1.pt`)을 systemd 유닛에 추가 후 재시작하면 전환되고,
+그 줄을 지우면 즉시 롤백된다. 프론트가 `absolute_model`/`delta_model`을
+표기하도록 하는 편이 사용자 혼선이 없다.
