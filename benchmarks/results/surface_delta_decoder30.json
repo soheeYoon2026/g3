@@ -1,0 +1,128 @@
+[
+ {
+  "baseline": 1,
+  "variant": 2,
+  "note": "front_narrow_5mm",
+  "patch": {
+   "cells": 18074,
+   "correlation": 0.36688492774701653,
+   "sign_agreement": 0.5307070930618568,
+   "cfd_rms": 113.7337625870023,
+   "model_rms": 0.1496556942410416
+  },
+  "far": {
+   "cells": 22592,
+   "correlation": 0.3582207945143057,
+   "sign_agreement": 0.5444405099150141,
+   "cfd_rms": 48.776197291771126,
+   "model_rms": 0.07761765995266276
+  },
+  "cfd_patch_far_ratio": 2.331747223070011,
+  "model_patch_far_ratio": 1.9281139670058747
+ },
+ {
+  "baseline": 1,
+  "variant": 3,
+  "note": "roof_raise_5mm",
+  "patch": {
+   "cells": 18196,
+   "correlation": 0.2810983092897115,
+   "sign_agreement": 0.5379753792042207,
+   "cfd_rms": 104.98764606388445,
+   "model_rms": 0.13078192475690803
+  },
+  "far": {
+   "cells": 22470,
+   "correlation": 0.5567707761493641,
+   "sign_agreement": 0.5156208277703604,
+   "cfd_rms": 80.47893554351872,
+   "model_rms": 0.13794675376396529
+  },
+  "cfd_patch_far_ratio": 1.3045357192518126,
+  "model_patch_far_ratio": 0.9480609089263768
+ },
+ {
+  "baseline": 1,
+  "variant": 4,
+  "note": "rear_narrow_10mm",
+  "patch": {
+   "cells": 21133,
+   "correlation": 0.3248647916896049,
+   "sign_agreement": 0.5292197037808167,
+   "cfd_rms": 81.73975727126802,
+   "model_rms": 0.1373577299512003
+  },
+  "far": {
+   "cells": 19533,
+   "correlation": 0.4664055275861228,
+   "sign_agreement": 0.49767060871345925,
+   "cfd_rms": 64.1168803002661,
+   "model_rms": 0.11274833611913454
+  },
+  "cfd_patch_far_ratio": 1.2748554965318357,
+  "model_patch_far_ratio": 1.2182683548080253
+ },
+ {
+  "baseline": 1,
+  "variant": 5,
+  "note": "roof_lower_10mm",
+  "patch": {
+   "cells": 18371,
+   "correlation": 0.22411735969279742,
+   "sign_agreement": 0.5287137336018726,
+   "cfd_rms": 119.8599105969544,
+   "model_rms": 0.1797501077455496
+  },
+  "far": {
+   "cells": 22295,
+   "correlation": 0.46133581146710523,
+   "sign_agreement": 0.5355460865664947,
+   "cfd_rms": 75.38660138976525,
+   "model_rms": 0.1383904767606166
+  },
+  "cfd_patch_far_ratio": 1.589936519053995,
+  "model_patch_far_ratio": 1.2988618288849134
+ },
+ {
+  "baseline": 1,
+  "variant": 6,
+  "note": "rear_narrow_25mm",
+  "patch": {
+   "cells": 18531,
+   "correlation": 0.21052561676635814,
+   "sign_agreement": 0.5102800712319896,
+   "cfd_rms": 95.5588406048335,
+   "model_rms": 0.12124742490502784
+  },
+  "far": {
+   "cells": 22135,
+   "correlation": 0.5501981077032879,
+   "sign_agreement": 0.5510729613733906,
+   "cfd_rms": 61.33577822354076,
+   "model_rms": 0.10746380009852899
+  },
+  "cfd_patch_far_ratio": 1.5579624710485518,
+  "model_patch_far_ratio": 1.1282629573294563
+ },
+ {
+  "baseline": 1,
+  "variant": 7,
+  "note": "rear_wide_25mm",
+  "patch": {
+   "cells": 18531,
+   "correlation": 0.3661658784952303,
+   "sign_agreement": 0.5538287194430953,
+   "cfd_rms": 107.58393477467396,
+   "model_rms": 0.12601240738210734
+  },
+  "far": {
+   "cells": 22135,
+   "correlation": 0.3211446758301984,
+   "sign_agreement": 0.4959566297718545,
+   "cfd_rms": 48.37419033189678,
+   "model_rms": 0.08966671952978235
+  },
+  "cfd_patch_far_ratio": 2.2239945317231635,
+  "model_patch_far_ratio": 1.4053420047362495
+ }
+]
