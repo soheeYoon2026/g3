@@ -1,0 +1,102 @@
+[inference:domino] Loading DoMINO config from /home/ubuntu/.cache/huggingface/hub/models--nvidia--domino_drivaerml/snapshots/35b1bf1edafdaa2600d16182825890cd51c07427/domino_drivaerml_surface_checkpoint/config.yaml; checkpoint from /home/ubuntu/.cache/huggingface/hub/models--nvidia--domino_drivaerml/snapshots/35b1bf1edafdaa2600d16182825890cd51c07427/domino_drivaerml_surface_checkpoint/DoMINO.0.501.mdlus
+[inference:domino] Using benchmark model.stats_path as data.scaling_factors override: /home/ubuntu/.cache/huggingface/hub/models--nvidia--domino_drivaerml/snapshots/35b1bf1edafdaa2600d16182825890cd51c07427/domino_drivaerml_surface_checkpoint/scaling_factors.pkl
+[inference:domino] Loading checkpoint from directory /home/ubuntu/.cache/huggingface/hub/models--nvidia--domino_drivaerml/snapshots/35b1bf1edafdaa2600d16182825890cd51c07427/domino_drivaerml_surface_checkpoint
+[inference:domino] Checkpoint loaded; model ready for inference.
+[dataset:drivaerml] load_case('run_1'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_1/boundary_1.vtp
+[inference:domino] Reading case inputs (case run_1): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_1/boundary_1.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_1
+{"model": "pretrained", "case": "run_1", "run": "1", "group_id": "windsor_1", "pred_cd": -0.01005474105477333, "true_cd": 0.32251110051821463, "pred_cl": -0.3641563057899475, "true_cl": -0.061135997912917385, "cd_abs_error": 0.33256584157298796, "cl_abs_error": 0.3030203078770301, "inference_seconds": 0.7283691810443997}
+[dataset:drivaerml] load_case('run_2'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_2/boundary_2.vtp
+[inference:domino] Reading case inputs (case run_2): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_2/boundary_2.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_2
+{"model": "pretrained", "case": "run_2", "run": "2", "group_id": "windsor_2", "pred_cd": 0.005797909572720528, "true_cd": 0.33010659710393736, "pred_cl": -0.29212385416030884, "true_cl": -0.06421676368290545, "cd_abs_error": 0.32430868753121683, "cl_abs_error": 0.22790709047740337, "inference_seconds": 0.6177639320958406}
+[dataset:drivaerml] load_case('run_3'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_3/boundary_3.vtp
+[inference:domino] Reading case inputs (case run_3): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_3/boundary_3.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_3
+{"model": "pretrained", "case": "run_3", "run": "3", "group_id": "windsor_3", "pred_cd": -0.004582532215863466, "true_cd": 0.30081598817478755, "pred_cl": -0.4300691485404968, "true_cl": 0.09850493043033436, "cd_abs_error": 0.305398520390651, "cl_abs_error": 0.5285740789708312, "inference_seconds": 0.5950252790935338}
+[dataset:drivaerml] load_case('run_4'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_4/boundary_4.vtp
+[inference:domino] Reading case inputs (case run_4): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_4/boundary_4.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_4
+{"model": "pretrained", "case": "run_4", "run": "4", "group_id": "windsor_4", "pred_cd": 0.0028558389749377966, "true_cd": 0.31424155982132473, "pred_cl": -0.36410290002822876, "true_cl": -0.3420653242009144, "cd_abs_error": 0.31138572084638694, "cl_abs_error": 0.02203757582731436, "inference_seconds": 0.6595680371392518}
+[dataset:drivaerml] load_case('run_5'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_5/boundary_5.vtp
+[inference:domino] Reading case inputs (case run_5): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_5/boundary_5.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_5
+{"model": "pretrained", "case": "run_5", "run": "5", "group_id": "windsor_5", "pred_cd": -0.003379895817488432, "true_cd": 0.2450244117448047, "pred_cl": -0.34388965368270874, "true_cl": 0.15087557493262413, "cd_abs_error": 0.24840430756229312, "cl_abs_error": 0.4947652286153329, "inference_seconds": 0.5878097729291767}
+[dataset:drivaerml] load_case('run_6'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_6/boundary_6.vtp
+[inference:domino] Reading case inputs (case run_6): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_6/boundary_6.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_6
+{"model": "pretrained", "case": "run_6", "run": "6", "group_id": "windsor_6", "pred_cd": 0.0030527468770742416, "true_cd": 0.31317566930409746, "pred_cl": -0.2846517860889435, "true_cl": 0.046782322314824834, "cd_abs_error": 0.3101229224270232, "cl_abs_error": 0.3314341084037683, "inference_seconds": 0.6015144090633839}
+[dataset:drivaerml] load_case('run_7'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_7/boundary_7.vtp
+[inference:domino] Reading case inputs (case run_7): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_7/boundary_7.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_7
+{"model": "pretrained", "case": "run_7", "run": "7", "group_id": "windsor_7", "pred_cd": 0.0029473097529262304, "true_cd": 0.32239557512463696, "pred_cl": -0.3821873962879181, "true_cl": 0.471526989562819, "cd_abs_error": 0.3194482653717107, "cl_abs_error": 0.8537143858507371, "inference_seconds": 0.626033099135384}
+[dataset:drivaerml] load_case('run_8'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_8/boundary_8.vtp
+[inference:domino] Reading case inputs (case run_8): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_8/boundary_8.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_8
+{"model": "pretrained", "case": "run_8", "run": "8", "group_id": "windsor_8", "pred_cd": -0.0216574277728796, "true_cd": 0.3059067565057045, "pred_cl": -0.402575820684433, "true_cl": -0.2052236398374931, "cd_abs_error": 0.3275641842785841, "cl_abs_error": 0.1973521808469399, "inference_seconds": 0.663404111051932}
+[dataset:drivaerml] load_case('run_9'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_9/boundary_9.vtp
+[inference:domino] Reading case inputs (case run_9): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_9/boundary_9.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_9
+{"model": "pretrained", "case": "run_9", "run": "9", "group_id": "windsor_9", "pred_cd": 0.03171214833855629, "true_cd": 0.31636473290352285, "pred_cl": -0.31487056612968445, "true_cl": 0.22952356250918485, "cd_abs_error": 0.28465258456496656, "cl_abs_error": 0.5443941286388693, "inference_seconds": 0.6162725139874965}
+[dataset:drivaerml] load_case('run_10'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_10/boundary_10.vtp
+[inference:domino] Reading case inputs (case run_10): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_10/boundary_10.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_10
+{"model": "pretrained", "case": "run_10", "run": "10", "group_id": "windsor_10", "pred_cd": -0.026676476001739502, "true_cd": 0.4603292850836657, "pred_cl": -0.2468855082988739, "true_cl": 0.7002446110511414, "cd_abs_error": 0.4870057610854052, "cl_abs_error": 0.9471301193500153, "inference_seconds": 0.6018986171111465}
+[dataset:drivaerml] load_case('run_11'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_11/boundary_11.vtp
+[inference:domino] Reading case inputs (case run_11): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_11/boundary_11.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_11
+{"model": "pretrained", "case": "run_11", "run": "11", "group_id": "windsor_11", "pred_cd": -0.012640898115932941, "true_cd": 0.34706984936580376, "pred_cl": -0.3991750180721283, "true_cl": 0.596903704726063, "cd_abs_error": 0.3597107474817367, "cl_abs_error": 0.9960787227981913, "inference_seconds": 0.594866804080084}
+[dataset:drivaerml] load_case('run_12'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_12/boundary_12.vtp
+[inference:domino] Reading case inputs (case run_12): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_12/boundary_12.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_12
+{"model": "pretrained", "case": "run_12", "run": "12", "group_id": "windsor_12", "pred_cd": 0.028565362095832825, "true_cd": 0.3122229208561557, "pred_cl": -0.30575451254844666, "true_cl": 0.4798565868693217, "cd_abs_error": 0.2836575587603229, "cl_abs_error": 0.7856110994177683, "inference_seconds": 0.5839119388256222}
+{"model": "pretrained", "cases": 12, "cd_mae": 0.3245187584894404, "cl_mae": 0.5193349189228502, "cd_spearman": -0.17482517482517487, "cl_spearman": 0.20979020979020982, "pair_source": null, "delta_cd": null, "delta_cl": null, "mean_inference_seconds": 0.623036474629771}
+[dataset:drivaerml] load_case('run_1'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_1/boundary_1.vtp
+[inference:domino] Reading case inputs (case run_1): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_1/boundary_1.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_1
+{"model": "fine_tuned", "case": "run_1", "run": "1", "group_id": "windsor_1", "pred_cd": 0.2901667356491089, "true_cd": 0.32251110051821463, "pred_cl": -0.17377901077270508, "true_cl": -0.061135997912917385, "cd_abs_error": 0.032344364869105746, "cl_abs_error": 0.1126430128597877, "inference_seconds": 0.5756620380561799}
+[dataset:drivaerml] load_case('run_2'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_2/boundary_2.vtp
+[inference:domino] Reading case inputs (case run_2): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_2/boundary_2.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_2
+{"model": "fine_tuned", "case": "run_2", "run": "2", "group_id": "windsor_2", "pred_cd": 0.28790655732154846, "true_cd": 0.33010659710393736, "pred_cl": -0.15483251214027405, "true_cl": -0.06421676368290545, "cd_abs_error": 0.0422000397823889, "cl_abs_error": 0.0906157484573686, "inference_seconds": 0.6132106978911906}
+[dataset:drivaerml] load_case('run_3'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_3/boundary_3.vtp
+[inference:domino] Reading case inputs (case run_3): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_3/boundary_3.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_3
+{"model": "fine_tuned", "case": "run_3", "run": "3", "group_id": "windsor_3", "pred_cd": 0.3091591000556946, "true_cd": 0.30081598817478755, "pred_cl": -0.20499539375305176, "true_cl": 0.09850493043033436, "cd_abs_error": 0.008343111880907028, "cl_abs_error": 0.3035003241833861, "inference_seconds": 0.591933311894536}
+[dataset:drivaerml] load_case('run_4'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_4/boundary_4.vtp
+[inference:domino] Reading case inputs (case run_4): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_4/boundary_4.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_4
+{"model": "fine_tuned", "case": "run_4", "run": "4", "group_id": "windsor_4", "pred_cd": 0.22352640330791473, "true_cd": 0.31424155982132473, "pred_cl": -0.13752155005931854, "true_cl": -0.3420653242009144, "cd_abs_error": 0.09071515651341, "cl_abs_error": 0.20454377414159586, "inference_seconds": 0.654122798005119}
+[dataset:drivaerml] load_case('run_5'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_5/boundary_5.vtp
+[inference:domino] Reading case inputs (case run_5): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_5/boundary_5.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_5
+{"model": "fine_tuned", "case": "run_5", "run": "5", "group_id": "windsor_5", "pred_cd": 0.26908785104751587, "true_cd": 0.2450244117448047, "pred_cl": -0.14073701202869415, "true_cl": 0.15087557493262413, "cd_abs_error": 0.02406343930271118, "cl_abs_error": 0.2916125869613183, "inference_seconds": 0.5879205949604511}
+[dataset:drivaerml] load_case('run_6'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_6/boundary_6.vtp
+[inference:domino] Reading case inputs (case run_6): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_6/boundary_6.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_6
+{"model": "fine_tuned", "case": "run_6", "run": "6", "group_id": "windsor_6", "pred_cd": 0.2879663407802582, "true_cd": 0.31317566930409746, "pred_cl": -0.1488180011510849, "true_cl": 0.046782322314824834, "cd_abs_error": 0.02520932852383928, "cl_abs_error": 0.19560032346590972, "inference_seconds": 0.601487762061879}
+[dataset:drivaerml] load_case('run_7'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_7/boundary_7.vtp
+[inference:domino] Reading case inputs (case run_7): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_7/boundary_7.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_7
+{"model": "fine_tuned", "case": "run_7", "run": "7", "group_id": "windsor_7", "pred_cd": 0.22834627330303192, "true_cd": 0.32239557512463696, "pred_cl": -0.16852888464927673, "true_cl": 0.471526989562819, "cd_abs_error": 0.09404930182160504, "cl_abs_error": 0.6400558742120958, "inference_seconds": 0.6245961799286306}
+[dataset:drivaerml] load_case('run_8'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_8/boundary_8.vtp
+[inference:domino] Reading case inputs (case run_8): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_8/boundary_8.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_8
+{"model": "fine_tuned", "case": "run_8", "run": "8", "group_id": "windsor_8", "pred_cd": 0.2270691692829132, "true_cd": 0.3059067565057045, "pred_cl": -0.11023399978876114, "true_cl": -0.2052236398374931, "cd_abs_error": 0.07883758722279127, "cl_abs_error": 0.09498964004873195, "inference_seconds": 0.6598152569495142}
+[dataset:drivaerml] load_case('run_9'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_9/boundary_9.vtp
+[inference:domino] Reading case inputs (case run_9): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_9/boundary_9.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_9
+{"model": "fine_tuned", "case": "run_9", "run": "9", "group_id": "windsor_9", "pred_cd": 0.22108517587184906, "true_cd": 0.31636473290352285, "pred_cl": -0.18101240694522858, "true_cl": 0.22952356250918485, "cd_abs_error": 0.09527955703167379, "cl_abs_error": 0.4105359694544134, "inference_seconds": 0.6157580560538918}
+[dataset:drivaerml] load_case('run_10'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_10/boundary_10.vtp
+[inference:domino] Reading case inputs (case run_10): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_10/boundary_10.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_10
+{"model": "fine_tuned", "case": "run_10", "run": "10", "group_id": "windsor_10", "pred_cd": 0.254994660615921, "true_cd": 0.4603292850836657, "pred_cl": -0.11689470708370209, "true_cl": 0.7002446110511414, "cd_abs_error": 0.2053346244677447, "cl_abs_error": 0.8171393181348435, "inference_seconds": 0.6013013778720051}
+[dataset:drivaerml] load_case('run_11'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_11/boundary_11.vtp
+[inference:domino] Reading case inputs (case run_11): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_11/boundary_11.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_11
+{"model": "fine_tuned", "case": "run_11", "run": "11", "group_id": "windsor_11", "pred_cd": 0.2963647246360779, "true_cd": 0.34706984936580376, "pred_cl": -0.14371438324451447, "true_cl": 0.596903704726063, "cd_abs_error": 0.05070512472972588, "cl_abs_error": 0.7406180879705775, "inference_seconds": 0.5944377719424665}
+[dataset:drivaerml] load_case('run_12'): branch='surface', root=/home/ubuntu/g3-v2/data/windsorml-probe-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_12/boundary_12.vtp
+[inference:domino] Reading case inputs (case run_12): mesh /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_12/boundary_12.vtp, run dir /home/ubuntu/g3-v2/data/windsorml-probe-v1/run_12
+{"model": "fine_tuned", "case": "run_12", "run": "12", "group_id": "windsor_12", "pred_cd": 0.28748375177383423, "true_cd": 0.3122229208561557, "pred_cl": -0.17322814464569092, "true_cl": 0.4798565868693217, "cd_abs_error": 0.024739169082321488, "cl_abs_error": 0.6530847315150126, "inference_seconds": 0.5841665649786592}
+{"model": "fine_tuned", "cases": 12, "cd_mae": 0.06431840043568536, "cl_mae": 0.37957828261708676, "cd_spearman": 0.04895104895104895, "cl_spearman": -0.1258741258741259, "pair_source": null, "delta_cd": null, "delta_cl": null, "mean_inference_seconds": 0.6087010342162102}

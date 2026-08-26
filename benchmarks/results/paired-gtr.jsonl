@@ -1,0 +1,62 @@
+[inference:domino] Loading DoMINO config from /home/ubuntu/.cache/huggingface/hub/models--nvidia--domino_drivaerml/snapshots/35b1bf1edafdaa2600d16182825890cd51c07427/domino_drivaerml_surface_checkpoint/config.yaml; checkpoint from /home/ubuntu/.cache/huggingface/hub/models--nvidia--domino_drivaerml/snapshots/35b1bf1edafdaa2600d16182825890cd51c07427/domino_drivaerml_surface_checkpoint/DoMINO.0.501.mdlus
+[inference:domino] Using benchmark model.stats_path as data.scaling_factors override: /home/ubuntu/.cache/huggingface/hub/models--nvidia--domino_drivaerml/snapshots/35b1bf1edafdaa2600d16182825890cd51c07427/domino_drivaerml_surface_checkpoint/scaling_factors.pkl
+[inference:domino] Loading checkpoint from directory /home/ubuntu/.cache/huggingface/hub/models--nvidia--domino_drivaerml/snapshots/35b1bf1edafdaa2600d16182825890cd51c07427/domino_drivaerml_surface_checkpoint
+[inference:domino] Checkpoint loaded; model ready for inference.
+[dataset:drivaerml] load_case('run_1'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_1/boundary_1.vtp
+[inference:domino] Reading case inputs (case run_1): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_1/boundary_1.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_1
+{"model": "pretrained", "case": "run_1", "run": "1", "group_id": "gtr_smooth", "pred_cd": 0.07192524522542953, "true_cd": 0.30789939, "pred_cl": -0.4040365517139435, "true_cl": -0.1519848736602517, "cd_abs_error": 0.23597414477457046, "cl_abs_error": 0.2520516780536918, "inference_seconds": 0.3365905268583447}
+[dataset:drivaerml] load_case('run_2'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_2/boundary_2.vtp
+[inference:domino] Reading case inputs (case run_2): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_2/boundary_2.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_2
+{"model": "pretrained", "case": "run_2", "run": "2", "group_id": "gtr_smooth", "pred_cd": 0.0788087546825409, "true_cd": 0.29150657, "pred_cl": -0.4186740517616272, "true_cl": -0.14910159245001875, "cd_abs_error": 0.21269781531745913, "cl_abs_error": 0.26957245931160845, "inference_seconds": 0.1453604348935187}
+[dataset:drivaerml] load_case('run_3'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_3/boundary_3.vtp
+[inference:domino] Reading case inputs (case run_3): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_3/boundary_3.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_3
+{"model": "pretrained", "case": "run_3", "run": "3", "group_id": "gtr_smooth", "pred_cd": 0.07092957943677902, "true_cd": 0.3032832, "pred_cl": -0.394842267036438, "true_cl": -0.15897015461972774, "cd_abs_error": 0.23235362056322095, "cl_abs_error": 0.23587211241671024, "inference_seconds": 0.14610960916616023}
+[dataset:drivaerml] load_case('run_4'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_4/boundary_4.vtp
+[inference:domino] Reading case inputs (case run_4): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_4/boundary_4.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_4
+{"model": "pretrained", "case": "run_4", "run": "4", "group_id": "gtr_smooth", "pred_cd": 0.06097764894366264, "true_cd": 0.30604619, "pred_cl": -0.45444202423095703, "true_cl": -0.16171247061917027, "cd_abs_error": 0.24506854105633735, "cl_abs_error": 0.29272955361178676, "inference_seconds": 0.1439806551206857}
+[dataset:drivaerml] load_case('run_5'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_5/boundary_5.vtp
+[inference:domino] Reading case inputs (case run_5): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_5/boundary_5.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_5
+{"model": "pretrained", "case": "run_5", "run": "5", "group_id": "gtr_smooth", "pred_cd": 0.06180238723754883, "true_cd": 0.31740991, "pred_cl": -0.41821298003196716, "true_cl": -0.15104054961133634, "cd_abs_error": 0.2556075227624512, "cl_abs_error": 0.2671724304206308, "inference_seconds": 0.1431162168737501}
+[dataset:drivaerml] load_case('run_6'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_6/boundary_6.vtp
+[inference:domino] Reading case inputs (case run_6): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_6/boundary_6.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_6
+{"model": "pretrained", "case": "run_6", "run": "6", "group_id": "gtr_smooth", "pred_cd": 0.0645766630768776, "true_cd": 0.31621244, "pred_cl": -0.39072585105895996, "true_cl": -0.1462527453095425, "cd_abs_error": 0.2516357769231224, "cl_abs_error": 0.24447310574941747, "inference_seconds": 0.14399636792950332}
+[dataset:drivaerml] load_case('run_7'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_7/boundary_7.vtp
+[inference:domino] Reading case inputs (case run_7): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_7/boundary_7.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_7
+{"model": "pretrained", "case": "run_7", "run": "7", "group_id": "gtr_smooth", "pred_cd": 0.0883784294128418, "true_cd": 0.31671468, "pred_cl": -0.37916678190231323, "true_cl": -0.14553894432043754, "cd_abs_error": 0.22833625058715823, "cl_abs_error": 0.2336278375818757, "inference_seconds": 0.14421111508272588}
+{"model": "pretrained", "cases": 7, "cd_mae": 0.2373819531406171, "cl_mae": 0.25649988244938876, "cd_spearman": -0.14285714285714288, "cl_spearman": 0.642857142857143, "pair_source": "explicit", "delta_cd": {"pairs": 6, "mae": 0.013154025712345438, "direction_pairs": 6, "direction_accuracy": 0.5, "spearman": -0.2}, "delta_cl": {"pairs": 6, "mae": 0.01925023126600377, "direction_pairs": 5, "direction_accuracy": 0.6, "spearman": 0.7714285714285715}, "mean_inference_seconds": 0.17190927513209836}
+[dataset:drivaerml] load_case('run_1'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_1/boundary_1.vtp
+[inference:domino] Reading case inputs (case run_1): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_1/boundary_1.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_1
+{"model": "fine_tuned", "case": "run_1", "run": "1", "group_id": "gtr_smooth", "pred_cd": 0.29316622018814087, "true_cd": 0.30789939, "pred_cl": -0.31670770049095154, "true_cl": -0.1519848736602517, "cd_abs_error": 0.014733169811859126, "cl_abs_error": 0.16472282683069983, "inference_seconds": 0.14374876907095313}
+[dataset:drivaerml] load_case('run_2'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_2/boundary_2.vtp
+[inference:domino] Reading case inputs (case run_2): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_2/boundary_2.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_2
+{"model": "fine_tuned", "case": "run_2", "run": "2", "group_id": "gtr_smooth", "pred_cd": 0.28323960304260254, "true_cd": 0.29150657, "pred_cl": -0.32116565108299255, "true_cl": -0.14910159245001875, "cd_abs_error": 0.008266966957397481, "cl_abs_error": 0.1720640586329738, "inference_seconds": 0.14404627191834152}
+[dataset:drivaerml] load_case('run_3'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_3/boundary_3.vtp
+[inference:domino] Reading case inputs (case run_3): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_3/boundary_3.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_3
+{"model": "fine_tuned", "case": "run_3", "run": "3", "group_id": "gtr_smooth", "pred_cd": 0.2908617854118347, "true_cd": 0.3032832, "pred_cl": -0.3235051929950714, "true_cl": -0.15897015461972774, "cd_abs_error": 0.012421414588165258, "cl_abs_error": 0.16453503837534367, "inference_seconds": 0.14489696291275322}
+[dataset:drivaerml] load_case('run_4'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_4/boundary_4.vtp
+[inference:domino] Reading case inputs (case run_4): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_4/boundary_4.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_4
+{"model": "fine_tuned", "case": "run_4", "run": "4", "group_id": "gtr_smooth", "pred_cd": 0.29806822538375854, "true_cd": 0.30604619, "pred_cl": -0.3602186143398285, "true_cl": -0.16171247061917027, "cd_abs_error": 0.00797796461624145, "cl_abs_error": 0.19850614372065822, "inference_seconds": 0.14421366597525775}
+[dataset:drivaerml] load_case('run_5'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_5/boundary_5.vtp
+[inference:domino] Reading case inputs (case run_5): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_5/boundary_5.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_5
+{"model": "fine_tuned", "case": "run_5", "run": "5", "group_id": "gtr_smooth", "pred_cd": 0.29196301102638245, "true_cd": 0.31740991, "pred_cl": -0.3316662609577179, "true_cl": -0.15104054961133634, "cd_abs_error": 0.02544689897361757, "cl_abs_error": 0.18062571134638156, "inference_seconds": 0.1424007120076567}
+[dataset:drivaerml] load_case('run_6'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_6/boundary_6.vtp
+[inference:domino] Reading case inputs (case run_6): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_6/boundary_6.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_6
+{"model": "fine_tuned", "case": "run_6", "run": "6", "group_id": "gtr_smooth", "pred_cd": 0.3052031099796295, "true_cd": 0.31621244, "pred_cl": -0.32282137870788574, "true_cl": -0.1462527453095425, "cd_abs_error": 0.011009330020370467, "cl_abs_error": 0.17656863339834325, "inference_seconds": 0.14347518514841795}
+[dataset:drivaerml] load_case('run_7'): branch='surface', root=/home/ubuntu/g3-v2/data/domino-gtr-smooth-v1
+[dataset:drivaerml] Reading surface mesh from /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_7/boundary_7.vtp
+[inference:domino] Reading case inputs (case run_7): mesh /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_7/boundary_7.vtp, run dir /home/ubuntu/g3-v2/data/domino-gtr-smooth-v1/run_7
+{"model": "fine_tuned", "case": "run_7", "run": "7", "group_id": "gtr_smooth", "pred_cd": 0.2969660758972168, "true_cd": 0.31671468, "pred_cl": -0.31193071603775024, "true_cl": -0.14553894432043754, "cd_abs_error": 0.01974860410278323, "cl_abs_error": 0.1663917717173127, "inference_seconds": 0.1442369360011071}
+{"model": "fine_tuned", "cases": 7, "cd_mae": 0.014229192724347797, "cl_mae": 0.1747734548602447, "cd_spearman": 0.4642857142857144, "cl_spearman": 0.6785714285714287, "pair_source": "explicit", "delta_cd": {"pairs": 6, "mae": 0.005831027752990732, "direction_pairs": 6, "direction_accuracy": 0.6666666666666666, "spearman": 0.48571428571428577}, "delta_cl": {"pairs": 6, "mae": 0.01178832885292109, "direction_pairs": 5, "direction_accuracy": 0.6, "spearman": 0.8857142857142858}, "mean_inference_seconds": 0.1438597861477839}
