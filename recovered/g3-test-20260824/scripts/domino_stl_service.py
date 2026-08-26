@@ -428,6 +428,16 @@ async def infer(
             except (OSError, EOFError) as exc:
                 raise HTTPException(status_code=400, detail="invalid compressed STL") from exc
             timings["decompress_seconds"] = time.perf_counter() - decompress_started
+        # Warn when the upload is not a complete car: the model's accuracy
+        # claims only hold for road cars (2026-08-26 gate work). Advisory only.
+        try:
+            from aox_g3.upload_gate import classify_stl
+
+            upload_gate = await run_in_threadpool(classify_stl, str(stl_path))
+            upload_gate.pop("path", None)
+        except Exception as exc:
+            upload_gate = {"verdict": "unsure", "reasons": [f"gate error: {exc}"], "features": {}}
+
         try:
             worker_started = time.perf_counter()
             async with INFERENCE_LOCK:
@@ -475,6 +485,7 @@ async def infer(
         "model": _model_name(),
         "device": "cuda:0",
         "elapsed_seconds": round(time.perf_counter() - started, 3),
+        "upload_gate": upload_gate,
         "inference_seconds": result.get("inference_seconds"),
         "cache_hit": result.get("cache_hit", False),
         "timings": {key: round(value, 6) for key, value in timings.items()},

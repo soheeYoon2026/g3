@@ -409,3 +409,29 @@ non_car_shape 21 / unsure 29 / off_regime 2**.
 | 커리큘럼 v1 | 0.1469 | 48% | +0.86 |
 
 이제 challenger 승격 판정은 이 파일의 13건으로 재현 가능하다.
+
+### 2026-08-26 (6차) — 프로덕션 추론에 게이트 노출 + 전면적 정의 수정
+
+프로덕션 `/v1/infer`(domino_stl_service.py) 응답에 `upload_gate` 추가.
+Django 프록시는 페이로드를 그대로 전달하므로 프론트는 이 필드만 읽으면
+경고를 띄울 수 있다 (`verdict`, `reasons`, `features`).
+
+**전면적 정의 버그 수정**: 초기 구현은 `Σ|n·A|/2`(모든 면의 투영합)이라
+휠·언더바디·안쪽 패널이 겹쳐 NISMO를 6.18㎡(실제 3.12㎡)로 부풀렸고
+`unsure` 오판을 냈다. **bbox 전면적(width × height)**으로 교체 —
+NISMO 3.12㎡로 G2 REF_AREA와 일치, 판정도 `full_car`로 정상화.
+실데이터 16/16 정확(차 11, 부품 5), 소급 태깅의 `unsure`가 29→2로 감소.
+
+재태깅 결과 (265건): **car_case 190 / component 40 / non_car_shape 31 /
+unsure 2 / off_regime 2**.
+
+**표준 게이트 v2 동결** (`benchmarks/unseen_car_gate.json`, 15건):
+
+| 모델 | MAE | 상대중앙 | Spearman |
+|---|---:|---:|---:|
+| **현행 decoder-30ep** | **0.0929** | **24%** | **+0.91** |
+| 혼합 mixed-v1 | 0.1642 | 54% | +0.65 |
+| 커리큘럼 v1 | 0.1362 | 45% | +0.90 |
+
+프론트 작업(aox-next)은 `uploadGate.verdict !== 'full_car'`일 때
+계수 옆에 주의 배지를 띄우는 것으로 충분하다 (DRF camelCase 변환 주의).

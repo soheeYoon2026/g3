@@ -17,7 +17,7 @@ import numpy as np
 CAR_LENGTH_M = (2.4, 7.0)
 CAR_WIDTH_M = (1.2, 2.6)
 CAR_HEIGHT_M = (0.8, 2.4)
-CAR_FRONTAL_M2 = (1.0, 5.0)
+CAR_FRONTAL_M2 = (1.2, 6.0)   # bounding-box frontal (width x height)
 LENGTH_OVER_WIDTH = (1.4, 4.0)
 FLAT_RATIO = 0.12          # min/mid extent below this smells like a wing/panel
 
@@ -36,8 +36,11 @@ def classify_mesh(mesh) -> dict:
         scale = 1e-3
     length, width, height = extents * scale
 
+    # Bounding-box frontal area, matching the reference area G2 reports. Summing
+    # |n·A| instead would count every hidden layer (wheels behind bodywork, inner
+    # panel faces) and inflate a NISMO-class car to ~2x its silhouette.
+    frontal = float(width * height)
     projected = _projected_areas(mesh) * scale * scale
-    frontal = float(projected.min())   # a car's smallest axis projection is its frontal area
     flat = float(extents[2] / max(extents[1], 1e-12))
 
     features = {
@@ -46,6 +49,7 @@ def classify_mesh(mesh) -> dict:
         "width_m": round(float(width), 3),
         "height_m": round(float(height), 3),
         "frontal_area_m2": round(frontal, 3),
+        "projected_area_min_m2": round(float(projected.min()), 3),
         "length_over_width": round(float(length / max(width, 1e-12)), 2),
         "flat_ratio": round(flat, 3),
     }

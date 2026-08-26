@@ -1,19 +1,24 @@
 {
- "name": "unseen-car-gate-v1",
+ "name": "unseen-car-gate-v2",
  "created": "2026-08-26",
- "definition": "reaudit cases not in decoder-30epoch training log AND upload_gate case_class == car_case",
+ "definition": "reaudit cases unseen by decoder-30epoch AND upload_gate case_class == car_case (bbox frontal area)",
+ "gate_scores_2026_08_26": {
+  "decoder-30epoch": "see VERSION2_PLAN"
+ },
  "cases": [
   "run_102",
   "run_106",
   "run_115",
   "run_116",
   "run_118",
+  "run_138",
   "run_52",
   "run_55",
   "run_56",
   "run_58",
   "run_72",
   "run_77",
+  "run_78",
   "run_79",
   "run_81"
  ]
