@@ -380,3 +380,32 @@ baseline 0.4723로 통일(expert 자체값 0.3608 보존), 후보 절대 Cd = ba
 challenger-mixed-v1.pt`)을 systemd 유닛에 추가 후 재시작하면 전환되고,
 그 줄을 지우면 즉시 롤백된다. 프론트가 `absolute_model`/`delta_model`을
 표기하도록 하는 편이 사용자 혼선이 없다.
+
+### 2026-08-26 (5차) — 프로덕션 전환 + 수집기 게이트 연동
+
+**① 추천 expert 프로덕션 적용 완료.** systemd drop-in
+`/etc/systemd/system/g3-domino-inference.service.d/recommend-expert.conf`
+(env 한 줄) → 라이브 검증: `absolute_model: decoder-30epoch.pt`,
+`delta_model: challenger-mixed-v1.pt`, baseline 0.4723(미리보기와 동일),
+후보 Cd = baseline + ΔCd. **롤백 = 그 drop-in 파일 삭제 후 재시작.**
+
+**② 수집기 ↔ 업로드 게이트 연동.** `aox_g3/upload_gate.py`에
+`classify_case(conditions, geometry)` 추가(유동 레짐까지 판정:
+속도 5~80 m/s, Mach ≤ 0.3, |AoA| ≤ 5°). 서버 수집기
+`build_domino_s3_v4.py`가 채택 케이스마다 `shape_class`를 기록하고
+manifest summary에 분포를 남긴다. `--require-car-case` 플래그를 주면
+비차량 케이스를 아예 거부(기본은 태깅만 — 데이터는 남기고 분할에서 거른다).
+
+기존 265건 소급 태깅 결과: **car_case 163 / component 50 /
+non_car_shape 21 / unsure 29 / off_regime 2**.
+
+**표준 게이트 동결** (`benchmarks/unseen_car_gate.json`, 13건 =
+미접촉 ∩ car_case):
+
+| 모델 | MAE | 상대중앙 | Spearman |
+|---|---:|---:|---:|
+| **현행 decoder-30ep** | **0.0881** | **24%** | **+0.87** |
+| 혼합 mixed-v1 | 0.1639 | 75% | +0.60 |
+| 커리큘럼 v1 | 0.1469 | 48% | +0.86 |
+
+이제 challenger 승격 판정은 이 파일의 13건으로 재현 가능하다.

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import boto3
 
+from aox_g3.upload_gate import classify_case, classify_stl
 from prepare_domino_su2_v3 import convert_case
 from prepare_smoke_g2_s3 import case_files, list_keys, normalize_inventory_row
 from training_event_inventory import load_event_rows
@@ -134,6 +135,8 @@ def main() -> None:
     parser.add_argument("--csv", action="append", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--max-cd-relative-error", type=float, default=0.03)
+    parser.add_argument("--require-car-case", action="store_true",
+                        help="reject cases the upload gate does not call a road-car case")
     parser.add_argument("--max-cl-absolute-error", type=float, default=0.03)
     parser.add_argument("--no-seed", action="store_true",
                         help="build a dedicated dataset without copying the historical seed")
@@ -217,9 +220,23 @@ def main() -> None:
                             raise ValueError(f"Cl integration absolute error {cl_error:.6g}")
                         conditions = write_finite_coefficients(converted_root / f"run_{run}", run, integrated)
                         shutil.move(str(converted_root / f"run_{run}"), str(args.out / f"run_{run}"))
+                    # Tag the shape class so split builders can keep components and
+                    # off-regime cases out of car training/eval (2026-08-26 reaudit:
+                    # transonic wings had polluted the "unseen car" gate).
+                    try:
+                        geometry_class = classify_stl(str(args.out / f"run_{run}" / f"drivaer_{run}.stl"))
+                        geometry_class.pop("path", None)
+                    except Exception as exc:
+                        geometry_class = {"verdict": "unsure", "reasons": [f"gate error: {exc}"]}
+                    case_class = classify_case(conditions, geometry_class)
+                    if args.require_car_case and case_class["case_class"] != "car_case":
+                        shutil.rmtree(args.out / f"run_{run}", ignore_errors=True)
+                        raise ValueError(
+                            f"not a road-car case: {case_class['case_class']} "
+                            f"({'; '.join(case_class['flow_reasons'] + case_class['geometry_reasons'])[:120]})")
                     row = {"run": run, "group_id": f"artifact_{digest[:16]}", "geometry_digest": digest,
                            "conditions": conditions, "integrated": integrated, "cd_relative_error": relative_error,
-                           "cl_absolute_error": cl_error,
+                           "cl_absolute_error": cl_error, "shape_class": case_class,
                            "accepted": True, "source_kind": "s3_g2", "source": result}
                     cases.append(row)
                     geometry_digests.add(digest)
@@ -231,7 +248,12 @@ def main() -> None:
             attempted.add(source_id)
             atomic_json(args.out / "manifest.json", payload)
 
+    class_counts = {}
+    for row in cases:
+        key = (row.get("shape_class") or {}).get("case_class", "untagged")
+        class_counts[key] = class_counts.get(key, 0) + 1
     payload["summary"] = {"accepted": len(cases), "attempted_sources": len(attempts),
+                          "shape_classes": class_counts,
                           "accepted_this_run": added,
                           "rejected_sources": sum(row["status"] == "rejected" for row in attempts),
                           "unique_groups": len({row["group_id"] for row in cases})}

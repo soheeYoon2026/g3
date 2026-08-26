@@ -1,0 +1,20 @@
+{
+ "name": "unseen-car-gate-v1",
+ "created": "2026-08-26",
+ "definition": "reaudit cases not in decoder-30epoch training log AND upload_gate case_class == car_case",
+ "cases": [
+  "run_102",
+  "run_106",
+  "run_115",
+  "run_116",
+  "run_118",
+  "run_52",
+  "run_55",
+  "run_56",
+  "run_58",
+  "run_72",
+  "run_77",
+  "run_79",
+  "run_81"
+ ]
+}

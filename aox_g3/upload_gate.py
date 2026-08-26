@@ -87,6 +87,44 @@ def classify_stl(path: str) -> dict:
     return result
 
 
+# Road-car flow regime: incompressible, wind-tunnel-ish speeds, no incidence.
+CAR_SPEED_MS = (5.0, 80.0)
+MAX_ABS_AOA_DEG = 5.0
+
+
+def classify_case(conditions: dict, geometry: dict | None = None) -> dict:
+    """Combine geometry verdict with flow conditions for a training case.
+
+    The 2026-08-26 reaudit found transonic wing cases (Mach 0.84, 285 m/s)
+    sitting inside a "car" evaluation set; conditions catch those even when
+    the geometry alone looks plausible.
+    """
+    reasons = []
+    speed = float(conditions.get("speed") or 0.0)
+    mach = conditions.get("mach")
+    aoa = float(conditions.get("aoa") or 0.0)
+    if not (CAR_SPEED_MS[0] <= speed <= CAR_SPEED_MS[1]):
+        reasons.append(f"speed {speed:.1f} m/s outside road-car range {CAR_SPEED_MS}")
+    if mach not in (None, 0) and float(mach) > 0.3:
+        reasons.append(f"Mach {float(mach):.2f} is compressible")
+    if abs(aoa) > MAX_ABS_AOA_DEG:
+        reasons.append(f"AoA {aoa:.1f}° outside road-car range")
+
+    geometry_verdict = (geometry or {}).get("verdict", "unsure")
+    if reasons:
+        case_class = "off_regime"
+    elif geometry_verdict == "full_car":
+        case_class = "car_case"
+    else:
+        case_class = geometry_verdict
+    return {
+        "case_class": case_class,
+        "flow_reasons": reasons,
+        "geometry_verdict": geometry_verdict,
+        "geometry_reasons": (geometry or {}).get("reasons", []),
+    }
+
+
 if __name__ == "__main__":
     import json
     import sys
