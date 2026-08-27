@@ -38,6 +38,13 @@ if args.limit:
 s3 = boto3.client("s3")
 args.out.mkdir(parents=True, exist_ok=True)
 
+# The per-design history.csv is the adjoint history and carries no CD column, so
+# take the coefficients from the pair manifest, which already resolved them.
+cd_of = {}
+for pair in payload["pairs"]:
+    cd_of[(pair["job_uid"], pair["base_design"])] = pair["base_cd"]
+    cd_of[(pair["job_uid"], pair["target_design"])] = pair["target_cd"]
+
 run_of, failures = {}, []
 for index, mesh in enumerate(meshes, start=1):
     key = (mesh["job_uid"], mesh["design"])
@@ -63,6 +70,13 @@ for index, mesh in enumerate(meshes, start=1):
                 capture_output=True, text=True, timeout=900)
             if proc.returncode != 0:
                 raise RuntimeError((proc.stderr or proc.stdout).strip()[-200:])
+
+            conditions_path = args.out / f"run_{run_id}" / f"conditions_{run_id}.json"
+            conditions = json.loads(conditions_path.read_text())
+            conditions["su2_cd"] = cd_of[key]
+            conditions["su2_cl"] = None  # the pair manifest carries drag only
+            conditions["job_uid"], conditions["design"] = key
+            conditions_path.write_text(json.dumps(conditions, indent=2) + "\n")
             run_of[key] = run_id
         except Exception as exc:
             failures.append((key, f"{type(exc).__name__}: {exc}"))
@@ -87,4 +101,10 @@ for pair in payload["pairs"]:
 
 manifest = args.out / "pairs.json"
 manifest.write_text(json.dumps({"pairs": pairs}, indent=1) + "\n")
+index = args.out / "run_index.json"
+index.write_text(json.dumps(
+    {run: {"job_uid": job, "design": design, "su2_cd": cd_of[(job, design)]}
+     for (job, design), run in sorted(run_of.items(), key=lambda kv: int(kv[1]))},
+    indent=1) + "\n")
 print(f"쌍 {len(pairs)}개 기록 (메시 누락으로 {dropped}개 제외) -> {manifest}")
+print(f"런 대응표 -> {index}")
