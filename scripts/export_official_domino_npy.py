@@ -32,16 +32,18 @@ def convert(run_dir: Path, run: str, out: Path, air_density_ref: float) -> dict:
     density = float(conditions.get("density") or air_density_ref)
 
     # The pretrained checkpoint's scaling statistics describe a non-dimensional
-    # pressure field. G2 writes pMeanTrim in Pa, so divide by rho*U^2 -- measured
-    # on 12 cases as the constant that makes the surface integral reproduce SU2's
-    # recorded Cd (4% spread). The shear columns already arrive non-dimensional.
+    # field, while G2 writes these in Pa, so divide by rho*U^2 -- measured on 12
+    # cases as the constant that makes the surface integral reproduce SU2's
+    # recorded Cd (4% spread), and the same constant the serving model's own
+    # fine-tune applies. Divide the shear columns too: their raw magnitudes happen
+    # to land near the pretrained range, but friction carries 0.01% of the drag
+    # integral here, and rescaling pressure alone inflates that to ~10%.
+    head = np.float32(density * speed ** 2)
     fields = []
     for name in ("pMeanTrim", "wallShearStressMeanTrim"):
         if name not in mesh.cell_data:
             raise ValueError(f"run_{run}: missing {name} in {list(mesh.cell_data)}")
-        value = np.asarray(mesh.cell_data[name], dtype=np.float32)
-        if name == "pMeanTrim":
-            value = value / np.float32(density * speed ** 2)
+        value = np.asarray(mesh.cell_data[name], dtype=np.float32) / head
         fields.append(value.reshape(len(areas), -1))
     surface_fields = np.concatenate(fields, axis=1)
 
