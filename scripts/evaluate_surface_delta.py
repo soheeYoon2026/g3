@@ -136,7 +136,8 @@ def main() -> None:
         row.update(summarize(cfd_delta, model_delta, mask))
         rows.append(row)
         patch = row.get("patch") or {}
-        print(f"{row['note'] or var_run:20s} patch corr {patch.get('correlation', float('nan')):+.2f} "
+        name = row["note"] or f"run_{base_run}->run_{var_run}"
+        print(f"{name:20s} patch corr {patch.get('correlation', float('nan')):+.2f} "
               f"sign {patch.get('sign_agreement', float('nan')):.0%} "
               f"cells {patch.get('cells', 0):,} | "
               f"cfd ratio {row.get('cfd_patch_far_ratio', float('nan')):.2f} "
