@@ -32,6 +32,10 @@ ap.add_argument("--python", default=sys.executable)
 ap.add_argument("--folds", type=int, default=3)
 ap.add_argument("--epochs", type=int, default=20)
 ap.add_argument("--seed", type=int, default=20260827)
+ap.add_argument("--shape-class", type=Path,
+                help="run -> upload_gate verdict map; restricts train and score")
+ap.add_argument("--keep-class", nargs="+", default=["full_car"],
+                help="verdicts to keep when --shape-class is given")
 args = ap.parse_args()
 
 index = json.loads(args.run_index.read_text())
@@ -50,10 +54,22 @@ for entry in json.loads(args.score_manifest.read_text())["pairs"]:
     if base is not None and target is not None:
         pair_key[(base, target)] = entry["job_uid"]
 
+# non-car pairs in this pool all move one way, so they carry no direction to be
+# right about; keeping them punishes any model that ever answers "up"
+keep_run = None
+if args.shape_class:
+    verdicts = json.loads(args.shape_class.read_text())
+    keep = set(args.keep_class)
+    keep_run = {int(run) for run, v in verdicts.items() if v.get("verdict") in keep}
+    print(f"형상 필터 {sorted(keep)}: 런 {len(keep_run)}/{len(verdicts)}개 유지")
+
 train_by_job, score_by_job = defaultdict(list), defaultdict(list)
 for pair in all_pairs:
     job = job_of_run.get(pair["baseline"])
     if job is None:
+        continue
+    if keep_run is not None and not (pair["baseline"] in keep_run
+                                     and pair["variant"] in keep_run):
         continue
     train_by_job[job].append(pair)
     if (pair["baseline"], pair["variant"]) in pair_key:
