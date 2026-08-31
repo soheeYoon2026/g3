@@ -45,11 +45,25 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--coverage",
+                        help="run -> fraction of vertices inside the encoder grid")
+    parser.add_argument("--min-grid-coverage", type=float, default=0.0,
+                        help="skip cases below this; the encoder returns near-constant "
+                             "output for geometry outside its normalized box")
     args = parser.parse_args()
     root = os.path.abspath(args.root)
     split = json.load(open(args.split))
     train_ids = [str(row["run"]) for row in split["train_cases"]]
     test_ids = [str(row["run"]) for row in split["test_cases"]]
+
+    if args.coverage and args.min_grid_coverage > 0:
+        coverage = json.load(open(args.coverage))
+        def covered(ids):
+            keep = [i for i in ids if coverage.get(i, 1.0) >= args.min_grid_coverage]
+            print(f"  격자 커버리지 {args.min_grid_coverage:.0%} 미만 제외: "
+                  f"{len(ids) - len(keep)}/{len(ids)}", flush=True)
+            return keep
+        train_ids, test_ids = covered(train_ids), covered(test_ids)
 
     ck = snapshot_download("nvidia/domino_drivaerml")
     surf = f"{ck}/domino_drivaerml_surface_checkpoint"
