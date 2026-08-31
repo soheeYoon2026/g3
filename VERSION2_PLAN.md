@@ -1,104 +1,110 @@
-# G3 version2 — 연결 맵과 개발 계획
+# G3 version2 — Connection Map and Development Plan
 
-작성: 2026-08-24
-기준 문서: [docs/G3_HANDOVER_2026-08-24.md](docs/G3_HANDOVER_2026-08-24.md) (다운로드 폴더의 `G3_작업_전체_정리.md` 사본)
+Written: 2026-08-24
+Reference document: [docs/G3_HANDOVER_2026-08-24.md](docs/G3_HANDOVER_2026-08-24.md) (a copy of `G3_작업_전체_정리.md` from the Downloads folder)
 
-## 1. 이 폴더는 무엇인가
+## 1. What this folder is
 
-`../g3`(soheeYoon2026/g3, 브랜치 `fix/unify-surface-preprocessing`)를 히스토리째
-로컬 클론한 뒤 `version2` 브랜치를 새로 판 개발 폴더다.
+A development folder created by cloning `../g3` (soheeYoon2026/g3, branch
+`fix/unify-surface-preprocessing`) with its full history and branching `version2`.
 
-- 원본 g3에 커밋되지 않은 최신 작업 4개를 그대로 가져왔다:
-  `README.md`, `scripts/evaluate_domino_v3.py` (수정분),
-  `LIBRARIES.md`, `scripts/evaluate_pointnet_domino_split.py` (신규).
-- origin은 동일하게 `git@github.com:soheeYoon2026/g3.git`를 가리킨다.
-  push하면 원본 저장소의 `version2` 브랜치로 올라간다.
-- `data/`, `var/`, `predictions/`는 gitignore 대상이라 빈 폴더로 시작한다.
-  v1 산출물이 필요하면 `../g3/data`(441M), `../g3/var`(593M)에서 골라 온다.
-  `models/`의 소형 체크포인트/평가 산출물(8.7M)은 복사해 두었다.
+- Four uncommitted pieces of recent work were carried over from the original g3:
+  `README.md`, `scripts/evaluate_domino_v3.py` (modified),
+  `LIBRARIES.md`, `scripts/evaluate_pointnet_domino_split.py` (new).
+- The origin still points at `git@github.com:soheeYoon2026/g3.git`.
+  Pushing sends work to the `version2` branch of the original repository.
+- `data/`, `var/`, and `predictions/` are gitignored, so they start empty.
+  Pull v1 artefacts from `../g3/data` (441M) and `../g3/var` (593M) as needed.
+  The small checkpoints and evaluation artefacts under `models/` (8.7M) were copied over.
 
-## 2. 연결 맵 — 2026-08-24 로컬 기준 확인 결과
+## 2. Connection map — verified locally on 2026-08-24
 
-### 2.1 서비스 추론 경로 (로컬 develop 브랜치에 이미 머지됨)
+### 2.1 Serving inference path (already merged into the local develop branch)
 
 ```
-aox-next (develop)                      aox-django (develop)                    이 저장소
+aox-next (develop)                      aox-django (develop)                    this repository
 g3-preview-panel.tsx        ──POST──▶   app/g3_inference/views.py   ──POST──▶  aox_g3/service.py (FastAPI)
-g3-three-viewer.tsx                     /api/v1/g3/inferences                  /v1/infer  (Bearer 토큰)
-                                        · 팀 admin 권한 확인                    · infer_fields 실행
-                                        · S3 _private/g3/inference-service.json· Cd/Cl + OOD + preview PNG 응답
-                                          에서 GPU 서비스 url/token 조회
+g3-three-viewer.tsx                     /api/v1/g3/inferences                  /v1/infer  (Bearer token)
+                                        · checks team admin permission          · runs infer_fields
+                                        · looks up the GPU service url/token   · returns Cd/Cl + OOD + preview PNG
+                                          from S3 _private/g3/inference-service.json
 ```
 
-- **`integration/aox-django/src/app/g3_inference/`는 aox-django develop에 머지된
-  코드와 바이트 단위로 동일함을 diff로 확인했다.** 이 저장소가 Django 연동부의
-  원본(source of truth)이다.
-- Django 설정 이름: `G3_INFERENCE_URL`, `G3_INFERENCE_TOKEN`,
+- **`integration/aox-django/src/app/g3_inference/` was confirmed byte-identical
+  by diff to the code merged into aox-django develop.** This repository is the
+  source of truth for the Django integration.
+- Django setting names: `G3_INFERENCE_URL`, `G3_INFERENCE_TOKEN`,
   `G3_INFERENCE_TIMEOUT_SECONDS`, `G3_INFERENCE_CONFIG_BUCKET`,
   `G3_INFERENCE_CONFIG_KEY` (`integration/aox-django/src/config/settings/base.py`).
-- 서비스 쪽 환경변수: `G3_MODEL_PATH`, `G3_COEFFICIENT_EXPERT`,
-  `G3_API_TOKEN`(또는 `G3_API_TOKEN_FILE`), `G3_MAX_UPLOAD_BYTES`.
+- Service-side environment variables: `G3_MODEL_PATH`, `G3_COEFFICIENT_EXPERT`,
+  `G3_API_TOKEN` (or `G3_API_TOKEN_FILE`), `G3_MAX_UPLOAD_BYTES`.
 
-### 2.2 전체 Workbench G3 (temp/g3-workbench-transfer)
+### 2.2 Full Workbench G3 (temp/g3-workbench-transfer)
 
-인수인계 문서의 4개 저장소 커밋 중 로컬에서 확인·확보한 것:
+Of the four repository commits named in the handover document, what was located
+and secured locally:
 
-| 저장소 | 문서 커밋 | 로컬 상태 |
+| Repository | Documented commit | Local status |
 |---|---|---|
-| aox-next | `21c24cc3` | **origin/temp/g3-workbench-transfer fetch 완료** (해시 일치) |
-| aox-workbench | `8e3fda6` | **origin/temp/g3-workbench-transfer fetch 완료** (해시 일치) |
-| aox-django-backend | `ce9215e` | 로컬 aox-django의 원격은 `ADRO-DEVEL/aox-django`이고 temp 브랜치가 없음. `aox-django-backend`는 **다른 저장소**로 보이며 미클론 — 확인 필요 |
-| aox-next-admin | `003d40c` | 저장소 자체가 로컬에 없음 — 미클론 |
+| aox-next | `21c24cc3` | **fetched from origin/temp/g3-workbench-transfer** (hash matches) |
+| aox-workbench | `8e3fda6` | **fetched from origin/temp/g3-workbench-transfer** (hash matches) |
+| aox-django-backend | `ce9215e` | the local aox-django's remote is `ADRO-DEVEL/aox-django` and has no temp branch. `aox-django-backend` appears to be a **different repository**, not cloned — needs confirmation |
+| aox-next-admin | `003d40c` | the repository itself is not present locally — not cloned |
 
-transfer 브랜치가 develop/canary 대비 추가하는 G3 파일:
+G3 files the transfer branch adds over develop/canary:
 
 - aox-next: `g3-surface-viewer.tsx`, `g3-profile-viewer.tsx`,
   `g3-surface-deform.ts(+spec)`, `g3-profile-deform.ts(+spec)`,
   `g3-profile-controls.tsx`, `g3-point-preview.worker.ts`,
-  `g3-original-stl-export.ts` — 72 제어점 표면 편집·대칭·Undo·STL 내보내기 UI 전체.
+  `g3-original-stl-export.ts` — the entire 72-control-point surface editing,
+  symmetry, undo, and STL export UI.
 - aox-workbench: `src/features/mesh/ui/g3/G3Workbench.tsx`,
-  `G3SurfacePointEditor.tsx` (29파일, +1,467줄).
+  `G3SurfacePointEditor.tsx` (29 files, +1,467 lines).
 
-즉 **로컬 develop에는 "STL 업로드 → Cd/Cl 미리보기"까지만 머지돼 있고,
-제어점 편집·ΔCd 비교·추천 UI는 fetch해 둔 transfer 브랜치에 있다.**
+In short, **local develop only has "STL upload → Cd/Cl preview"; the control-point
+editing, ΔCd comparison, and recommendation UI live in the fetched transfer branch.**
 
-### 2.3 로컬에 없는 것 (작업 시 인지)
+### 2.3 Not available locally (be aware when working)
 
-- 운영 체크포인트 `decoder-30epoch.pt`와 DoMINO 실험 산출물 — G3_TEST
-  `/home/ubuntu/g3-v2/var/` (문서 §11). G3_TEST 미커밋 코드 정리가 남은 과제.
-- 프로젝트/Celery 비동기 구조와 관리자 화면 백엔드 — `aox-django-backend`,
-  `aox-next-admin` (미클론).
-- 학습 원천 데이터 — S3 `aoxlabs-stage-static`, `aoxlabs-prod-static`,
-  보존용 `s3://strain-bucket-adro`.
+- The production checkpoint `decoder-30epoch.pt` and DoMINO experiment artefacts —
+  G3_TEST `/home/ubuntu/g3-v2/var/` (document §11). Recovering uncommitted G3_TEST
+  code is still outstanding.
+- Project/Celery async structure and the admin-screen backend — `aox-django-backend`,
+  `aox-next-admin` (not cloned).
+- Training source data — S3 `aoxlabs-stage-static`, `aoxlabs-prod-static`,
+  and the archival `s3://strain-bucket-adro`.
 
-## 3. 학습 파이프라인 (이 저장소의 DoMINO v3 체인)
+## 3. Training pipeline (this repository's DoMINO v3 chain)
 
 ```
-run_scheduled_collection.py      자정 수집 진입점 (수집 전용 안전 모드)
-  └ collect_s3_training_data.py  AOX 이벤트 수집 → v2 NPZ 생성 → manifest 갱신
-prepare_domino_su2_v3.py         SU2 표면 결과 → 유동 정렬 DoMINO 데이터 (Mach/AoA 보존)
-build_domino_su2_v3.py           감사 기반 전체 v3 데이터셋 구축 + 물리 검증
-build_quality_gated_manifest.py  Cd/Cl 라벨 품질 게이트 병합
-split_domino_v3_groups.py        기하 그룹 결정론적 분할
-create_group_holdout.py          그룹 격리 train/holdout manifest
-finetune_domino_v3.py            SU2 Cd 검증 기반 DoMINO fine-tune (중복 제거 포함)
-evaluate_domino_v3.py            사전학습/파인튠 체크포인트 평가  ← 수정 진행 중
-evaluate_pointnet_domino_split.py PointNet을 동일 분할로 비교 평가 ← 신규 작성 중
+run_scheduled_collection.py      midnight collection entry point (collection-only safe mode)
+  └ collect_s3_training_data.py  collect AOX events → build v2 NPZ → update manifest
+prepare_domino_su2_v3.py         SU2 surface results → flow-aligned DoMINO data (Mach/AoA preserved)
+build_domino_su2_v3.py           audit-based full v3 dataset build + physics validation
+build_quality_gated_manifest.py  merge Cd/Cl label quality gates
+split_domino_v3_groups.py        deterministic geometry-group split
+create_group_holdout.py          group-isolated train/holdout manifests
+finetune_domino_v3.py            DoMINO fine-tune validated against SU2 Cd (with dedup)
+evaluate_domino_v3.py            evaluate pretrained/fine-tuned checkpoints  ← being modified
+evaluate_pointnet_domino_split.py evaluate PointNet on the same split  ← being written
 ```
 
-전처리 v2 검증 절차는 [docs/G3_PREPROCESSING_V2_RUNBOOK.md](docs/G3_PREPROCESSING_V2_RUNBOOK.md),
-야간 수집·카나리 운영은 [docs/G3_NIGHTLY_CANARY.md](docs/G3_NIGHTLY_CANARY.md) 참고.
+See [docs/G3_PREPROCESSING_V2_RUNBOOK.md](docs/G3_PREPROCESSING_V2_RUNBOOK.md) for
+the preprocessing v2 validation procedure, and
+[docs/G3_NIGHTLY_CANARY.md](docs/G3_NIGHTLY_CANARY.md) for nightly collection and
+canary operations.
 
-## 4. 로컬 환경 (이 머신)
+## 4. Local environment (this machine)
 
-- `.venv`: Python 3.9 `--system-site-packages`. **torch 2.8.0+cu128, CUDA 사용
-  가능(로컬 GPU)**. 원본 g3 venv에 없던 `fastapi`, `uvicorn`, `python-multipart`,
-  `pytest`, `eval_type_backport`를 설치해 **추론 서비스를 로컬에서 띄울 수 있게
-  했다.** (`eval_type_backport`는 `service.py`의 `str | None` 문법을 Python 3.9
-  에서 평가하기 위해 필요 — G3_TEST처럼 3.10+ 환경이면 불필요)
-- 테스트: `.venv/bin/python -m pytest -q` → 27개 통과 확인 (2026-08-24)
-- 서비스 `/health` 기동 확인 완료 (2026-08-24, `g3_field_cdcl_v4.pt`로 model_ready)
-- 서비스 로컬 기동 (스모크):
+- `.venv`: Python 3.9 with `--system-site-packages`. **torch 2.8.0+cu128, CUDA
+  available (local GPU).** `fastapi`, `uvicorn`, `python-multipart`, `pytest`, and
+  `eval_type_backport` were installed — absent from the original g3 venv — so that
+  **the inference service can be started locally**. (`eval_type_backport` is needed
+  to evaluate `service.py`'s `str | None` syntax on Python 3.9; unnecessary on a
+  3.10+ environment such as G3_TEST.)
+- Tests: `.venv/bin/python -m pytest -q` → 27 passing (2026-08-24)
+- Service `/health` startup confirmed (2026-08-24, model_ready with `g3_field_cdcl_v4.pt`)
+- Local service startup (smoke):
 
   ```bash
   cd /home/adro1234/2026/SU2_work/g3-version2
@@ -107,344 +113,380 @@ evaluate_pointnet_domino_split.py PointNet을 동일 분할로 비교 평가 ←
   curl -s localhost:8005/health
   ```
 
-  주의: `models/`의 로컬 체크포인트(cdcl_v4, g1_v2)는 전처리 v1 시절 산출물이라
-  v2 추론 코드와 호환되지 않을 수 있다(런북 명시: v1 체크포인트는 v2 코드에서
-  의도적으로 실패). 확실한 스모크는 런북 §3처럼 tiny 체크포인트를 새로 만들거나,
-  G3_TEST/S3에서 현행 체크포인트를 받아서 한다.
-- Django 연동 로컬 테스트: aox-django에 `G3_INFERENCE_URL=http://127.0.0.1:8005`,
-  `G3_INFERENCE_TOKEN=devtoken` 환경변수를 주면 S3 설정 조회 없이 바로 붙는다.
+  Note: the local checkpoints under `models/` (cdcl_v4, g1_v2) are preprocessing-v1
+  artefacts and may be incompatible with v2 inference code (the runbook states this
+  explicitly: v1 checkpoints fail deliberately under v2 code). For a reliable smoke
+  test, build a fresh tiny checkpoint as in runbook §3, or pull a current checkpoint
+  from G3_TEST/S3.
+- Django integration test locally: give aox-django `G3_INFERENCE_URL=http://127.0.0.1:8005`
+  and `G3_INFERENCE_TOKEN=devtoken` and it connects directly, bypassing the S3 config lookup.
 
-## 5. version2 개발 계획 (인수인계 문서 §10 기반)
+## 5. version2 development plan (based on handover document §10)
 
-| # | 작업 | 어디서 하나 |
+| # | Task | Where |
 |---|---|---|
-| 1 | NISMO 재검증 — AI 입력과 G2 원본의 STL 해시·단위·축·유동조건·G2 step 고정 | 이 폴더 (검증 스크립트) + G2 결과 대조 |
-| 2 | 현행 체크포인트·전처리 코드 안전 커밋 | 이 폴더 `version2` 브랜치 + G3_TEST 코드 회수 |
-| 3 | 같은 제어점의 안쪽·바깥쪽 변형, 여러 이동량 G2 계산 | transfer 브랜치 변형 로직(`g3-surface-deform.ts`) 재사용 + G2 파이프라인 |
-| 4 | GT-R 외 차량 계열 원본·변형 쌍 추가 | 수집 파이프라인 (§3 체인) |
-| 5 | 절대 Cd MAE + ΔCd MAE + 방향 정확도 통합 평가 | `evaluate_domino_v3.py` 확장 (진행 중인 수정 이어서) |
-| 6 | 계열 완전 분리 Test에서 이긴 challenger만 서비스 적용 | `create_group_holdout.py` + 카나리 런북 |
+| 1 | NISMO re-verification — pin the STL hash, units, axes, flow conditions, and G2 step between the AI input and the G2 original | this folder (verification script) + comparison against G2 results |
+| 2 | Safely commit the current checkpoint and preprocessing code | this folder's `version2` branch + G3_TEST code recovery |
+| 3 | G2 runs for inward/outward deformations of the same control point at several magnitudes | reuse the transfer branch's deformation logic (`g3-surface-deform.ts`) + G2 pipeline |
+| 4 | Add original/variant pairs for vehicle families beyond the GT-R | collection pipeline (§3 chain) |
+| 5 | Unified evaluation: absolute Cd MAE + ΔCd MAE + direction accuracy | extend `evaluate_domino_v3.py` (continuing the in-progress edit) |
+| 6 | Promote only challengers that win on a fully family-isolated test | `create_group_holdout.py` + canary runbook |
 
-바로 시작할 수 있는 것: #5 (평가 스크립트 수정이 이미 진행 중), #1 (로컬 SU2
-결과 `optimization_rans/steady_oneram6` 계열 대조 가능), #2 중 로컬 몫.
-G3_TEST 접속이 필요한 것: #2의 서버 코드 회수, 현행 decoder-30epoch.pt 확보.
+Startable immediately: #5 (the evaluation script edit is already in progress), #1
+(local SU2 results in the `optimization_rans/steady_oneram6` family can be compared),
+and the local portion of #2. Requiring G3_TEST access: recovering the server code
+for #2, and obtaining the current decoder-30epoch.pt.
 
-## 6. 진행 로그
+## 6. Progress log
 
-### 2026-08-24 — #5 평가 지표 통합, #1 재검증 도구 (로컬 몫 완료)
+### 2026-08-24 — #5 unified evaluation metrics, #1 re-verification tooling (local portion done)
 
-**#5: `aox_g3/eval_metrics.py` 신설.** 절대 Cd/Cl MAE + Spearman + **ΔCd/ΔCl
-MAE·방향 정확도·순위상관**을 하나의 요약으로 계산한다. 쌍은 두 방식:
+**#5: added `aox_g3/eval_metrics.py`.** Computes absolute Cd/Cl MAE + Spearman +
+**ΔCd/ΔCl MAE, direction accuracy, and rank correlation** in one summary. Pairs come
+from two sources:
 
-- 그룹 유도: split의 `group_id`가 같은 케이스끼리 전 조합 (기본값)
-- 명시 쌍: `--pairs pairs.json`,
-  형식 `{"pairs": [{"baseline": <run>, "variant": <run>}]}` — G3_TEST의
-  변형 실험(27/39/57/84건)을 평가할 때는 이 방식을 쓴다
+- Group-derived: all combinations of cases sharing a `group_id` in the split (default)
+- Explicit pairs: `--pairs pairs.json`, format
+  `{"pairs": [{"baseline": <run>, "variant": <run>}]}` — this is the mode for
+  evaluating G3_TEST's deformation experiments (27/39/57/84 cases)
 
-`evaluate_domino_v3.py`와 `evaluate_pointnet_domino_split.py` 둘 다 이 모듈을
-쓰므로 DoMINO/PointNet 비교가 동일한 지표 정의로 나온다. `--direction-tolerance`
-로 |ΔCd|가 작은 쌍을 방향 평가에서 제외할 수 있다.
+Both `evaluate_domino_v3.py` and `evaluate_pointnet_domino_split.py` use this module,
+so DoMINO/PointNet comparisons come out under identical metric definitions.
+`--direction-tolerance` excludes pairs with small |ΔCd| from the direction score.
 
-주의: 로컬 `su2_labels_v3` split의 그룹 내 쌍(train 4, test 16개)은 준중복
-지오메트리라 true ΔCd가 최대 0.0006 수준이다. 방향 정확도가 의미 있으려면
-tolerance를 주거나, 변형 실험의 명시 쌍 manifest로 평가해야 한다.
+Caution: within-group pairs in the local `su2_labels_v3` split (4 train, 16 test)
+are near-duplicate geometries whose true ΔCd tops out around 0.0006. For direction
+accuracy to mean anything, either supply a tolerance or evaluate against an explicit
+pair manifest from the deformation experiments.
 
-**#1: `scripts/verify_case_identity.py` 신설.** AI 입력 STL과 G2 케이스의
-동일성 리포트: STL sha256 + v3 geometry_digest(manifest와 동일 계산),
-경계상자·축·단위 판정, +X 투영 전면적, cfg 유동조건 대조, **history 파일별
-step 단위 CD/CL 추적과 특정 Cd 값이 나온 step 탐색**(`--find-cd`).
+**#1: added `scripts/verify_case_identity.py`.** Produces an identity report between
+the AI input STL and the G2 case: STL sha256 + v3 geometry_digest (computed the same
+way as the manifest), bounding box/axis/unit determination, +X projected frontal area,
+cfg flow-condition comparison, and **per-step CD/CL tracking through the history files
+plus a search for the step that produced a given Cd** (`--find-cd`).
 
-run_14 실검증 결과: 라벨 su2_cd는 `history.csv` 마지막 step(404)의 값이고
-step 320부터 tolerance 안에서 수렴 구간이었다. 즉 현행 라벨 규약 =
-"history.csv 마지막 행" (`prepare_domino_su2_v3.read_su2_coefficients`).
-NISMO 재검증은 G3_TEST에서 다음처럼 실행한다:
+Verified on run_14: the label `su2_cd` is the value at the last step (404) of
+`history.csv`, and convergence within tolerance began around step 320. So the current
+label convention is "the last row of history.csv"
+(`prepare_domino_su2_v3.read_su2_coefficients`). NISMO re-verification runs on
+G3_TEST like this:
 
 ```bash
 python scripts/verify_case_identity.py \
-  --stl <NISMO AI 입력.stl> --case-dir <NISMO G2 실행 디렉토리> \
+  --stl <NISMO AI input.stl> --case-dir <NISMO G2 run directory> \
   --find-cd 0.3207 --strict --out nismo_identity.json
 ```
 
-테스트: `tests/test_eval_metrics.py`, `tests/test_verify_case_identity.py`
-포함 40개 통과.
+Tests: 40 passing, including `tests/test_eval_metrics.py` and
+`tests/test_verify_case_identity.py`.
 
-**남은 것:** #1의 NISMO 본 실행(G3_TEST 자료 필요), #2의 서버 코드 회수,
-#3 이후 (변형 G2 계산, 타 차종 추가, challenger 게이트).
+**Outstanding:** the actual NISMO run for #1 (needs G3_TEST material), server code
+recovery for #2, and everything from #3 onward (G2 runs for deformations, additional
+vehicle families, challenger gates).
 
-### 2026-08-25 — P1 최종 판정: G2↔LES ΔCd 교차검증 6쌍 완료
+### 2026-08-25 — P1 final verdict: G2↔LES ΔCd cross-validation complete on 6 pairs
 
-프로토콜 (7차례 시행착오 끝의 최종형, [docs/LES_PROTOCOL_NOTES.md](LES_PROTOCOL_NOTES.md)):
-G2가 푼 수밀 표면(drivaer_N) · 3-level standard · 샘플 18k · 자유비행 ·
-u_inf 0.10 · cs_l2 0.16 · **refine1/2 격자를 baseline에서 동결**(env
-`LES_FIX_REFINE_JSON`, 배포 사본 amr_les.py 패치) · rear_wide만 쌍 단위
-자체 격자(마이크로 삼각형 bbox핀이 이 형상만 불안정화 — 동료 경고 적중).
-런당 cd_std 0.0003~0.0007, baseline 박스 간 4자리 재현.
+Protocol (the final form after seven rounds of trial and error,
+[docs/LES_PROTOCOL_NOTES.md](LES_PROTOCOL_NOTES.md)):
+the watertight surface G2 solved (drivaer_N) · 3-level standard · 18k samples ·
+free flight · u_inf 0.10 · cs_l2 0.16 · **refine1/2 grids frozen from the baseline**
+(env `LES_FIX_REFINE_JSON`, patched into the deployed copy of amr_les.py) ·
+rear_wide alone on a pair-internal grid (the micro-triangle bbox pin destabilised
+that geometry specifically — a colleague's warning proved right).
+cd_std 0.0003-0.0007 per run, four-digit reproducibility between baseline hosts.
 
-| 쌍 | G2 ΔCd | LES ΔCd | 방향 |
+| Pair | G2 ΔCd | LES ΔCd | Direction |
 |---|---:|---:|---|
 | front_narrow_5mm | −0.0164 | −0.0097 | ✅ |
 | roof_raise_5mm | −0.0046 | −0.0140 | ✅ |
 | rear_narrow_10mm | −0.0019 | −0.0350 | ✅ |
 | rear_narrow_25mm | +0.0083 | +0.0143 | ✅ |
-| roof_lower_10mm | +0.0095 | −0.0262 | ❌ (3구성 부호 재현) |
-| rear_wide_25mm | +0.0088 | −0.0029 | ❌ (\|LES\| 작음; v5 −0.0026 재현) |
+| roof_lower_10mm | +0.0095 | −0.0262 | ❌ (sign reproduced in 3 configurations) |
+| rear_wide_25mm | +0.0088 | −0.0029 | ❌ (\|LES\| small; v5 reproduced −0.0026) |
 
-**판정: 방향 일치 4/6 (67%), 크기 순위상관 0.03 (무상관).**
+**Verdict: direction agreement 4/6 (67%), magnitude rank correlation 0.03 (uncorrelated).**
 
-### 2026-08-26 — challenger-mixed-v1 학습·게이트 결과 (부분 개선, 승격 보류)
+### 2026-08-26 — challenger-mixed-v1 training and gate results (partial improvement, promotion withheld)
 
-학습: SU2 54 + DrivAerML 71 혼합, decoder 모드 30에폭, per-epoch 검증
-best-state, LR 1e-4. 1차 시도는 LR 2e-4에서 NaN 전멸(체크포인트 미저장) —
-가드 추가 후 재학습에서 **run_1006 단독으로 비유한 loss 유발** 확인(스킵
-처리; 다음 라운드 제외 대상). 체크포인트
-`var/domino-automotive-runs/challenger-mixed-v1.pt` (G3_TEST).
+Training: SU2 54 + DrivAerML 71 mixed, decoder mode, 30 epochs, per-epoch validation
+best-state, LR 1e-4. The first attempt wiped out with NaN at LR 2e-4 (no checkpoint
+saved) — after adding a guard, the retrain identified **run_1006 alone as the source
+of the non-finite loss** (skipped; a candidate for exclusion next round). Checkpoint
+at `var/domino-automotive-runs/challenger-mixed-v1.pt` (G3_TEST).
 
-| 게이트 | 현행 decoder-30epoch | challenger-mixed-v1 | 판정 |
+| Gate | Current decoder-30epoch | challenger-mixed-v1 | Verdict |
 |---|---|---|---|
-| 미접촉 차형 63건 MAE / Spearman | 0.2516 / −0.03 | 0.2580 / **+0.11** | ❌ 절벽 미해결 |
-| 학습노출 71건 MAE | 0.0334 | **0.0234** | ✅ 개선 |
-| SU2 계열격리 test 8건 MAE | 0.0219 | 0.0256 | ≈ 동급 |
-| gtr 6쌍 ΔCd 방향 (vs G2) | 4/6 | **5/6** | ✅ 개선 |
-| gtr 6쌍 ΔCd MAE | 0.0068 | **0.0051** | ✅ 개선 |
-| gtr 6쌍 ΔCd Spearman | 0.49 | **0.60** | ✅ 개선 |
+| 63 unseen shapes, MAE / Spearman | 0.2516 / −0.03 | 0.2580 / **+0.11** | ❌ cliff unresolved |
+| 71 training-exposed cases, MAE | 0.0334 | **0.0234** | ✅ improved |
+| SU2 family-isolated test, 8 cases, MAE | 0.0219 | 0.0256 | ≈ equivalent |
+| gtr 6-pair ΔCd direction (vs G2) | 4/6 | **5/6** | ✅ improved |
+| gtr 6-pair ΔCd MAE | 0.0068 | **0.0051** | ✅ improved |
+| gtr 6-pair ΔCd Spearman | 0.49 | **0.60** | ✅ improved |
 
-해석: DrivAerML 71건 추가는 **ΔCd(추천 기능) 축을 뚜렷이 개선**했지만,
-미접촉-임의형상 일반화(관문 2 절벽)는 못 메웠다 — DrivAer 모프는 "한 계열
-추가"일 뿐, AOX 업로드의 임의 분포를 덮지 못함. 승격 게이트(미접촉 개선)
-미통과로 **보류**. 참고: challenger는 G2 라벨로 학습된 만큼 분쟁 쌍에서
-G2 쪽으로 정렬됨(vs LES 4/6→3/6).
+Reading: adding 71 DrivAerML cases **clearly improved the ΔCd (recommendation) axis**
+but did not close the unseen-arbitrary-shape generalization gap (the gate-2 cliff) —
+DrivAer morphs are "one more family," not coverage of the arbitrary distribution of
+AOX uploads. **Withheld** for failing the promotion gate (improvement on unseen).
+Note: because the challenger is trained on G2 labels, it aligns with G2 on the
+disputed pairs (vs LES 4/6 → 3/6).
 
-다음 지렛대: ① WindsorML·AhmedML까지 계열 추가 ② 미접촉 63건에서 부품·
-비정상 형상을 걸러낸 "완전체 차량" 공정 게이트 재구성 ③ encoder-tail
-학습 모드 ④ 실패 시 제품 포지셔닝(OOD 게이트+계열 내 전용) 확정.
+Next levers: ① add WindsorML and AhmedML families ② rebuild a fair gate of
+"complete vehicles" by filtering components and abnormal shapes out of the 63 unseen
+cases ③ encoder-tail training mode ④ if these fail, settle the product positioning
+(OOD gate + within-family only).
 
-### 2026-08-26 — 공정 게이트 재판정: "순위능력 0"은 게이트 오염의 착시
+### 2026-08-26 — Fair-gate re-verdict: "zero ranking ability" was an artefact of gate contamination
 
-manifest 유동조건으로 재분류하니 reaudit 265건 중 **완전체 자동차 조건
-(30m/s·비압축·ref_area 1.2~4.5·AoA 0)은 182건**이고, 기존 "미접촉 63건"
-게이트에는 **천음속 날개(run_1: Mach 0.84, 285m/s), 부품, 특수형상이
-대량 혼입**돼 있었다. 미접촉 완전체 차 15건의 공정 게이트:
+Reclassifying by manifest flow conditions shows that of the 265 reaudit cases,
+**182 meet the complete-vehicle conditions** (30 m/s, incompressible, ref_area
+1.2-4.5, AoA 0), and the existing "63 unseen" gate was **heavily contaminated with
+transonic wings (run_1: Mach 0.84, 285 m/s), components, and special shapes**.
+The fair gate on 15 unseen complete cars:
 
-| 모델 | MAE | 상대오차 중앙 | Spearman |
+| Model | MAE | Median relative error | Spearman |
 |---|---:|---:|---:|
 | pretrained | 0.3453 | 116% | −0.37 |
-| **decoder-30epoch (현행)** | **0.1042** | **25%** | **0.86** |
+| **decoder-30epoch (current)** | **0.1042** | **25%** | **0.86** |
 | challenger-mixed-v1 | 0.1792 | 74% | 0.61 |
 
-재판정 3줄:
-1. **현행 모델은 처음 보는 완전체 차의 순위를 잘 매긴다(0.86)** — 절대값은
-   ~25% 오차(NISMO와 일관). 관문 2의 "순위능력 0" 결론은 비자동차 혼입이
-   만든 과잉 진단이었음.
-2. **challenger는 공정 게이트에서 현행보다 후퇴** — DrivAerML 혼합이
-   AOX-차 특화를 희석(ΔCd 축 개선과 맞바꿈). 승격 보류 유지.
-3. 제품 시사점: (a) "신차 상대비교/순위" 기능은 현행 모델로도 유효 수준
-   (b) 절대 Cd는 여전히 OOD 게이트 필요 (c) **부품·비차량 업로드를 입력단
-   에서 분류·경고하는 게 모델 개선보다 싸고 급함** — 성능 문제의 절반은
-   입력 분포 문제였다.
+Three-line re-verdict:
+1. **The current model ranks previously unseen complete cars well (0.86)** — absolute
+   values carry ~25% error (consistent with NISMO). The gate-2 conclusion of "zero
+   ranking ability" was an over-diagnosis produced by non-car contamination.
+2. **The challenger regresses against the current model on the fair gate** — the
+   DrivAerML mixture dilutes AOX-car specialisation (traded for the ΔCd axis
+   improvement). Promotion stays withheld.
+3. Product implications: (a) the "relative comparison/ranking of new cars" feature is
+   already usable with the current model (b) absolute Cd still needs an OOD gate
+   (c) **classifying and warning about component/non-car uploads at the input stage is
+   cheaper and more urgent than improving the model** — half the performance problem
+   was an input-distribution problem.
 
-다음 라운드 설계 (혼합 희석 교훈 반영): DrivAerML을 같은 배치에 섞지 말고
-**커리큘럼(DrivAerML 선학습 → SU2 전용 마무리)** 또는 도메인 가중 샘플링,
-run_1006 제외. 게이트는 이 "완전체 15건"(+G2 신규 수집분)으로 동결.
+Next-round design (reflecting the dilution lesson): don't mix DrivAerML into the same
+batch; use **a curriculum (DrivAerML pretraining → SU2-only finish)** or domain-weighted
+sampling, and exclude run_1006. Freeze the gate as these "15 complete cases" (plus
+newly collected G2 cases).
 
-### 2026-08-26 (2차) — WindsorML 신계열 프로브 + 업로드 게이트
+### 2026-08-26 (2nd) — WindsorML new-family probe + upload gate
 
-**업로드 게이트 구현** (`aox_g3/upload_gate.py`, 커밋 58fda1a): 기하 규칙만으로
-full_car/component/non_car 분류, 실데이터 16/16, `service.py` 응답에
-`upload_gate` 경고 필드. YOLO(Ultralytics)는 AGPL이라 배제, 외부 비전 API는
-고객 설계 유출 문제로 배제 — 애매 케이스 2차는 CLIP(MIT) 예정.
+**Upload gate implemented** (`aox_g3/upload_gate.py`, commit 58fda1a): classifies
+full_car/component/non_car from geometric rules alone, 16/16 on real data, with an
+`upload_gate` warning field in the `service.py` response. YOLO (Ultralytics) was
+excluded as AGPL, and external vision APIs were excluded over customer design leakage —
+a second pass on ambiguous cases is planned with CLIP (MIT).
 
-**WindsorML 프로브 (12건, 차 크기 ×4 스케일)** — 도중 발견·수정 2건:
-윈저 필드는 무차원 계수(cpavg/cf*avg)로 저장(×0.5U² 변환 추가), 데시메이션
-zero-area 셀이 DoMINO 면적 나눗셈에서 NaN 유발(제거 로직을 인제스트에 반영).
-또한 DoMINO 래퍼의 좌표 정규화 박스가 DrivAer 고정 규격이라 모형 스케일
-입력은 ×4 스케일업이 필수임을 확인.
+**WindsorML probe (12 cases, car-size ×4 scale)** — two issues found and fixed along
+the way: Windsor fields are stored as non-dimensional coefficients (cpavg/cf*avg), so
+a ×0.5U² conversion was added; and zero-area cells from decimation caused NaN in
+DoMINO's area division (removal logic folded into ingest). It was also confirmed that
+because the DoMINO wrapper's coordinate normalization box is fixed to DrivAer's
+dimensions, model-scale inputs must be scaled up ×4.
 
-| 모델 | Windsor MAE | Windsor Spearman |
+| Model | Windsor MAE | Windsor Spearman |
 |---|---:|---:|
 | pretrained | 0.3245 | −0.17 |
 | **decoder-30epoch** | **0.0629** | −0.10 |
 | challenger-mixed | 0.1472 | −0.31 |
 
-종합 판독: ① 완전 신계열에서도 현행 모델의 **절대 Cd는 0.06 수준으로 선방**
-② 그러나 신계열 내부의 미세 변형 순위는 **세 모델 모두 무능**(Spearman ≈ 0)
-— "계열 내 순위"는 그 계열 데이터로 파인튠해야만 생기는 능력(ΔCd 실험과
-일관) ③ challenger는 신규 축 3연속 후퇴 → **보류 최종 확정**, 다음은
-커리큘럼 방식.
+Overall reading: ① even on a completely new family, the current model's **absolute Cd
+holds up at around 0.06** ② but ranking fine variations within a new family is
+**beyond all three models** (Spearman ≈ 0) — "within-family ranking" is an ability
+that only appears after fine-tuning on that family's data (consistent with the ΔCd
+experiments) ③ the challenger regressed on three consecutive new axes → **withholding
+is now final**, and the next attempt is the curriculum approach.
 
-1. **G2 ΔCd 라벨은 "방향 라벨"로는 조건부 유효** — 2/3 일치. 단 지붕·후미
-   확폭처럼 박리 지배 변형에서 갈리며, 크기는 신뢰 불가.
-2. **decoder-30epoch 재판정: G2 기준 4/6, LES 기준 4/6** — 모델의 오답이
-   라벨 탓만은 아님(rear_narrow_10은 양쪽 다에게 틀림). 단 roof_lower에서
-   모델은 LES 편(G2 라벨이 틀렸을 가능성), rear_wide에선 G2 편.
-3. 실무 결론: ΔCd 학습 라벨로 G2 계속 사용 가능(방향 위주, 크기 가중 낮춤),
-   **분쟁 쌍은 LES 중재** — 이 6쌍 중 2쌍처럼 솔버가 갈리는 케이스는
-   학습에서 제외하거나 LES 값으로 대체. 추천 UX의 G2 검증 게이트 유지.
-4. LES 캠페인 인프라(고정격자 A/B, 쌍 단위 격자, cs env)는 재사용 가능한
-   형태로 박스에 배포돼 있음 (~/gtr-les/, 결과 runs_v5~v7 보존).
+1. **G2 ΔCd labels are conditionally valid as "direction labels"** — 2/3 agreement.
+   They diverge on separation-dominated deformations such as roof and rear-widening
+   changes, and the magnitudes cannot be trusted.
+2. **decoder-30epoch re-verdict: 4/6 against G2, 4/6 against LES** — the model's errors
+   are not solely the labels' fault (rear_narrow_10 is wrong against both). But on
+   roof_lower the model sides with LES (suggesting the G2 label is wrong), and on
+   rear_wide it sides with G2.
+3. Practical conclusion: G2 remains usable as a ΔCd training label (direction-weighted,
+   magnitude down-weighted), and **disputed pairs go to LES for adjudication** — cases
+   like the 2 of these 6 where solvers disagree should be excluded from training or
+   replaced with the LES value. Keep the G2 verification gate in the recommendation UX.
+4. The LES campaign infrastructure (fixed-grid A/B, pair-internal grids, cs env) is
+   deployed on the host in a reusable form (~/gtr-les/, results runs_v5-v7 preserved).
 
-### 2026-08-24 (2차) — G3_TEST 접속: 관문 1 판정 + 서버 자료 회수
+### 2026-08-24 (2nd) — G3_TEST access: gate 1 verdict + server material recovery
 
-**관문 1 (NISMO 규약 검증) 결과 — 오차는 규약 문제가 아니라 진짜 모델 오차:**
+**Gate 1 (NISMO convention verification) — the error is genuine model error, not a
+convention problem:**
 
-- 인용값 "G2 기준 0.3207"의 원본 기록을 **어느 G2 산출물에서도 찾지 못함**.
-  실측된 NISMO 계열 풀카 G2 값: run_60(원시 GT-R) su2_cd `0.3025`,
-  gtr-smooth baseline 라벨 `0.30790`(history 최종=rbf 소스), 같은 형상 VTU
-  적분 `0.31232`(+1.4%), 고항력 변형들의 적분값 `0.3202~0.3209`.
-- 규약 차이 정량화: ref_area AI `3.1201`(bbox 전면적) vs G2 cfg `3.104241`
-  (**0.5%**); history 라벨 vs VTU 적분 (**+1.4%**); G2 수렴 노이즈 tail std
-  `1.5e-5` (무시 가능). 합쳐도 몇 % 수준 —
-  **AI `0.4723` vs G2 `0.30~0.31`의 ~50% 오차는 분포 밖(OOD) 모델 오차.**
-- 메시 동일성: AI 입력 `gtr-nismo-latest.stl`(419,428 tri)과 캠페인 baseline
-  STL(511,548 tri)은 **다른 메시**. 향후 비교는 반드시 같은 메시로.
-- G2 스케일 규약 발견: 잡의 `geometry_scale.json` — 소스 mm, 솔버 공간
-  최대치수 5.000m 정규화(`solver_units_per_meter 0.99782`).
+- The cited value "0.3207 per G2" **could not be found in any G2 artefact**.
+  Measured NISMO-family full-car G2 values: run_60 (raw GT-R) su2_cd `0.3025`,
+  gtr-smooth baseline label `0.30790` (history final = rbf source), VTU integration
+  of the same geometry `0.31232` (+1.4%), and integrated values of the high-drag
+  variants `0.3202-0.3209`.
+- Convention differences quantified: ref_area AI `3.1201` (bbox frontal) vs G2 cfg
+  `3.104241` (**0.5%**); history label vs VTU integration (**+1.4%**); G2 convergence
+  noise tail std `1.5e-5` (negligible). Together a few percent at most —
+  **the ~50% gap between AI `0.4723` and G2 `0.30-0.31` is out-of-distribution model error.**
+- Mesh identity: the AI input `gtr-nismo-latest.stl` (419,428 tri) and the campaign
+  baseline STL (511,548 tri) are **different meshes**. Future comparisons must use the
+  same mesh.
+- G2 scale convention discovered: each job's `geometry_scale.json` — source in mm,
+  normalized to a 5.000 m maximum dimension in solver space
+  (`solver_units_per_meter 0.99782`).
 
-**보너스 — 실전 ΔCd 쌍 캠페인 발견:** `gtr-smooth` G2 캠페인 7케이스
-(baseline + 변형 6종, ΔCd −0.0164~+0.0095, 노이즈 대비 100배 이상) →
-[benchmarks/gtr_smooth_pairs.json](benchmarks/gtr_smooth_pairs.json)으로 동결.
-`--pairs` 평가의 1호 실데이터이자 P1 캠페인의 기존 절반. 업로드만 되고
-계산 안 된 변형 STL 7종이 S3에 대기 중 (P1 확장분).
-LOO 파인튠 실험 기록: 5케이스 학습 → 홀드아웃 Cd MAE 0.0119→0.0082.
+**Bonus — a real ΔCd pair campaign was found:** the `gtr-smooth` G2 campaign, 7 cases
+(baseline + 6 variants, ΔCd −0.0164 to +0.0095, over 100× the noise) → frozen as
+[benchmarks/gtr_smooth_pairs.json](benchmarks/gtr_smooth_pairs.json).
+This is the first real data for `--pairs` evaluation and the existing half of the P1
+campaign. Seven variant STLs that were uploaded but never computed are waiting in S3
+(the P1 expansion).
+LOO fine-tune experiment record: training on 5 cases took holdout Cd MAE 0.0119 → 0.0082.
 
-**#2 서버 자료 회수:** G3_TEST `~/g3-v2`의 미커밋 코드 47파일(서빙 스택,
-ΔCd 빌더들, systemd 유닛) + 추적파일 수정 패치(626줄) + 소형 실험 기록을
-`recovered/g3-test-20260824/`로 회수. 서버의 `evaluate_domino_v3.py` 수정본은
-로컬 버전과 **별도 계보**이므로 병합 전 대조 필요
+**#2 server material recovery:** 47 uncommitted files from G3_TEST `~/g3-v2` (the
+serving stack, the ΔCd builders, systemd units), a patch of modifications to tracked
+files (626 lines), and small experiment records were recovered into
+`recovered/g3-test-20260824/`. The server's modified `evaluate_domino_v3.py` is on a
+**separate lineage** from the local version and must be compared before merging
 (`recovered/g3-test-20260824/g3v2-tracked-modifications.patch`).
 
-**다음 실행 순서:** ① gtr-smooth 7케이스에 현행 decoder-30epoch를 돌려
-`--pairs` ΔCd 방향 정확도 측정 (서버 GPU, 케이스당 ~1.5s) ② 미계산 변형
-7종 G2 제출(P1 확장) ③ LES 파일럿 P0/P1.
+**Next execution order:** ① run the current decoder-30epoch over the 7 gtr-smooth cases
+to measure `--pairs` ΔCd direction accuracy (server GPU, ~1.5 s per case) ② submit G2
+for the 7 uncomputed variants (P1 expansion) ③ LES pilot P0/P1.
 
-### 2026-08-24 (3차) — ΔCd 방향 정확도 첫 실측 (① 완료)
+### 2026-08-24 (3rd) — First measurement of ΔCd direction accuracy (① complete)
 
-G3_TEST GPU에서 통합 지표로 gtr-smooth 6쌍 평가
+Evaluated the 6 gtr-smooth pairs on the G3_TEST GPU with the unified metrics
 ([benchmarks/results/gtr_smooth_decoder30_20260824.jsonl](benchmarks/results/gtr_smooth_decoder30_20260824.jsonl),
 tolerance 0.001):
 
-| 모델 | 절대 Cd MAE | Cd Spearman | ΔCd MAE | **방향 정확도** | ΔCd Spearman |
+| Model | Absolute Cd MAE | Cd Spearman | ΔCd MAE | **Direction accuracy** | ΔCd Spearman |
 |---|---:|---:|---:|---:|---:|
 | pretrained (NVIDIA) | 0.2374 | −0.14 | 0.0132 | 3/6 = 50% | −0.20 |
 | decoder-30epoch | 0.0121 | 0.43 | 0.0068 | **4/6 = 67%** | 0.49 |
 
-쌍별: 큰 변형일수록 정확 — front_narrow_5mm(trueΔ −0.0164)를 −0.0146으로
-거의 재현, rear_wide/rear_narrow_25 방향 정답. 실패 2건: roof_lower_10mm
-(true +0.0095 → pred −0.0021), rear_narrow_10mm(최소 변형 −0.0019 → +0.0101).
-예측 Cd 범위(0.012)가 실제(0.026)의 절반 — 변화 과소평가 경향.
+Per pair: accuracy improves with deformation size — front_narrow_5mm (true Δ −0.0164)
+was nearly reproduced at −0.0146, and rear_wide/rear_narrow_25 got the direction right.
+Two failures: roof_lower_10mm (true +0.0095 → pred −0.0021) and rear_narrow_10mm (the
+smallest deformation, −0.0019 → +0.0101). The predicted Cd range (0.012) is half the
+actual (0.026) — a tendency to under-predict change.
 
-해석과 한계: ① 6쌍은 표본이 작아 67%는 ±지푸라기 수준 — 13쌍(미계산 7종
-제출)으로 확장해야 유의미 ② 평가 변형들은 학습(8/13, reaudit-v1) 이후
-생성(8/20)된 미학습 케이스지만, GT-R 계열 자체는 run_60으로 학습에 노출 —
-계열 밖 일반화 검증은 아님 ③ 과거 "방향 50%" 보고 대비 개선으로 보이나
-동일 세트 재현이 아니므로 직접 비교는 불가.
+Interpretation and limits: ① 6 pairs is a small sample, so 67% is barely a straw —
+it needs the 13-pair expansion (submitting the 7 uncomputed variants) to mean anything
+② the evaluated variants are unseen cases created (8/20) after training (8/13,
+reaudit-v1), but the GT-R family itself was exposed in training via run_60 — this is
+not out-of-family generalization ③ it looks like an improvement over the earlier
+"50% direction" report, but that was not the same set, so a direct comparison is invalid.
 
-### 2026-08-26 (3차) — 커리큘럼 v1 판정: 승격 없음, 단 용도별 결론 도출
+### 2026-08-26 (3rd) — Curriculum v1 verdict: no promotion, but a per-use conclusion
 
-Stage A(DrivAerML 71, run_1006 복귀, 15ep) → Stage B(SU2 54 전용, 30ep,
-base-checkpoint 이어받기). B단계 SU2 검증 0.0109 / 격리 test 0.0358.
+Stage A (DrivAerML 71, run_1006 restored, 15 epochs) → Stage B (SU2 54 only, 30 epochs,
+continuing from the base checkpoint). Stage B SU2 validation 0.0109 / isolated test 0.0358.
 
-| 모델 | 공정15 MAE/순위 | gtr ΔCd 방향/MAE | Windsor MAE/순위 |
+| Model | Fair-15 MAE/rank | gtr ΔCd direction/MAE | Windsor MAE/rank |
 |---|---|---|---|
-| 현행 decoder-30ep | **0.104 / +0.86** | 4/6 / 0.0068 | **0.063** / −0.10 |
-| 혼합 mixed-v1 | 0.179 / +0.61 | **5/6 / 0.0051** | 0.147 / −0.31 |
-| 커리큘럼 v1 | 0.150 / **+0.83** | 4/6 / 0.0066 | 0.129 / −0.09 |
+| Current decoder-30ep | **0.104 / +0.86** | 4/6 / 0.0068 | **0.063** / −0.10 |
+| mixed-v1 | 0.179 / +0.61 | **5/6 / 0.0051** | 0.147 / −0.31 |
+| Curriculum v1 | 0.150 / **+0.83** | 4/6 / 0.0066 | 0.129 / −0.09 |
 
-판정: ① 커리큘럼은 혼합의 특화 희석을 대부분 회복(순위 0.83)했지만 현행을
-넘지 못함 — **절대 Cd/일반화 축 승격 없음, 현행 유지** ② 혼합 v1은 ΔCd
-축(5/6, 0.0051)에서 유일하게 현행을 이김 — **추천 전용 expert 후보**로
-보존 (v6 다중 expert 구조에 부합; 추천 파이프라인은 ΔCd만 사용) ③ 외부
-계열 사전학습은 이 규모(SU2 54)에서 미접촉 개선을 사지 못함 — 공정 게이트의
-진짜 지렛대는 **AOX 도메인 완전체 차 수집 확대** (야간 수집기 + 업로드
-게이트 연동: full_car 판정 신규 G2 결과만 자동 편입).
+Verdict: ① the curriculum recovers most of the mixture's dilution of specialisation
+(rank 0.83) but does not surpass the current model — **no promotion on the absolute
+Cd/generalization axis; keep the current model** ② mixed-v1 is the only one to beat the
+current model on the ΔCd axis (5/6, 0.0051) — preserved as a **recommendation-only
+expert candidate** (consistent with the v6 multi-expert structure; the recommendation
+pipeline uses only ΔCd) ③ external-family pretraining does not buy unseen-case
+improvement at this scale (SU2 54) — the real lever for the fair gate is
+**expanding collection of AOX-domain complete cars** (nightly collector + upload gate
+integration: automatically admit only new G2 results judged full_car).
 
-### 2026-08-26 (4차) — 추천 전용 expert 배선 (서버 서비스)
+### 2026-08-26 (4th) — Recommendation-only expert wiring (server service)
 
-`recovered/g3-test-20260824/scripts/domino_stl_service.py`(= G3_TEST 배포본)에
-**작업별 모델 라우팅** 추가:
+Added **per-task model routing** to
+`recovered/g3-test-20260824/scripts/domino_stl_service.py` (= the G3_TEST deployment):
 
-- `G3_DOMINO_RECOMMEND_CHECKPOINT` env로 추천 경로만 다른 체크포인트 사용
-  (미설정 시 기존과 완전 동일 — 무변경 배포 확인 `recommend_expert_split:false`)
-- 별도 resident engine(`_load_recommend_engine`)으로 두 모델 상주
-- **재앵커링**(`_reanchor_to_absolute_model`): expert의 baseline Cd가 미리보기
-  (/v1/infer, 서빙 모델)와 어긋나 **같은 차에 두 Cd가 표시되는 문제**를 발견 →
-  절대값은 서빙 모델 앵커, ΔCd는 expert 값을 유지하고 후보 절대 Cd를
-  `앵커 + ΔCd`로 재계산. 원본은 `expert_cd/expert_cl`로 보존.
-- `/health`에 `checkpoint`·`recommend_checkpoint`·`recommend_expert_split`,
-  추천 응답에 `absolute_model`·`delta_model` 노출.
+- `G3_DOMINO_RECOMMEND_CHECKPOINT` env makes only the recommendation path use a
+  different checkpoint (unset behaves exactly as before — verified as a no-change
+  deployment with `recommend_expert_split:false`)
+- A separate resident engine (`_load_recommend_engine`) keeps both models loaded
+- **Re-anchoring** (`_reanchor_to_absolute_model`): the expert's baseline Cd diverged
+  from the preview (/v1/infer, serving model), which surfaced **the same car showing
+  two different Cd values** → absolutes are anchored to the serving model, the expert's
+  ΔCd is kept, and each candidate's absolute Cd is recomputed as `anchor + ΔCd`.
+  The originals are preserved as `expert_cd/expert_cl`.
+- `/health` exposes `checkpoint`, `recommend_checkpoint`, and `recommend_expert_split`;
+  the recommendation response exposes `absolute_model` and `delta_model`.
 
-검증 (NISMO, shadow 8011 vs 8012 동일 코드):
-baseline 0.4723로 통일(expert 자체값 0.3608 보존), 후보 절대 Cd = baseline+ΔCd
-일관성 OK, 상위 후보 2개는 두 모델 공통(point_00_out/point_03_out), 3위만 상이.
+Verification (NISMO, shadow 8011 vs 8012 on identical code): baseline unified at 0.4723
+(the expert's own 0.3608 preserved), candidate absolute Cd = baseline + ΔCd consistent,
+the top two candidates shared by both models (point_00_out/point_03_out), differing only
+at third place.
 
-**프로덕션은 아직 미적용** — env 한 줄(`G3_DOMINO_RECOMMEND_CHECKPOINT=...
-challenger-mixed-v1.pt`)을 systemd 유닛에 추가 후 재시작하면 전환되고,
-그 줄을 지우면 즉시 롤백된다. 프론트가 `absolute_model`/`delta_model`을
-표기하도록 하는 편이 사용자 혼선이 없다.
+**Not yet applied in production** — adding one env line
+(`G3_DOMINO_RECOMMEND_CHECKPOINT=... challenger-mixed-v1.pt`) to the systemd unit and
+restarting switches it over, and deleting that line rolls it back immediately. Having
+the frontend display `absolute_model`/`delta_model` would avoid user confusion.
 
-### 2026-08-26 (5차) — 프로덕션 전환 + 수집기 게이트 연동
+### 2026-08-26 (5th) — Production switch + collector gate integration
 
-**① 추천 expert 프로덕션 적용 완료.** systemd drop-in
+**① Recommendation expert applied in production.** systemd drop-in
 `/etc/systemd/system/g3-domino-inference.service.d/recommend-expert.conf`
-(env 한 줄) → 라이브 검증: `absolute_model: decoder-30epoch.pt`,
-`delta_model: challenger-mixed-v1.pt`, baseline 0.4723(미리보기와 동일),
-후보 Cd = baseline + ΔCd. **롤백 = 그 drop-in 파일 삭제 후 재시작.**
+(one env line) → live verification: `absolute_model: decoder-30epoch.pt`,
+`delta_model: challenger-mixed-v1.pt`, baseline 0.4723 (same as the preview),
+candidate Cd = baseline + ΔCd. **Rollback = delete that drop-in file and restart.**
 
-**② 수집기 ↔ 업로드 게이트 연동.** `aox_g3/upload_gate.py`에
-`classify_case(conditions, geometry)` 추가(유동 레짐까지 판정:
-속도 5~80 m/s, Mach ≤ 0.3, |AoA| ≤ 5°). 서버 수집기
-`build_domino_s3_v4.py`가 채택 케이스마다 `shape_class`를 기록하고
-manifest summary에 분포를 남긴다. `--require-car-case` 플래그를 주면
-비차량 케이스를 아예 거부(기본은 태깅만 — 데이터는 남기고 분할에서 거른다).
+**② Collector ↔ upload gate integration.** Added `classify_case(conditions, geometry)`
+to `aox_g3/upload_gate.py` (which also judges the flow regime: speed 5-80 m/s,
+Mach ≤ 0.3, |AoA| ≤ 5°). The server collector `build_domino_s3_v4.py` records a
+`shape_class` for every accepted case and leaves the distribution in the manifest
+summary. Passing `--require-car-case` rejects non-car cases outright (the default only
+tags them — the data is kept and filtered at split time).
 
-기존 265건 소급 태깅 결과: **car_case 163 / component 50 /
+Retroactive tagging of the existing 265 cases: **car_case 163 / component 50 /
 non_car_shape 21 / unsure 29 / off_regime 2**.
 
-**표준 게이트 동결** (`benchmarks/unseen_car_gate.json`, 13건 =
-미접촉 ∩ car_case):
+**Standard gate frozen** (`benchmarks/unseen_car_gate.json`, 13 cases =
+unseen ∩ car_case):
 
-| 모델 | MAE | 상대중앙 | Spearman |
+| Model | MAE | Median relative | Spearman |
 |---|---:|---:|---:|
-| **현행 decoder-30ep** | **0.0881** | **24%** | **+0.87** |
-| 혼합 mixed-v1 | 0.1639 | 75% | +0.60 |
-| 커리큘럼 v1 | 0.1469 | 48% | +0.86 |
+| **Current decoder-30ep** | **0.0881** | **24%** | **+0.87** |
+| mixed-v1 | 0.1639 | 75% | +0.60 |
+| Curriculum v1 | 0.1469 | 48% | +0.86 |
 
-이제 challenger 승격 판정은 이 파일의 13건으로 재현 가능하다.
+Challenger promotion decisions are now reproducible from the 13 cases in this file.
 
-### 2026-08-26 (6차) — 프로덕션 추론에 게이트 노출 + 전면적 정의 수정
+### 2026-08-26 (6th) — Gate exposed in production inference + frontal-area definition fixed
 
-프로덕션 `/v1/infer`(domino_stl_service.py) 응답에 `upload_gate` 추가.
-Django 프록시는 페이로드를 그대로 전달하므로 프론트는 이 필드만 읽으면
-경고를 띄울 수 있다 (`verdict`, `reasons`, `features`).
+Added `upload_gate` to the production `/v1/infer` response (domino_stl_service.py).
+The Django proxy passes the payload through unchanged, so the frontend only needs to
+read this field to display a warning (`verdict`, `reasons`, `features`).
 
-**전면적 정의 버그 수정**: 초기 구현은 `Σ|n·A|/2`(모든 면의 투영합)이라
-휠·언더바디·안쪽 패널이 겹쳐 NISMO를 6.18㎡(실제 3.12㎡)로 부풀렸고
-`unsure` 오판을 냈다. **bbox 전면적(width × height)**으로 교체 —
-NISMO 3.12㎡로 G2 REF_AREA와 일치, 판정도 `full_car`로 정상화.
-실데이터 16/16 정확(차 11, 부품 5), 소급 태깅의 `unsure`가 29→2로 감소.
+**Frontal-area definition bug fixed**: the initial implementation used `Σ|n·A|/2`
+(the projected sum of every face), so wheels, underbody, and interior panels overlapped
+and inflated NISMO to 6.18 m² (actual 3.12 m²), producing a false `unsure`. Replaced
+with the **bbox frontal area (width × height)** — NISMO comes out at 3.12 m², matching
+the G2 REF_AREA, and the verdict normalises to `full_car`. Real data 16/16 correct
+(11 cars, 5 components), and `unsure` in the retroactive tagging fell from 29 to 2.
 
-재태깅 결과 (265건): **car_case 190 / component 40 / non_car_shape 31 /
+Re-tagging results (265 cases): **car_case 190 / component 40 / non_car_shape 31 /
 unsure 2 / off_regime 2**.
 
-**표준 게이트 v2 동결** (`benchmarks/unseen_car_gate.json`, 15건):
+**Standard gate v2 frozen** (`benchmarks/unseen_car_gate.json`, 15 cases):
 
-| 모델 | MAE | 상대중앙 | Spearman |
+| Model | MAE | Median relative | Spearman |
 |---|---:|---:|---:|
-| **현행 decoder-30ep** | **0.0929** | **24%** | **+0.91** |
-| 혼합 mixed-v1 | 0.1642 | 54% | +0.65 |
-| 커리큘럼 v1 | 0.1362 | 45% | +0.90 |
+| **Current decoder-30ep** | **0.0929** | **24%** | **+0.91** |
+| mixed-v1 | 0.1642 | 54% | +0.65 |
+| Curriculum v1 | 0.1362 | 45% | +0.90 |
 
-프론트 작업(aox-next)은 `uploadGate.verdict !== 'full_car'`일 때
-계수 옆에 주의 배지를 띄우는 것으로 충분하다 (DRF camelCase 변환 주의).
+For the frontend (aox-next) it is enough to show a caution badge next to the
+coefficients when `uploadGate.verdict !== 'full_car'` (mind the DRF camelCase conversion).
 
-### 2026-08-26 (7차) — 신규 7쌍 LES 캠페인: 6/7 판정 불가, 방법론 교훈 확보
+### 2026-08-26 (7th) — New 7-pair LES campaign: 6 of 7 unusable, methodology lessons secured
 
-미계산 변형 7종을 LES로 라벨링해 13쌍으로 확장 시도. 형상은 G2를 안 돌린
-Workbench 업로드라 수밀 표면이 없어 ① 정점 용접(열린에지 1,554 잔존)
-② 합집합 bbox 고정 ③ standard/18k/free/cs 0.16으로 계산.
+An attempt to expand to 13 pairs by labelling the 7 uncomputed variants with LES. The
+geometries are Workbench uploads that never went through G2, so there is no watertight
+surface: ① vertex welding (1,554 open edges remaining) ② union bbox pinning
+③ computed at standard/18k/free/cs 0.16.
 
-| 변형 | LES ΔCd | S/N | 판정 |
+| Variant | LES ΔCd | S/N | Verdict |
 |---|---:|---:|---|
-| roof_lower_20mm | **−0.0101** | **2.9** | ✅ 유효 |
+| roof_lower_20mm | **−0.0101** | **2.9** | ✅ usable |
 | front_wide_10mm | −0.0039 | 1.1 | ❌ |
 | front_narrow_10mm | −0.0025 | 0.7 | ❌ |
 | front_wide_20mm | −0.0024 | 0.7 | ❌ |
@@ -452,868 +494,955 @@ Workbench 업로드라 수밀 표면이 없어 ① 정점 용접(열린에지 1,
 | cabin_narrow_5mm | −0.0003 | 0.1 | ❌ |
 | roof_lower_5mm | +0.0002 | 0.1 | ❌ |
 
-**13쌍 중 방향 판정에 쓸 수 있는 것은 7쌍**(기존 6 + roof_lower_20mm).
-신규 6쌍은 노이즈에 묻혔고, 앞부분 변형은 narrow/wide가 둘 다 항력 감소로
-나오는 모순까지 보여 신호가 아님이 분명하다.
+**Of 13 pairs only 7 are usable for direction judgement** (the original 6 plus
+roof_lower_20mm). The 6 new pairs were buried in noise, and the front-end deformations
+even showed narrow and wide both reducing drag — a contradiction that makes the absence
+of signal plain.
 
-원인 두 겹: ① 열린 셸이라 plateau sd가 수밀 형상 대비 **4배**
-(0.0035 vs 0.0005) ② bbox 고정이 격자는 통일해 주지만 **기준면적까지
-고정**해 narrow/wide 변형의 전면적 감소분이 지워짐 — 지붕 변형만 전면적과
-무관해 신호가 살아남았다(5mm 0 → 20mm −0.0101로 크기 단조성도 확인).
+Two layers of cause: ① the open shell gives a plateau sd **4×** that of watertight
+geometry (0.0035 vs 0.0005) ② bbox pinning unifies the grid but also **pins the
+reference area**, erasing the frontal-area reduction of narrow/wide deformations — only
+the roof deformations, which are independent of frontal area, kept their signal
+(monotone in magnitude too: 5 mm 0 → 20 mm −0.0101).
 
-**부가 소득**: roof_lower가 세 번째 독립 LES 결과로 G2와 반대 방향을
-지지했다(G2 +0.0095 vs LES −0.0262/−0.0101). G2의 지붕 변형 ΔCd 라벨은
-학습에서 제외하거나 LES로 대체하는 쪽이 안전하다.
+**Additional gain**: roof_lower became a third independent LES result supporting the
+opposite direction from G2 (G2 +0.0095 vs LES −0.0262/−0.0101). G2's roof-deformation
+ΔCd labels are safer excluded from training or replaced with LES values.
 
-**다음 캠페인 설계 기준** (실측 근거):
-1. ΔCd 라벨용 변형은 **노이즈의 3배 이상**(수밀 형상 기준 |ΔCd| ≥ 0.0015,
-   열린 셸이면 ≥ 0.010) 크기로 설계한다.
-2. 형상은 **G2를 먼저 돌려 수밀 표면(VTU)을 얻은 뒤 LES**에 넣는다 —
-   순서를 바꾸면 노이즈가 4배가 된다.
-3. 전면적이 변하는 변형은 기준면적 처리를 명시한다(고정 시 형상효과만 측정).
+**Design criteria for the next campaign** (measured):
+1. Deformations for ΔCd labels must exceed **3× the noise** (|ΔCd| ≥ 0.0015 on
+   watertight geometry, ≥ 0.010 on an open shell).
+2. **Run G2 first to obtain the watertight surface (VTU), then feed LES** — reversing
+   the order quadruples the noise.
+3. State the reference-area handling explicitly for deformations that change frontal
+   area (pinning measures shape effect only).
 
-### 2026-08-26 (8차) — 표면장 접근: ΔCp 신호는 실재하고, 학습으로 두 배 개선됨
+### 2026-08-26 (8th) — Surface-field approach: the ΔCp signal is real, and training doubles it
 
-**동기**: ΔCd 하나로는 미세 변형이 CFD 노이즈에 묻히지만(v8/v9 실패), 표면장에는
-신호가 남아 있는지 먼저 측정했다. gtr-smooth 6쌍에서 **변형 부위의 CFD ΔCp가
-원거리의 1.27~2.33배**(6/6) — 성긴 G2 메시로도 국소 신호는 살아 있다.
-쌍당 관측이 스칼라 1개가 아니라 **셀 4만 개**라 6쌍으로도 통계가 선다.
+**Motivation**: a single ΔCd buries small deformations in CFD noise (the v8/v9 failures),
+so the first question was whether the surface field retains the signal. On the 6
+gtr-smooth pairs, **CFD ΔCp inside the deformed patch is 1.27-2.33× the far field**
+(6/6) — the local signal survives even on G2's coarse mesh. Each pair yields
+**40,000 cells** of observation rather than one scalar, so 6 pairs support statistics.
 
-**신규 평가기** `scripts/evaluate_surface_delta.py` (커밋 29c84b2): 모델이 예측한
-ΔCp 장을 CFD ΔCp 장과 비교(변형부 상관·신호비, 원거리는 대조군).
+**New evaluator** `scripts/evaluate_surface_delta.py` (commit 29c84b2): compares the
+model's predicted ΔCp field against the CFD ΔCp field (patch correlation and signal
+ratio, with the far field as a control).
 
-**신규 학습** `challenger-paired-v1`: 쌍 배치(baseline+변형 동시 통과) +
-**ΔCp 차이 손실** + CFD ΔCp가 큰 셀에 최대 4배 가중. G2가 변형마다 재메싱해
-셀 수가 달라 최근접 중심 매핑으로 대응(첫 시도는 이것 때문에 6쌍 전부 스킵).
+**New training** `challenger-paired-v1`: paired batches (baseline and variant passed
+together) + a **ΔCp difference loss** + up to 4× weight on cells where the CFD ΔCp is
+large. G2 re-meshes each variant so cell counts differ; nearest-centre mapping handles
+this (the first attempt skipped all 6 pairs for exactly this reason).
 
-| 지표 | 현행 decoder-30ep | **paired-v1** |
+| Metric | Current decoder-30ep | **paired-v1** |
 |---|---:|---:|
-| 변형부 ΔCp 상관 (중앙, 학습쌍) | +0.30 | **+0.64** |
-| 모델/CFD 신호비 (front_narrow) | 1.93 / 2.33 | **2.26** / 2.33 |
-| 계열격리 test Cd MAE | 0.0219 | **0.0198** |
-| 표준게이트15 MAE / 순위 | **0.0929 / +0.91** | 0.0993 / +0.82 |
+| Patch ΔCp correlation (median, training pairs) | +0.30 | **+0.64** |
+| Model/CFD signal ratio (front_narrow) | 1.93 / 2.33 | **2.26** / 2.33 |
+| Family-isolated test Cd MAE | 0.0219 | **0.0198** |
+| Standard gate 15 MAE / rank | **0.0929 / +0.91** | 0.0993 / +0.82 |
 | Windsor MAE | **0.0629** | 0.0643 |
-| gtr ΔCd 방향 / MAE | **5/6 / 0.0051** | 4/6 / 0.0058 |
+| gtr ΔCd direction / MAE | **5/6 / 0.0051** | 4/6 / 0.0058 |
 
-**판정**: 표면장 국소 신호는 확실히 개선(+0.30→+0.64, 신호비도 CFD에 근접)됐고
-학습쌍 밖 지표(계열격리 test)도 좋아졌다. 그러나 **미접촉 게이트에서는 현행과
-동급 또는 근소 열세**(0.0993/+0.82 vs 0.0929/+0.91)이고 적분 ΔCd 방향도 4/6로
-내려갔다 — 즉 **국소 압력장은 잘 잡게 됐지만 그것이 적분 Cd 개선으로 이어지지
-않았다.** 승격 보류, 그러나 방향성은 입증됐다.
+**Verdict**: the local surface-field signal clearly improved (+0.30 → +0.64, signal
+ratio approaching CFD's) and the out-of-training-pair metric (family-isolated test) got
+better too. But **on the unseen gate it is equal or slightly behind** (0.0993/+0.82 vs
+0.0929/+0.91) and integrated ΔCd direction fell to 4/6 — that is, **the model learned to
+capture the local pressure field, and that did not translate into better integrated Cd.**
+Promotion withheld, but the direction is proven.
 
-**다음**: ① ΔCp 상관을 유지하면서 적분 Cd 손실을 함께 최적화(다중 목적) ②
-학습쌍을 늘려 과적합 여지 축소 ③ 평가 지표를 "ΔCp 상관 + ΔCd 방향" 이원으로
-동결해 이후 challenger를 판정.
+**Next**: ① optimise the integrated Cd loss jointly while preserving the ΔCp correlation
+(multi-objective) ② add training pairs to reduce room for overfitting ③ freeze the
+evaluation metric as the pair "ΔCp correlation + ΔCd direction" for judging future
+challengers.
 
-### 2026-08-27 — 다중 목적(ΔCp + 적분 Cd) 학습: 승격 없음, 캠페인 1기 종결
+### 2026-08-27 — Multi-objective (ΔCp + integrated Cd) training: no promotion, campaign one closed
 
-`challenger-multi-v1` = paired-v1의 ΔCp 쌍 손실 + **미분 가능한 적분 Cd 손실**
-(스텝당 4,096셀 표본을 N/K로 스케일한 불편추정, `sampled_cd()`), cd_weight 0.5.
+`challenger-multi-v1` = paired-v1's ΔCp pair loss + a **differentiable integrated Cd
+loss** (an unbiased estimate scaling the step's 4,096-cell sample by N/K, `sampled_cd()`),
+cd_weight 0.5.
 
-| 모델 | 게이트15 MAE/순위 | Windsor MAE | ΔCd 방향/MAE | 변형부 ΔCp 상관 |
+| Model | Gate15 MAE/rank | Windsor MAE | ΔCd direction/MAE | Patch ΔCp correlation |
 |---|---|---|---|---|
-| **현행 decoder-30ep** | **0.0929 / +0.91** | **0.0629** | **5/6 / 0.0051** | +0.30 |
-| 커리큘럼 v1 | 0.1362 / +0.90 | 0.1288 | 4/6 / 0.0066 | — |
+| **Current decoder-30ep** | **0.0929 / +0.91** | **0.0629** | **5/6 / 0.0051** | +0.30 |
+| Curriculum v1 | 0.1362 / +0.90 | 0.1288 | 4/6 / 0.0066 | — |
 | paired-v1 | 0.0993 / +0.82 | 0.0643 | 4/6 / 0.0058 | **+0.64** |
 | multi-v1 | 0.1409 / +0.83 | 0.1598 | 5/6 / 0.0055 | +0.48 |
 
-**판정**: multi-v1은 ΔCd 방향을 5/6으로 회복했지만 **미접촉 일반화가 크게
-악화**(Windsor 0.0629→0.1598, 게이트 0.0929→0.1409)됐다. 학습 검증은 역대
-최고(Cd MAE 0.0054)인데 계열격리 test는 0.0352 — 전형적 과적합이다.
-적분 Cd 손실이 학습 계열의 절대값에 모델을 끌어당겼다.
+**Verdict**: multi-v1 recovered ΔCd direction to 5/6 but **badly degraded unseen
+generalization** (Windsor 0.0629 → 0.1598, gate 0.0929 → 0.1409). Training validation
+was the best ever recorded (Cd MAE 0.0054) while the family-isolated test came out at
+0.0352 — textbook overfitting. The integrated Cd loss pulled the model toward the
+absolute values of the training family.
 
-**캠페인 1기 결론**: challenger 4종(혼합·커리큘럼·paired·multi) 모두
-표준 게이트에서 현행을 넘지 못했다. **서비스 모델은 decoder-30epoch 유지**,
-추천 경로만 mixed-v1 expert(프로덕션 적용 완료).
+**Campaign one conclusion**: all four challengers (mixed, curriculum, paired, multi)
+failed to beat the current model on the standard gate. **The serving model remains
+decoder-30epoch**, with only the recommendation path using the mixed-v1 expert (applied
+in production).
 
-**얻은 것**: ① 표면장 ΔCp가 미세 변형의 실측 가능한 신호원임을 증명
-(CFD 신호비 1.3~2.3배, 6/6) ② 그 신호를 학습으로 두 배 강화 가능
-(+0.30→+0.64) ③ 그러나 **국소 정확도 → 적분 Cd → 일반화**로 이어지지
-않으며, 적분 손실을 직접 넣으면 오히려 과적합된다는 것.
+**What was gained**: ① proof that surface-field ΔCp is a measurable signal source for
+small deformations (CFD signal ratio 1.3-2.3×, 6/6) ② that signal can be doubled by
+training (+0.30 → +0.64) ③ but **local accuracy does not propagate to integrated Cd or
+generalization**, and adding the integral term directly causes overfitting.
 
-**다음 1순위**: 학습 데이터 자체를 늘리는 것 — 보유 형상 109대/78계열이
-확인됐고(로컬 전용 스캔), G2 선행 → 수밀 표면 → LES 검증 파이프라인이
-갖춰졌다. 손실 설계로는 더 짜낼 게 없다는 것이 오늘의 결론이다.
+**Top priority next**: increase the training data itself — 109 shapes across 78 families
+were confirmed on hand (local-only scan), and the G2 → watertight surface → LES
+verification pipeline now exists. Today's conclusion is that loss design has nothing
+more to give.
 
 ---
 
-### 2026-08-27 — 공식 NVIDIA 파이프라인 전환과 단위 불일치 발견
+### 2026-08-27 — Moving to the official NVIDIA pipeline, and finding a units mismatch
 
-"논문대로 안하는 느낌이다"는 지적에 따라 직접 짠 decoder 미세조정을 버리고
-**PhysicsNeMo 공식 `train.py`(Hydra config, `nvidia/domino_drivaerml` 재개)**
-로 옮겼다. 환경 문제 8건(예제-라이브러리 버전 불일치, cuml cu13/cu12 혼입,
-CUDA 헤더 오염, epochs<체크포인트 에폭, 표본수 초과, 경계상자 불일치 등)을
-정리하고 EBS를 100→200 GB로 확장한 뒤 첫 학습이 완주했다.
+Following the observation that "this doesn't feel like doing it the way the paper does,"
+the hand-written decoder fine-tune was abandoned in favour of **PhysicsNeMo's official
+`train.py` (Hydra config, resuming from `nvidia/domino_drivaerml`)**. After clearing
+eight environment problems (example-library version mismatch, cuml cu13/cu12 mixing,
+CUDA header contamination, epochs < checkpoint epoch, sample counts exceeding case size,
+bounding-box mismatch, and others) and expanding EBS from 100 to 200 GB, the first
+training run completed.
 
-**그런데 결과가 쓰레기였다**: 검증손실은 153,402 → 86,439로 44% 떨어졌는데,
-게이트에서 예측 Cd가 **−47, +105, −24** (MAE 94.5, ΔCd 방향 2/6).
+**And the result was garbage**: validation loss fell 44%, from 153,402 to 86,439, while
+predicted Cd on the gate came out as **−47, +105, −24** (MAE 94.5, ΔCd direction 2/6).
 
-**원인 — 단위 불일치**. 사전학습 체크포인트의 `scaling_factors.pkl`이 기술하는
-압력장은 **무차원**(평균 −0.2104, 표준편차 0.2474, 범위 −2.4373~0.8568)인데,
-우리 G2 `boundary_N.vtp`의 `pMeanTrim`은 **Pa**(±1000~3600)다. Pa를 Cp 스케일
-통계에 먹여도 **오류가 나지 않는다** — 학습이 돌고 손실이 떨어지고 체크포인트가
-저장된다. 평가에서야 드러난다.
+**Cause — units mismatch.** The pressure field described by the pretrained checkpoint's
+`scaling_factors.pkl` is **non-dimensional** (mean −0.2104, std 0.2474, range −2.4373 to
+0.8568), while `pMeanTrim` in our G2 `boundary_N.vtp` is in **Pascals** (±1000-3600).
+Feeding Pa against Cp-scale statistics **does not error** — training runs, the loss
+falls, checkpoints save. It only surfaces at evaluation.
 
-**정규화 상수는 추론이 아니라 실측으로 확정**했다(`measure_field_normalization.py`).
-평가기의 표면적분이 기록된 `su2_cd`를 재현하는 상수 N을 케이스별로 역산하니,
-27.8~285.7 m/s에 걸친 12케이스에서 **N = ρU² = 2q, 편차 4%**로 수렴했다.
-따라서 학습 타깃은 **`p_Pa / (ρU²)`**(= Cp/2, DrivAerML 규약). 전단응력 컬럼은
-**이미 무차원**(우리 ±0.03 vs DrivAerML ±0.018)이므로 건드리면 안 된다.
+**The normalization constant was established by measurement, not inference**
+(`measure_field_normalization.py`). Solving per case for the constant N that makes the
+evaluator's surface integral reproduce the recorded `su2_cd` converges, across 12 cases
+from 27.8 to 285.7 m/s, on **N = ρU² = 2q with 4% spread**. So the training target is
+**`p_Pa / (ρU²)`** (= Cp/2, the DrivAerML convention). The shear columns are
+**already non-dimensional** (ours ±0.03 vs DrivAerML's ±0.018) and must not be touched.
 
-**진단 신호**: 정규화가 맞으면 학습 손실이 **~1.0** 대에 앉는다. 수만 단위면
-어려운 문제가 아니라 단위 문제다. 수정 후 장 범위 −3.27~+3.27.
+**Diagnostic signal**: with correct normalization the training loss sits around **1.0**.
+Tens of thousands means a units problem, not a hard problem. After the fix the field
+range is −3.27 to +3.27.
 
-**대조군으로 변환 경로를 먼저 검증**했다. `convert_mdlus_checkpoint.py`는
-사전학습 체크포인트에 대해 **항등**(381개 중 0개 변경)이고 구조 일치를 단언한다.
-즉 게이트 점수가 나쁘면 변환 탓이 아니다. 그리고 미세조정 없는 사전학습 자체의
-성적을 처음으로 측정해 **바닥선**을 확보했다.
+**The conversion path was verified with a control first.**
+`convert_mdlus_checkpoint.py` is an **identity** on the pretrained checkpoint (0 of 381
+tensors changed) and asserts the architecture matches. So a bad gate score cannot be
+blamed on the conversion. This also produced the first measurement of the pretrained
+model's own score — a **floor**.
 
-| 모델 | 게이트15 MAE / 순위 | Windsor MAE | gtr Cd MAE | ΔCd 방향 |
+| Model | Gate15 MAE / rank | Windsor MAE | gtr Cd MAE | ΔCd direction |
 |---|---|---|---|---|
-| 사전학습(미세조정 없음) | 0.3460 / **−0.37** | 0.3245 | 0.2374 | 3/6 |
-| 공식 1차(Pa 학습, 폐기) | — | 84.6 | 94.5 | 2/6 |
-| 공식 2차 ep57(무차원) | 0.2298 / **+0.81** | — | — | — |
-| **현행 decoder-30ep** | **0.0929 / +0.91** | **0.0629** | — | **5/6** |
+| pretrained (no fine-tuning) | 0.3460 / **−0.37** | 0.3245 | 0.2374 | 3/6 |
+| Official run 1 (trained on Pa, discarded) | — | 84.6 | 94.5 | 2/6 |
+| Official run 2 ep57 (non-dimensional) | 0.2298 / **+0.81** | — | — | — |
+| **Current decoder-30ep** | **0.0929 / +0.91** | **0.0629** | — | **5/6** |
 
-공식 2차는 57에폭 만에 순위 상관을 −0.37에서 +0.81로 뒤집었다. 절대 MAE가
-따라오는 중이라 560에폭까지 돌린 뒤 **검증손실 최소 체크포인트**를 고른다.
+Official run 2 flipped rank correlation from −0.37 to +0.81 in 57 epochs. Absolute MAE
+is still catching up, so it runs to 560 epochs and the **checkpoint with minimum
+validation loss** gets selected.
 
-**게이트 무결성**: 표준 게이트 15케이스는 공식 학습 61 / 검증 9 케이스와
-**교집합이 없다**(확인함).
+**Gate integrity**: the 15 standard-gate cases have **no intersection** with the
+official run's 61 training / 9 validation cases (verified).
 
 ---
 
-### 2026-08-27(2) — 공식 파이프라인 3차: 단위·분할 결함 2건 수정 후 재대결
+### 2026-08-27 (2nd) — Official pipeline, third round: two defects fixed, rematch
 
-1차의 단위 불일치를 고친 뒤에도 게이트 MAE가 0.19에서 평탄했다. 원인을 계속
-파고들어 결함 2건을 더 찾았다.
+Even after fixing the first round's units mismatch, the gate MAE stayed flat at 0.19.
+Digging further turned up two more defects.
 
-**결함 A — 전단응력까지 나눠야 했다.** 압력만 ρU²로 나누고 전단은 "이미
-무차원"이라 판단해 놔뒀는데, 그 판단이 틀렸다. 원본 데이터에서 마찰은 항력
-적분의 **0.01%**인데(내가 측정해놓고도 지나쳤다), 압력만 나누면 마찰 비중이
-**약 10%**로 부풀어 모든 계수에 편향이 생긴다. 현행 모델 코드
-(`finetune_domino_v3.py:72`)는 처음부터 **전체 배열**을 나누고 있었다.
-수정 효과(동일 에폭 11): **0.2312 → 0.1642**, 순위 +0.62 → +0.83.
+**Defect A — the shear columns needed dividing too.** Only the pressure was divided by
+ρU², on the judgement that shear was "already non-dimensional." That judgement was
+wrong. In the source data friction carries **0.01%** of the drag integral (I had
+measured it and walked past it), so dividing pressure alone inflates the friction share
+to about **10%** and biases every coefficient. The current model's code
+(`finetune_domino_v3.py:72`) had been dividing **the whole array** from the start.
+Effect of the fix (same epoch 11): **0.2312 → 0.1642**, rank +0.62 → +0.83.
 
-**결함 B — 학습/검증 분할이 저항 축에서 축퇴돼 있었다.**
-`audit_split_spread.py`로 재보니 학습 54개 중 **40개가 Cd 0.23~0.30**에 몰려
-사분위가 0.248/0.248/0.248이고, **검증 9개는 Cd 0.2772~0.2991(std 0.0058)**로
-사실상 한 점이었다. 그래서 검증손실이 에폭 31부터 평탄한데 게이트 점수는 계속
-움직였던 것이고, 검증셋으로는 모델 선택도 보정 적합도 불가능했다.
-`build_stratified_split.py`로 Cd 층화 재구성: 학습 65개(0.1999~0.6059),
-검증 7개(std 0.0460, 8배 개선). 효과(에폭 11): **0.1642 → 0.1186**.
+**Defect B — the train/validation split was degenerate along the drag axis.**
+Re-measuring with `audit_split_spread.py`: of the 54 training cases, **40 sit in Cd
+0.23-0.30** with quartiles 0.248/0.248/0.248, and **the 9 validation cases span Cd
+0.2772-0.2991 (std 0.0058)** — effectively a single point. That is why validation loss
+went flat from epoch 31 while the gate score kept moving, and why the validation set
+could support neither model selection nor a calibration fit.
+`build_stratified_split.py` rebuilds it stratified by Cd: 65 training cases
+(0.1999-0.6059), 7 validation (std 0.0460, 8× better). Effect (epoch 11):
+**0.1642 → 0.1186**.
 
-**부수 발견 — 축 규약이 다른 케이스 10개.** 층화 과정에서 run_29/73/82/83/84/
-105/107/119/120/121이 월드 좌표계상 멀리 떨어져 있고(x≈10·z≈20, z≈90 등)
-치수도 [4.06, 3.74, 4.99]로 차량 형상이 아니다(정상군 [4.99, 1.96, 1.32]).
-공식 학습 파이프라인은 전 케이스 공용 경계상자를 쓰므로 이들은 **상자 내 점이
-0개**다. 기존 70케이스 세트는 전원 정상이라 이전 결과는 오염되지 않았다.
-평행이동만으로는 안 되고 회전 규약 추정이 필요해 이번엔 제외했는데, 그 대가로
-**풀에서 가장 저항이 큰 run_107(Cd 0.7875)**을 잃었다. 별도 과제로 남긴다.
+**Side finding — 10 cases with a different axis convention.** During stratification,
+run_29/73/82/83/84/105/107/119/120/121 turned out to sit far away in world coordinates
+(x≈10 z≈20, z≈90, etc.) with dimensions [4.06, 3.74, 4.99] — not vehicle shapes
+(the normal group is [4.99, 1.96, 1.32]). The official training pipeline uses one
+bounding box shared by all cases, so these contribute **zero points inside the box**.
+The existing 70-case set is entirely clean, so earlier results are uncontaminated.
+Translation alone does not fix them — the rotation convention would have to be
+determined — so they were excluded this time, at the cost of losing
+**run_107 (Cd 0.7875), the highest-drag case in the pool**. Left as a separate task.
 
-**동결은 효과 없었다.** `train.py`에 `train.freeze_modules`를 추가해
-`geo_rep_surface`를 얼려 봤지만 최적값 0.1163 대 비동결 0.1186으로 잡음
-범위(±0.03) 안이다. 인코더가 전체 파라미터의 **2.9%**(288K/10.06M)뿐이라
-그럴 만하다. "인코더까지 다 학습해서 표현이 망가진다"는 가설은 기각한다.
+**Freezing had no effect.** Adding `train.freeze_modules` to `train.py` and freezing
+`geo_rep_surface` gave a best of 0.1163 against 0.1186 unfrozen — inside the noise
+range (±0.03). Reasonably so, since the encoder is only **2.9%** of the parameters
+(288K/10.06M). The hypothesis that "training the encoder as well destroys the
+representation" is rejected.
 
-**최종 대결** (각 모델 최적 체크포인트)
+**Final comparison** (each model's best checkpoint)
 
-| 모델 | 게이트15 MAE/순위 | Windsor MAE | gtr Cd MAE | ΔCd 방향 | ΔCd MAE |
+| Model | Gate15 MAE/rank | Windsor MAE | gtr Cd MAE | ΔCd direction | ΔCd MAE |
 |---|---|---|---|---|---|
-| 사전학습(미세조정 없음) | 0.3460 / −0.37 | 0.3245 | 0.2374 | 3/6 | — |
-| 공식 1차(Pa 학습) | ~94.5 | 84.6 | 94.5 | 2/6 | — |
-| 공식 층화 ep11 | 0.1186 / +0.874 | 0.0800 | 0.0845 | 4/6 | 0.0119 |
-| 공식 층화+동결 ep5 | 0.1163 / +0.853 | 0.0851 | 0.0517 | 4/6 | 0.0083 |
-| **현행 decoder-30ep** | **0.0929 / +0.91** | **0.0629** | **0.0121** | 4/6 | **0.0068** |
+| pretrained (no fine-tuning) | 0.3460 / −0.37 | 0.3245 | 0.2374 | 3/6 | — |
+| Official run 1 (trained on Pa) | ~94.5 | 84.6 | 94.5 | 2/6 | — |
+| Official stratified ep11 | 0.1186 / +0.874 | 0.0800 | 0.0845 | 4/6 | 0.0119 |
+| Official stratified + frozen ep5 | 0.1163 / +0.853 | 0.0851 | 0.0517 | 4/6 | 0.0083 |
+| **Current decoder-30ep** | **0.0929 / +0.91** | **0.0629** | **0.0121** | 4/6 | **0.0068** |
 
-**판정: 승격 없음.** 공식 파이프라인은 "망가짐"에서 "경쟁력 있음"까지 왔지만
-모든 게이트에서 현행이 앞선다. 다만 두 모델은 에폭 5~11에서 정점을 찍고 이후
-계속 나빠진다(65케이스 과적합) — 공식 설정의 560에폭은 우리 규모에 맞지 않는다.
+**Verdict: no promotion.** The official pipeline went from "broken" to "competitive,"
+but the current model leads on every gate. Both variants also peak at epochs 5-11 and
+degrade thereafter (overfitting on 65 cases) — the official 560-epoch schedule does not
+fit our scale.
 
-**가장 중요한 발견 — 두 모델 모두 저항 스프레드를 과증폭한다.**
-게이트 15케이스에 pred = a·true + b를 적합하면:
+**The most important finding — both models over-amplify the drag spread.**
+Fitting pred = a·true + b on the 15 gate cases:
 
-| 모델 | 원 MAE | 기울기 a | 절편 b | 선형보정 후 잔차 |
+| Model | Raw MAE | Slope a | Intercept b | Residual after linear correction |
 |---|---|---|---|---|
-| 공식 동결 ep5 | 0.1443 | 2.188 | −0.417 | 0.0771 |
-| **현행 decoder30** | **0.0929** | **1.595** | **−0.240** | **0.0515** |
+| Official frozen ep5 | 0.1443 | 2.188 | −0.417 | 0.0771 |
+| **Current decoder30** | **0.0929** | **1.595** | **−0.240** | **0.0515** |
 
-낮은 항력은 더 낮게, 높은 항력은 더 높게 민다(run_78 정답 0.5035 → 현행 0.7210,
-run_52 정답 0.1807 → 0.0624). 원 MAE 격차의 상당 부분이 **모델 능력이 아니라
-선형 오보정**이다. 이건 서비스 중인 현행 모델에도 그대로 해당하므로, 제어점을
-움직였을 때 나오는 변화량이 과장돼 보고되고 있을 가능성이 있다.
-검증셋으로 보정을 적합하려 했으나 결함 B(검증 std 0.0058) 때문에 불가능했고,
-층화 분할이 생겼으니 이제 가능하다 — **다음 1순위**.
+Low drag is pushed lower and high drag higher (run_78 true 0.5035 → current 0.7210;
+run_52 true 0.1807 → 0.0624). A substantial part of the raw MAE gap is
+**linear miscalibration, not model ability**. This applies to the model in production
+too, so the magnitude of change reported when a control point moves may be exaggerated.
+Fitting a calibration on the validation set was impossible because of defect B
+(validation std 0.0058); now that a stratified split exists it is possible —
+**top priority next**.
 
 ---
 
-### 2026-08-27(3) — 채점 기준을 바로잡자 판정이 뒤집혔다
+### 2026-08-27 (3rd) — Fixing the scoring criterion reversed the verdict
 
-사용자 지적: **"Cd가 문제가 아니고 컨트롤 포인트 움직였을 때 좋아지냐 안
-좋아지냐, 이거라고. Cd를 정확히 맞추는 건 엄청 어려워 그건 맨 나중에 해야 된다."**
+User's observation: **"Cd isn't the problem — it's whether moving a control point makes
+things better or worse. That's it. Getting Cd exactly right is extremely hard; that
+comes last."**
 
-맞는 지적이고, 그때까지의 판정("승격 없음")은 **절대 Cd 게이트로만 채점한
-결과**였다. 제품이 답해야 하는 질문으로 다시 채점하니 결론이 뒤집힌다.
+A fair point, and the verdict up to then ("no promotion") was **scored purely on
+absolute Cd gates**. Re-scoring on the question the product has to answer reverses the
+conclusion.
 
-**ΔCd는 LES로 채점해야 한다.** 이 프로젝트의 역할 분담은 처음부터
-**SU2=절대값 / LES=ΔCd 진실**이었는데(`les-solver-for-g3-labels` 메모), 나는
-계속 G2 라벨로 방향을 채점하고 있었다. `benchmarks/gtr_smooth_pairs.json`에
-LES ΔCd가 이미 들어 있었고, 그중 2쌍은 G2와 부호가 반대다
-(roof_lower_10mm: G2 +0.0095 / LES −0.0262, 3개 설정에서 부호 재현.
+**ΔCd must be scored against LES.** This project's division of labour was always
+**SU2 = absolute values / LES = ΔCd truth** (the `les-solver-for-g3-labels` note), yet
+direction was still being scored against G2 labels. `benchmarks/gtr_smooth_pairs.json`
+already contained the LES ΔCd, and 2 of those pairs have the opposite sign from G2
+(roof_lower_10mm: G2 +0.0095 / LES −0.0262, sign reproduced across 3 configurations;
 rear_wide_25mm: G2 +0.0088 / LES −0.0029).
 
-| 모델 | G2 기준 방향 | **LES 기준 방향** | **LES와 크기 순위상관** |
+| Model | Direction vs G2 | **Direction vs LES** | **Magnitude rank corr. with LES** |
 |---|---|---|---|
-| **현행 decoder-30ep (서비스 중)** | 4/6 | 4/6 (우연 34%) | **−0.14** |
-| 공식 층화 ep11 | 4/6 | **6/6** (우연 1.6%) | **+0.60** |
-| 공식 동결 ep5 | 4/6 | **6/6** (우연 1.6%) | **+0.60** |
+| **Current decoder-30ep (in production)** | 4/6 | 4/6 (chance 34%) | **−0.14** |
+| Official stratified ep11 | 4/6 | **6/6** (chance 1.6%) | **+0.60** |
+| Official frozen ep5 | 4/6 | **6/6** (chance 1.6%) | **+0.60** |
 
-G2 기준으로는 셋이 구분되지 않는데, LES 기준으로는 공식 파이프라인 모델이
-6개 변형의 방향을 전부 맞힌다. 세 모델이 공통으로 "틀리던" roof_lower_10mm은
-**G2 라벨 쪽이 의심 대상**이었고 공식 모델은 LES 편에 섰다.
+Against G2 the three are indistinguishable; against LES the official-pipeline models
+call all six deformations correctly. The roof_lower_10mm case all three "got wrong"
+was **the G2 label under suspicion**, and the official models sided with LES.
 
-**크기 순위가 더 중요하다.** 현행은 **−0.14**로 사실상 신호가 없고, 공식
-모델은 **+0.60**이다. "어느 제어점을 움직이는 게 더 이득인가"에 답하려면
-방향뿐 아니라 크기 순서가 필요하다.
+**Magnitude rank matters more.** The current model is at **−0.14** — effectively no
+signal — while the official models are at **+0.60**. Answering "which control point is
+more worth moving" needs magnitude order, not just direction.
 
-**한계(정직하게)**: LES 6쌍 중 5쌍이 감소 방향이라 **"무조건 좋아진다"고만
-답해도 5/6**이다. 6/6은 거기서 하나 더 맞힌 것이고, n=6에서 순위상관 +0.60은
-단독으로 유의하지 않다. 쌍을 늘려야 확정된다 — 다만 현행의 −0.14와는
-성격이 다른 수치다.
+**Limits (stated honestly)**: 5 of the 6 LES deltas are negative, so **answering
+"always improves" already scores 5/6**. The 6/6 is one better than that, and a rank
+correlation of +0.60 at n=6 is not significant on its own. More pairs are needed to
+settle it — though it is a different kind of number from the current model's −0.14.
 
-**부수 발견 — 게이트 라벨 3건의 기준면적이 3배 틀렸다.**
-`audit_reference_area.py`: 크게 빗나가던 케이스들은 선언된 `ref_area`가 실제
-정면적의 **3.0~3.2배**였다(run_52/58/79). Cd = 힘/(q·기준면적)이므로 예측이
-정확히 그 배수만큼 작게 나온다. 비율로 되돌리면 run_52는 **65% → 4%**.
-전체 게이트 평균오차 35% → 21%, ±20% 이내 6/15 → 9/15. 모델 문제가 아니라
-라벨 장부 문제다.
+**Side finding — the reference area is wrong by 3× on 3 gate labels.**
+`audit_reference_area.py`: the badly missed cases declared a `ref_area`
+**3.0-3.2× their actual frontal area** (run_52/58/79). Since Cd = force/(q·ref_area),
+the prediction comes out small by exactly that factor. Undoing the ratio takes run_52
+from **65% to 4%**. The gate's mean error goes 35% → 21% and within-±20% goes 6/15 →
+9/15. This is a bookkeeping problem, not a model problem.
 
-**절대 Cd의 현주소(참고용, 우선순위 최하)**: 현행 모델의 상대오차 중앙값 24%,
-최악 74%, **±5% 이내는 15개 중 1개**. 절대값 예측기로는 쓸 수 없다.
-run_55/56/81은 셋 다 0.2345로 동일하게 나와 구분조차 못 한다.
+**Where absolute Cd stands (for reference, lowest priority)**: the current model's
+median relative error is 24%, worst 74%, and **only 1 of 15 is within ±5%**. It cannot
+be used as an absolute predictor. run_55/56/81 all come out at an identical 0.2345 —
+it cannot even tell them apart.
 
-**다음 우선순위 (재정렬)**
-1. **쌍 늘리기** — LES 기준 채점이 유효하다는 게 확인됐으므로, 6쌍으로는
-   6/6과 5/6(무조건 감소)을 구분할 수 없다. 설계 기준은 이미 있다
-   (|ΔCd| ≥ 0.0015 수밀, G2 선행 → 수밀 표면 → LES).
-2. **기준면적 장부 정리** — 3배 오류가 게이트에만 3건이면 학습 풀 전체를
-   훑어야 한다.
-3. 절대 Cd 보정(기울기 1.6 과증폭) — 위 둘이 끝난 뒤.
+**Next priorities (re-ordered)**
+1. **More pairs** — LES-based scoring is confirmed valid, and 6 pairs cannot separate
+   6/6 from 5/6 ("always decreasing"). The design criteria already exist
+   (|ΔCd| ≥ 0.0015 watertight; G2 first → watertight surface → LES).
+2. **Clean up the reference-area bookkeeping** — 3 errors of 3× in the gate alone means
+   the whole training pool needs sweeping.
+3. Absolute Cd calibration (the slope-1.6 over-amplification) — after the first two.
 
 ---
 
-### 2026-08-27(4) — 쌍을 6개에서 83개로 늘리자 6/6은 우연이었음이 드러났다
+### 2026-08-27 (4th) — Going from 6 pairs to 83 revealed the 6/6 as chance
 
-쌍 확장을 시작하며 S3와 G3_TEST를 뒤지다가, **찾던 것이 이미 있었다**:
-`~/g3-v2/data/g2-s3-deformation-pairs-v1`에 **G2 변형 쌍 403개**(138잡 중
-118잡)가 base/target 점군·변위·base_cd·target_cd·delta_cd로 저장돼 있었고,
-각 RBF 설계 단계의 전체 표면장(`surface_flow.vtu`, 개당 741 KB)이 S3에 남아
-있었다. **32시간 LES 캠페인이 필요 없었다.**
+While starting the pair expansion by searching S3 and G3_TEST, **what was being looked
+for was already there**: `~/g3-v2/data/g2-s3-deformation-pairs-v1` held **403 G2
+deformation pairs** (118 of 138 jobs) stored as base/target point clouds, displacement,
+base_cd, target_cd, delta_cd — and the full surface field of every RBF design step
+(`surface_flow.vtu`, 741 KB each) was still in S3. **The 32-hour LES campaign was
+unnecessary.**
 
-필터(|ΔCd| ≥ 0.0015 노이즈 기준, Cd 0.10~1.00 물리 범위, 형상당 4개 상한)를
-통과한 89쌍 중 S3에 표면장이 있는 **83쌍 / 형상 31종**으로 벤치마크를 구축했다
-(`benchmarks/g2_deformation_pairs_83.json`, |ΔCd| 중앙값 0.00593).
+Of the 89 pairs passing the filters (|ΔCd| ≥ 0.0015 noise floor, Cd 0.10-1.00 physical
+range, at most 4 per geometry), the **83 pairs across 31 geometries** whose surface
+fields exist in S3 became the benchmark
+(`benchmarks/g2_deformation_pairs_83.json`, median |ΔCd| 0.00593).
 
-**결과 — 세 모델 모두 다수 방향 기준선에 못 미친다.**
+**Result — all three models fall short of the majority-direction baseline.**
 
-| 모델 | 방향 | 다수기준(73%) 대비 p | 순위상관 | 값상관 | ΔCd MAE |
+| Model | Direction | p vs majority (73%) | Rank corr | Value corr | ΔCd MAE |
 |---|---|---|---|---|---|
-| **현행 decoder-30ep (서비스 중)** | 48/83 = **58%** | 0.9993 | +0.10 | +0.05 | 0.0156 |
-| 공식 층화 | 48/83 = **58%** | 0.9993 | **+0.35** | −0.01 | 0.0147 |
-| 공식 동결 | 56/83 = **67%** | 0.9121 | +0.13 | −0.27 | 0.0163 |
+| **Current decoder-30ep (in production)** | 48/83 = **58%** | 0.9993 | +0.10 | +0.05 | 0.0156 |
+| Official stratified | 48/83 = **58%** | 0.9993 | **+0.35** | −0.01 | 0.0147 |
+| Official frozen | 56/83 = **67%** | 0.9121 | +0.13 | −0.27 | 0.0163 |
 
-"무조건 좋아진다"고만 답하면 61/83 = **73%**다. 최고 성적이 67%다.
+Answering "always improves" scores 61/83 = **73%**. The best model manages 67%.
 
-**앞선 (3)절의 판정을 정정한다.** LES 6쌍에서 나온 6/6은 소표본 우연이었고,
-그때 기록한 한계("6쌍 중 5쌍이 감소라 무조건 감소로도 5/6, n=6에서 +0.60은
-단독으로 유의하지 않다")가 그대로 실현됐다. 승격 판단의 근거로 쓸 수 없다.
+**This corrects the verdict in section (3).** The 6/6 from the 6 LES pairs was a
+small-sample artefact, and the limit recorded at the time ("5 of 6 are decreasing, so
+always-decreasing also scores 5/6; +0.60 at n=6 is not significant on its own") played
+out exactly. It cannot support a promotion decision.
 
-**틀리는 게 아니라 반응이 약한 쪽에 가깝다.**
+**The failure is closer to weak response than to being wrong.**
 
-| 모델 | 예측 \|ΔCd\| 중앙값 | 정답 대비 | 거의 무반응(<0.001) |
+| Model | Median predicted \|ΔCd\| | vs truth | Almost no response (<0.001) |
 |---|---|---|---|
-| 현행 | 0.00224 | 0.38배 | **31/83** |
-| 공식 층화 | 0.00449 | 0.76배 | 13/83 |
-| 공식 동결 | 0.00374 | 0.63배 | 16/83 |
+| Current | 0.00224 | 0.38× | **31/83** |
+| Official stratified | 0.00449 | 0.76× | 13/83 |
+| Official frozen | 0.00374 | 0.63× | 16/83 |
 
-크기 규모는 정답의 0.4~0.8배로 얼추 맞는데 부호가 무작위에 가깝다. 특히
-**서비스 중인 모델은 83쌍 중 31쌍에서 제어점을 움직여도 예측이 거의 안 변한다.**
-변형이 작아서가 아니다 — 이 쌍들은 7,618점 중 중앙값 2,102점(28%)이 움직이고
-최대 변위 중앙값이 0.034 m다.
+Magnitudes are roughly right at 0.4-0.8× the truth, but the sign is near random. In
+particular, **the model in production barely changes its prediction on 31 of 83 pairs
+when the control points move.** Not because the deformations are subtle — in these
+pairs a median 2,102 of 7,618 points move, with a median maximum displacement of 0.034 m.
 
-**라벨 신뢰도 반론에 대해**: 이 83쌍은 G2 라벨이고 G2는 LES와 2/6에서 어긋난
-전력이 있다. 다만 라벨 오차율이 e일 때 완벽한 모델은 (1−e)를 얻고 다수기준은
-관측 분포 그대로이므로, **73%를 넘는 것이 여전히 올바른 기준선**이다.
-라벨 잡음이 모두를 50% 쪽으로 밀 뿐 기준선을 무력화하지 않는다.
+**On the label-reliability objection**: these 83 pairs carry G2 labels, and G2 has a
+record of disagreeing with LES on 2 of 6. But with label error rate e, a perfect model
+scores (1−e) while the majority baseline is computed from the observed distribution, so
+**beating 73% remains the correct bar**. Label noise pushes everyone toward 50% without
+invalidating the baseline.
 
-**다음**: (a) 왜 부호를 못 맞히는지 — 변형 부위의 국소 압력 반응을 직접 보는
-`evaluate_surface_delta.py`를 이 83쌍에 적용, (b) 이 83쌍을 **학습**에 투입
-(지금까지 쌍 학습은 6쌍으로만 했다), (c) LES는 모델과 G2가 엇갈리는 쌍만
-골라 4시간짜리 런을 값지게 쓰기.
+**Next**: (a) why the sign is wrong — apply `evaluate_surface_delta.py`, which looks
+directly at the local pressure response in the deformed patch, to these 83 pairs
+(b) put these 83 pairs into **training** (pair training has so far used only 6)
+(c) spend LES only on pairs where the model and G2 disagree, making the 4-hour runs
+count.
 
 ---
 
-### 2026-08-27(5) — 83쌍으로 학습: ΔCp 손실은 듣고, 내가 추가한 ΔCd 손실은 해로웠다
+### 2026-08-27 (5th) — Training on 83 pairs: the ΔCp loss works, the ΔCd loss I added hurt
 
-**데이터 준비에서 나온 검증**: 설계 단계별 `history.csv`는 primal이 아니라
-**adjoint 이력**(Sens_Geo, rms[A_P])이라 CD 열이 없다. 항력은 쌍 매니페스트에서
-채우고 양력은 표면장 적분으로 계산했다(`backfill_pair_lift.py`). 같은 방식으로
-적분한 항력이 매니페스트 값과 **중앙값 0.7% 이내로 일치**해(비 1.007, 사분위
-0.998/1.008) 다운로드→변환→필드 경로 전체가 검증됐다.
+**A verification that came out of data preparation**: the per-design-step `history.csv`
+is the **adjoint history** (Sens_Geo, rms[A_P]), not the primal, so it has no CD column.
+Drag was filled in from the pair manifest and lift computed by integrating the surface
+field (`backfill_pair_lift.py`). Integrating drag the same way **matches the manifest to
+a median 0.7%** (ratio 1.007, quartiles 0.998/1.008), which validates the whole
+download → conversion → field path.
 
-**분할은 형상 단위로**(`split_pairs_by_geometry.py`). 한 잡의 쌍들은 같은 차의
-연속 최적화 단계이므로 쌍 단위로 나누면 암기를 측정하게 된다. 학습 18형상/52쌍,
-평가 11형상/31쌍, **런 중복 0개**, 양쪽 다수 방향 73%/74%.
+**Split by geometry** (`split_pairs_by_geometry.py`). The pairs within a job are
+successive optimisation steps of the same car, so splitting by pair would measure
+memorisation. 18 geometries / 52 pairs to train, 11 geometries / 31 pairs to test,
+**zero run overlap**, with majority direction 73%/74% on each side.
 
-**손실 설계 가설과 결과**: 오늘 진단이 "크기는 0.4~0.8배로 맞고 부호가 무작위"
-였으므로 제품이 보고하는 적분 차이를 직접 벌하는 **쌍 ΔCd 손실**을 추가했다
-(`--delta-cd-weight`, 오차 0.01을 단위 비용으로 스케일). **가설은 기각됐다.**
+**Loss design hypothesis and result**: today's diagnosis was "magnitude right at
+0.4-0.8×, sign random," so a **paired ΔCd loss** penalising the integrated difference
+the product reports was added (`--delta-cd-weight`, scaled so an error of 0.01 costs
+unity). **The hypothesis was rejected.**
 
-held-out 11형상 31쌍 (다수기준 23/31 = 74%):
+Held-out 11 geometries / 31 pairs (majority 23/31 = 74%):
 
-| 모델 | 방향 | 다수기준 대비 p | 순위상관 | 값상관 | ΔCd MAE |
+| Model | Direction | p vs majority | Rank corr | Value corr | ΔCd MAE |
 |---|---|---|---|---|---|
-| 현행 decoder-30ep | 18/31 = 58% | 0.985 | +0.25 | +0.25 | 0.0112 |
-| 공식 층화 | 17/31 = 55% | 0.994 | +0.57 | +0.47 | 0.0099 |
-| **dCp만 (52쌍 학습)** | **21/31 = 68%** | 0.848 | +0.49 | **+0.79** | **0.0071** |
+| Current decoder-30ep | 18/31 = 58% | 0.985 | +0.25 | +0.25 | 0.0112 |
+| Official stratified | 17/31 = 55% | 0.994 | +0.57 | +0.47 | 0.0099 |
+| **dCp only (52-pair training)** | **21/31 = 68%** | 0.848 | +0.49 | **+0.79** | **0.0071** |
 | dCp + dCd | 17/31 = 55% | 0.994 | +0.19 | +0.18 | 0.0081 |
 
-**52쌍 ΔCp 학습은 분명히 효과가 있다**: 값상관 +0.25 → **+0.79**,
-ΔCd MAE 0.0112 → **0.0071(37% 개선)**, 방향 58% → 68%. 6쌍으로만 하던 쌍 학습을
-52쌍으로 늘린 것이 처음으로 재료 역할을 했다. 반면 ΔCd 손실을 얹으면 모든
-지표가 악화된다 — 적분 항을 직접 넣으면 과적합된다는 (3)절 캠페인 1기의 교훈이
-쌍 손실에서도 반복됐다.
+**52-pair ΔCp training clearly works**: value correlation +0.25 → **+0.79**,
+ΔCd MAE 0.0112 → **0.0071 (37% better)**, direction 58% → 68%. Raising pair training
+from 6 pairs to 52 finally gave it material to work with. Adding the ΔCd loss on top
+degrades every metric — the campaign-one lesson from section (3), that putting the
+integral term in directly causes overfitting, repeats in the pair loss.
 
-**핵심 발견 — 부호를 가리던 것은 예측 ΔCd의 계통 편향이었다.**
-dCp만 모델은 ΔCd를 **일관되게 +0.015 과대예측**한다. |ΔCd| 중앙값이 0.006이므로
-0 근처 쌍의 부호가 통째로 뒤집힌다. 학습쌍에서 적합한 평균 편향을 held-out에
-적용하면(`test_delta_calibration.py`):
+**Key finding — what was hiding the sign was a systematic bias in the predicted ΔCd.**
+The dCp-only model **consistently over-predicts ΔCd by +0.015**. With a median |ΔCd| of
+0.006, that flips the sign of every pair near zero. Applying a mean bias fitted on the
+training pairs to the held-out set (`test_delta_calibration.py`):
 
-| 보정 | 방향 | 다수기준 대비 p |
+| Correction | Direction | p vs majority |
 |---|---|---|
-| 없음 | 21/31 = 68% | 0.848 |
-| **평균편향 제거** | **26/31 = 84%** | **0.152** |
-| 선형보정 | 23/31 = 74% | 0.594 |
+| None | 21/31 = 68% | 0.848 |
+| **Mean bias removed** | **26/31 = 84%** | **0.152** |
+| Linear correction | 23/31 = 74% | 0.594 |
 
-**처음으로 다수기준을 넘었다.** 작은 |ΔCd| 구간(13쌍)에서 7/13 → 10/13으로
-개선된 것이 대부분을 설명한다. 같은 처방이 공식 층화에도 듣고(55% → 84%),
-현행(58% → 48%)과 dCp+dCd(55% → 35%)에는 해롭다 — 보편적 아티팩트가 아니라
-모델별 성질이다.
+**The majority baseline is beaten for the first time.** Most of the gain is explained by
+the smallest-|ΔCd| band (13 pairs) going from 7/13 to 10/13. The same prescription helps
+the official stratified model (55% → 84%) and hurts the current model (58% → 48%) and
+dCp+dCd (55% → 35%) — a property of particular models, not a universal artefact.
 
-**한계와 확인 절차**: 31쌍에서 4모델 × 3보정 = 12조합을 봤으므로 84%(p=0.15)가
-우연일 여지가 있다. **형상 3겹 교차검증**으로 83쌍 전부를 정확히 한 번씩
-held-out에 놓고 재측정 중이다(`crossval_pairs.py`).
+**Limits and verification procedure**: 4 models × 3 corrections = 12 combinations were
+examined on 31 pairs, so the 84% (p=0.15) could be chance. **Three-fold cross-validation
+by geometry** is re-measuring with every one of the 83 pairs held out exactly once
+(`crossval_pairs.py`).
 
-**교차검증 결과 — 편향 보정이 확정됐다.** 형상 3겹으로 83쌍 전부를 정확히
-한 번씩 held-out에 놓고 재측정:
+**Cross-validation result — the bias correction is confirmed.** Re-measured with three
+geometry folds putting all 83 pairs on the held-out side exactly once:
 
-| 보정 | 방향 | 다수기준(73%) 대비 p | 값상관 | ΔCd MAE |
+| Correction | Direction | p vs majority (73%) | Value corr | ΔCd MAE |
 |---|---|---|---|---|
-| 없음 | 54/83 = 65% | 0.966 | +0.24 | 0.0130 |
-| **평균편향 제거** | **72/83 = 87%** | **0.0028** | +0.19 | 0.0165 |
+| None | 54/83 = 65% | 0.966 | +0.24 | 0.0130 |
+| **Mean bias removed** | **72/83 = 87%** | **0.0028** | +0.19 | 0.0165 |
 
-**제품 질문("제어점을 움직이면 좋아지나")에서 처음으로 통계적으로 유의한
-결과다.** 겹별 학습쌍 편향은 +0.00595 / +0.01353 / +0.01238로 일관된 양수다.
+**This is the first statistically significant result on the product question ("does
+moving a control point help?").** The fitted bias per fold is consistently positive at
++0.00595 / +0.01353 / +0.01238.
 
-**정직하게 붙일 단서 셋**:
-1. 편향 보정은 **방향을 얻는 대신 크기를 잃는다** — ΔCd MAE 0.0130 → 0.0165.
-   모든 예측을 상수만큼 밀면 0 근처 부호는 고쳐지지만 크기는 멀어진다.
-   "어느 제어점이 더 이득인가"(크기 순위)에는 도움이 안 된다.
-2. 단일 분할에서 나온 **값상관 +0.79는 그 겹의 운이었다** — 83쌍 전체에서는
-   +0.24다. 크기 추종 능력은 아직 약하다.
-3. 편향 상수가 겹마다 +0.006~+0.014로 두 배 넘게 흔들린다. **배포하려면
-   어느 데이터로 적합하느냐에 따라 값이 달라진다**는 뜻이므로, 서비스에 넣기
-   전에 상수의 안정성을 형상군별로 확인해야 한다.
+**Three caveats to attach honestly**:
+1. The bias correction **buys direction at the cost of magnitude** — ΔCd MAE 0.0130 →
+   0.0165. Shifting every prediction by a constant fixes signs near zero but moves the
+   magnitudes further away. It does nothing for "which control point helps most"
+   (magnitude ranking).
+2. The **value correlation of +0.79 from the single split was that fold's luck** —
+   across all 83 pairs it is +0.24. Magnitude tracking is still weak.
+3. The bias constant varies more than twofold across folds, +0.006 to +0.014. That means
+   **its value depends on which data it is fitted to**, so its stability across shape
+   families must be checked before it goes anywhere near the service.
 
-**정리하면**: 방향은 87%로 쓸 만해졌고(무조건 좋아진다 = 73%), 크기 순위는
-아직이다. 다음은 (a) 편향의 원인 규명 — 변형 변종은 G2가 재메시하므로 예측
-ΔCd에 형상 변화가 아닌 메시 변화 성분이 섞였을 가능성, (b) 크기 순위를 위한
-학습, (c) 편향 상수의 형상군별 안정성 측정.
-
----
-
-### 2026-08-27(6) — 원인 규명: 형상 인코더가 변형을 못 본다 (격자가 변형보다 크다)
-
-**먼저 87%가 안전한지부터 검증했다.** 이 벤치마크는 73%가 감소이므로,
-모델이 ΔCd를 0 근처로만 예측하면 `평균(예측−정답)`이 자동으로 양수가 되어
-"편향 제거"가 사전확률 주입으로 전락할 수 있다. `audit_bias_origin.py`:
-
-| | "증가"라고 답한 쌍 | 그중 정답 | 정밀도 |
-|---|---|---|---|
-| 보정 없음 | 49개 | 21개 | 43% |
-| **편향 제거** | **13개** | **12개** | **92%** |
-| 무조건 감소 | 0개 | — | — |
-
-실제 증가는 22/83(우연 27%)인데 보정 후 13개만 증가라 하고 12개를 맞힌다.
-**사전확률 주입이 아니라 선별력이 있는 진짜 신호다** — 87%는 유효하다.
-
-**편향은 두 성분이었다.** 겹별로 `편향 = 평균(예측) − 평균(정답)`인데,
-평균(예측)이 +0.0038/+0.0047/+0.0054로 **일관되게 양수**다. 하나는 벤치마크
-쏠림(−평균정답, 겹마다 다름), 다른 하나는 모델 고유의 +0.0045 오프셋이다.
-
-**메시 가설은 기각.** `test_mesh_hypothesis.py`: 이 쌍들은 **셀 수가 전혀 안
-변하고 기준면적도 동일**하다 — RBF는 재메시가 아니라 점 이동이라 위상이
-보존된다. (gtr 데이터셋은 재메시라 달랐고, 그 경험을 잘못 일반화했었다.)
-변하는 건 젖은면적(평균 −0.1%)뿐이고, 젖은면적이 줄면 정답 Cd가 줄지만
-(−0.24) 잔차는 커진다(+0.22) — **형상 변화에 덜 반응한다**는 뜻.
-
-**진짜 원인 — 인코더가 변형을 못 본다.** `probe_geometry_encoding.py`:
-
-| 인코딩 상대거리 | 중앙값 |
-|---|---|
-| 쌍 내부(같은 차의 변형 전후) | **0.00146** |
-| 서로 다른 차 사이 | 0.82444 |
-| **비율** | **0.002** |
-
-변형이 인코딩을 움직이는 정도가 다른 차를 구분하는 크기의 **0.2%**다. 일부
-쌍은 거리가 정확히 0이다. 인코딩 거리와 |정답 ΔCd|의 상관은 −0.19로 없다.
-**디코더가 읽을 신호가 애초에 도착하지 않는다.** 예측이 조금이라도 변하는 건
-셀별 국소 입력(중심·법선·면적) 덕분이지 전역 인코딩 때문이 아니다.
-
-**기전 — 격자 셀이 변형보다 크다.** `measure_grid_waste.py`, `interp_res`
-[128, 64, 64], 변형 최대변위 중앙값 **4.02 cm**(사분위 2.11~5.18):
-
-| 상자 | 셀 크기 (cm) | 변형/셀 | 판정 |
-|---|---|---|---|
-| DrivAerML 기본 | [5.08, 4.38, 2.69] | [0.79, 0.92, 1.5] | 안 보임 |
-| **우리 학습 설정** | [6.17, 4.69, **9.06**] | [0.65, 0.86, **0.44**] | 안 보임 |
-| 차에 맞춘 상자 | [4.49, 3.35, 8.81] | [0.90, 1.2, 0.46] | 안 보임 |
-
-**어느 설정에서도 변형이 격자 한 칸보다 작다.** 게다가 형상들의 z 범위가
-−0.58~4.79 m인데 차 높이는 1.47 m — 케이스마다 월드 좌표계 위치가 달라
-합집합 상자가 **3.7배 부풀었고** 그만큼 z 해상도를 버리고 있다.
-
-**(2)절 "동결은 효과 없었다"와 모순되지 않는다.** 그 실험은 *서로 다른 차*의
-절대 Cd로 쟀고, 거기서는 인코더가 잘 작동한다(형상 간 거리 0.82). *같은 차의
-변형*에는 눈이 먼 것이다 — 지표가 다르면 결론도 다르다.
-
-**처방 (비용 대비 순서)**
-1. **케이스별 좌표계 정규화** — 공짜. z 폭 5.37 m → 1.47 m로 **3.7배** 해상도
-   회복. 지금 상자의 z 셀 9.06 cm가 2.4 cm가 된다.
-2. **`interp_res` 상향** — 256×128×128이면 전 축 셀이 절반. 기하 표현부만
-   8배 비용이고 모델 전체로는 작은 비중.
-3. 1+2 동시: 셀 약 [2.1, 1.6, 1.15] cm → 변형이 1.9/2.5/3.5 칸이 되어 처음으로
-   해상 가능해진다.
-4. 그래도 부족하면 변위장을 입력 채널로 명시 투입.
+**In summary**: direction is usable at 87% (always-improves = 73%), magnitude ranking is
+not. Next: (a) find the cause of the bias — G2 re-meshes each variant, so the predicted
+ΔCd may carry a mesh-change component rather than a shape-change one (b) train for
+magnitude ranking (c) measure the bias constant's stability per shape family.
 
 ---
 
-### 2026-08-27(7) — 처방 1 적용: 해상도가 아니라 **형상이 격자 밖에 있었다**
+### 2026-08-27 (6th) — Root cause: the geometry encoder cannot see the deformation (the grid is coarser than the deformation)
 
-`check_normalized_placement.py`로 정규화 좌표를 직접 재보니 (6)절의 진단보다
-훨씬 심각했다. 인코더는 고정된 DrivAerML 상자로 정규화한 뒤 [−1, 1] 격자에서
-SDF를 뽑는데, 우리 형상의 정규화 z가 **+3.41 ~ +4.94**였다.
+**First, whether the 87% is safe.** Because 73% of this benchmark is "decreasing," a
+model predicting ΔCd near zero would make `mean(pred − true)` automatically positive,
+which would reduce "bias removal" to injecting a prior. `audit_bias_origin.py`:
 
-| | 정규화 상자 [−1,1] 안에 든 정점 |
+| | Pairs called "increase" | Correct among them | Precision |
+|---|---|---|---|
+| No correction | 49 | 21 | 43% |
+| **Bias removed** | **13** | **12** | **92%** |
+| Always decreasing | 0 | — | — |
+
+Actual increases are 22/83 (chance 27%), and after correction the model calls only 13
+increases and gets 12 right. **This is discriminating signal, not prior injection** —
+the 87% holds.
+
+**The bias had two components.** Per fold, `bias = mean(pred) − mean(true)`, and
+mean(pred) is **consistently positive** at +0.0038/+0.0047/+0.0054. One component is the
+benchmark's skew (−mean(true), which varies by fold); the other is a model-intrinsic
+offset of +0.0045.
+
+**The mesh hypothesis is rejected.** `test_mesh_hypothesis.py`: in these pairs
+**the cell count does not change at all and the reference area is identical** — RBF moves
+points rather than re-meshing, so the topology is preserved. (The gtr dataset does
+re-mesh, and that experience was wrongly generalised.) The only thing that changes is
+wetted area (mean −0.1%); when wetted area falls, the true Cd falls (−0.24) but the
+residual grows (+0.22) — meaning **the model under-responds to shape change**.
+
+**The real cause — the encoder cannot see the deformation.** `probe_geometry_encoding.py`:
+
+| Relative encoding distance | Median |
 |---|---|
-| 정렬 전 | **12.6%** (대부분 케이스는 **0.0%**) |
-| 정렬 후 | **100.0%** |
+| Within a pair (same car, before/after deformation) | **0.00146** |
+| Between different cars | 0.82444 |
+| **Ratio** | **0.002** |
 
-**격자 밖 좌표를 넣으니 어떤 형상이든 사실상 같은 인코딩이 나왔다.** 변형이
-인코딩을 0.2%밖에 못 움직인 진짜 이유다. 케이스별 이동량이 x −10.45~+1.91 m,
-z −18.17~+2.18 m로 갈리는 것도 확인됐다 — 데이터가 여러 좌표계 규약으로
-섞여 있었다.
+A deformation moves the encoding by **0.2%** of what separates different cars. Some pairs
+are at exactly zero. The correlation between encoding distance and |true ΔCd| is −0.19,
+i.e. none. **The signal the decoder should read never arrives.** Whatever change the
+prediction shows comes from the per-cell inputs (centres, normals, areas), not the global
+encoding.
 
-**정렬 방식**(`align_case_frames.py`): **평행이동만** — 회전·축척 없음이라
-힘·면적·계수 불변. 기준점은 변형에 둔감하도록 **면적가중 중심**(x, y)과
-**접지면**(z)으로 잡았다. 경계상자 극점을 쓰면 꼬리 4 cm 변형이 상자를 4 cm
-밀어 변형 신호를 스스로 지운다.
+**Mechanism — the grid cell is larger than the deformation.** `measure_grid_waste.py`,
+`interp_res` [128, 64, 64], median maximum deformation **4.02 cm** (quartiles 2.11-5.18):
 
-**효과**
+| Box | Cell size (cm) | Deformation/cell | Verdict |
+|---|---|---|---|
+| DrivAerML default | [5.08, 4.38, 2.69] | [0.79, 0.92, 1.5] | not visible |
+| **Our training config** | [6.17, 4.69, **9.06**] | [0.65, 0.86, **0.44**] | not visible |
+| Box fitted to the car | [4.49, 3.35, 8.81] | [0.90, 1.2, 0.46] | not visible |
 
-| | 정렬 전 | 정렬 후 |
+**In every configuration the deformation is smaller than one grid cell.** Compounding it,
+the shapes' z range is −0.58 to 4.79 m while a car is 1.47 m tall — the cases sit at
+different world positions, so the union box is **3.7× inflated** and that much z
+resolution is thrown away.
+
+**This does not contradict "freezing had no effect" in section (2).** That experiment
+measured absolute Cd across *different cars*, where the encoder works well (between-shape
+distance 0.82). It is blind to deformations of *the same car* — a different metric gives
+a different conclusion.
+
+**Prescriptions (in order of cost-effectiveness)**
+1. **Per-case frame normalization** — free. The z span goes 5.37 m → 1.47 m, recovering
+   **3.7×** of resolution. The current box's 9.06 cm z cell becomes 2.4 cm.
+2. **Raise `interp_res`** — 256×128×128 halves the cell on every axis. It costs 8× in
+   the geometry representation only, a small share of the whole model.
+3. Both together: cells of about [2.1, 1.6, 1.15] cm → the deformation becomes 1.9/2.5/3.5
+   cells, resolvable for the first time.
+4. If still insufficient, feed the displacement field explicitly as an input channel.
+
+---
+
+### 2026-08-27 (7th) — Prescription 1 applied: it was not resolution, **the shapes were outside the grid**
+
+Measuring the normalized coordinates directly with `check_normalized_placement.py` showed
+something far worse than section (6)'s diagnosis. The encoder normalizes against a fixed
+DrivAerML box and then samples the SDF over a [−1, 1] grid — and our shapes had a
+normalized z of **+3.41 to +4.94**.
+
+| | Vertices inside the normalized box [−1,1] |
+|---|---|
+| Before alignment | **12.6%** (most cases **0.0%**) |
+| After alignment | **100.0%** |
+
+**With coordinates outside the grid, any shape produced essentially the same encoding.**
+That is the real reason a deformation moved the encoding by only 0.2%. Per-case shifts
+also came out spread across x −10.45 to +1.91 m and z −18.17 to +2.18 m — the data mixes
+several coordinate conventions.
+
+**Alignment method** (`align_case_frames.py`): **translation only** — no rotation, no
+scaling — so forces, areas, and coefficients are unchanged. The anchor is deliberately
+insensitive to deformation: the **area-weighted centroid** (x, y) and the **ground plane**
+(z). Using a bounding-box extremity would let a 4 cm tail deformation shift the box by
+4 cm and erase the very signal being measured.
+
+**Effect**
+
+| | Before | After |
 |---|---|---|
-| 인코더 민감도(쌍내부/형상간) | 0.002 | **0.021 (14.6배)** |
-| **사전학습 절대 Cd MAE** | 0.477 | **0.331 (31% 개선)** |
-| 미세조정 후 절대 Cd MAE | 0.085 | 0.085 (변화 없음) |
-| 방향, 보정 없음 | 54/83 = 65% | **57/83 = 69%** |
-| 방향, 편향 제거 | 72/83 = 87% (p=0.003) | 67/83 = 81% (p=0.083) |
+| Encoder sensitivity (within-pair / between-shape) | 0.002 | **0.021 (14.6×)** |
+| **Pretrained absolute Cd MAE** | 0.477 | **0.331 (31% better)** |
+| Fine-tuned absolute Cd MAE | 0.085 | 0.085 (unchanged) |
+| Direction, no correction | 54/83 = 65% | **57/83 = 69%** |
+| Direction, bias removed | 72/83 = 87% (p=0.003) | 67/83 = 81% (p=0.083) |
 
-**사전학습 모델이 31% 좋아진 것이 정렬이 실제 결함을 고쳤다는 명확한 증거다.**
-미세조정 후 차이가 없는 것은 미세조정이 이미 좌표계 오류를 보상하고 있었다는
-뜻이고, 그 보상에 쓰이던 용량이 이제 풀린 셈이다. 다만 **방향 정확도는 여전히
-다수기준 73%에 못 미친다** — 처방 1만으로는 부족하다.
+**The pretrained model improving 31% is clear evidence that alignment fixed a real
+defect.** The absence of change after fine-tuning means fine-tuning had already been
+compensating for the frame error, and the capacity spent on that compensation is now
+freed. But **direction accuracy still falls short of the 73% majority baseline** —
+prescription 1 alone is not enough.
 
-**처방 2(해상도 상향)는 값이 없다 — 측정으로 기각.** 사전학습 가중치는
-`interp_res` 256×128×128에서 **누락 0·모양불일치 0**으로 그대로 로드되므로
-시도는 공짜였는데, 인코더 민감도가 0.021 → **0.024**로 거의 안 늘었다.
+**Prescription 2 (raising resolution) is worthless — rejected by measurement.** The
+pretrained weights load at `interp_res` 256×128×128 with **0 missing and 0 shape
+mismatches**, so the experiment was free, and encoder sensitivity barely moved: 0.021 →
+**0.024**.
 
-돌이켜 보면 이 수치가 타당하다. 4 cm 변형은 5 m 차의 약 1% 형상 변화이고
-실제 ΔCd도 0.006/0.3 = 2%다. 인코딩이 2% 움직이는 것은 비례한다.
-**정렬 후에는 인코더가 병목이 아니다.**
+In hindsight that number is reasonable. A 4 cm deformation is about a 1% shape change on
+a 5 m car, and the actual ΔCd is 0.006/0.3 = 2%. A 2% move in the encoding is
+proportionate. **After alignment the encoder is not the bottleneck.**
 
-**남은 병목과 다음 수**: 디코더가 2% 인코딩 변화를 올바른 *부호*로 옮겨야
-하는데, 학습의 대부분은 절대 Cd 데이터라 그 구분이 중요하지 않았다. 가장
-직접적인 지렛대는 **학습 쌍을 늘리는 것**이다 — 400쌍 중 벤치마크로 쓴 83쌍은
-노이즈 기준(|ΔCd| ≥ 0.0015)이 276쌍을 잘라낸 결과인데, **벤치마크에는 그 기준이
-필요해도 학습에는 필요 없다**(편향 없는 잡음은 회귀 타깃으로 여전히 유효).
-물리적으로 타당한 ~370쌍 전부로 학습하고 채점은 깨끗한 83쌍으로 하면
-학습 재료가 4.5배가 된다.
+**Remaining bottleneck and next move**: the decoder has to turn a 2% encoding change into
+the right *sign*, and most of its training is absolute-Cd data where that distinction did
+not matter. The most direct lever is **more training pairs** — of the 400 pairs, the 83
+used as a benchmark are what remains after the noise floor (|ΔCd| ≥ 0.0015) cut 276, and
+**that floor is needed for the benchmark but not for training** (unbiased noise is still
+a valid regression target). Training on all ~370 physically valid pairs while scoring on
+the clean 83 gives 4.5× the material.
 
 ---
 
-### 2026-08-28 — 학습 쌍 5배: 방향은 그대로, **87%는 철회한다**
+### 2026-08-28 — Five times the training pairs: direction unchanged, **the 87% is retracted**
 
-(7)절의 다음 수대로 학습 쌍을 늘렸다. 노이즈 기준은 채점에만 걸고 학습에는
-걸지 않는다 — 이긴 방식이 **ΔCp 필드 손실**이라 ΔCd 값을 아예 읽지 않기
-때문이다. S3에서 메시 437개를 더 받아 **384런 / 298쌍 / 형상 85종**을 확보하고,
-채점은 깨끗한 83쌍(형상 29종)으로 유지했다. 겹마다 채점 형상을 제외한 나머지
-전부로 학습하며 런 중복은 0으로 검사했다(`crossval_big.py`).
+The training pairs were expanded as section (7) prescribed. The noise floor applies to
+scoring only, not training — the winning method is the **ΔCp field loss**, which never
+reads the ΔCd value. Fetching 437 more meshes from S3 gave **384 runs / 298 pairs / 85
+geometries**, with scoring kept on the clean 83 pairs (29 geometries). Each fold trains
+on everything except the scoring geometries, with run overlap checked at zero
+(`crossval_big.py`).
 
-준비 단계 검증: 새 384런에서도 **적분 Cd가 매니페스트와 0.5% 이내 일치**,
-정렬 후 **정점 100%가 인코더 격자 안**. 계수는 정렬 후 기준으로 재계산했다 —
-법선 방향 판정이 좌표 원점에 의존하므로 형상이 원점에서 멀면 잘못 뒤집힌다.
+Preparation checks: on the new 384 runs the **integrated Cd matches the manifest within
+0.5%**, and after alignment **100% of vertices are inside the encoder grid**. Coefficients
+were recomputed in the aligned frame — the normal-orientation test depends on the
+coordinate origin, so a shape far from the origin can be flipped incorrectly.
 
-| 조건 | 학습 쌍 | 보정 없음 | 편향 제거 | 적합된 편향 |
+| Condition | Training pairs | No correction | Bias removed | Fitted bias |
 |---|---|---|---|---|
-| 정렬 전 | 52 | 65% | **87%** (p=0.003) | +0.006~+0.014 |
-| 정렬 후 | 52 | 69% | 81% (p=0.083) | +0.007~+0.015 |
-| **정렬 + 확대** | **262~267** | **69%** | **71%** (p=0.737) | **+0.0013~+0.0023** |
-| 다수기준 | | **73%** | | |
+| Before alignment | 52 | 65% | **87%** (p=0.003) | +0.006 to +0.014 |
+| After alignment | 52 | 69% | 81% (p=0.083) | +0.007 to +0.015 |
+| **Aligned + expanded** | **262-267** | **69%** | **71%** (p=0.737) | **+0.0013 to +0.0023** |
+| Majority baseline | | **73%** | | |
 
-**학습 쌍을 5배로 늘려도 방향 정확도는 69%로 변하지 않는다.**
+**Five times the training pairs leaves direction accuracy unchanged at 69%.**
 
-**87%를 철회한다.** 편향 제거 결과가 87% → 81% → 71%로 조건마다 흔들리는 것
-자체가 그 수치를 능력으로 인용할 수 없다는 증거다. "증가" 판정 정밀도도
-52쌍에서 13개 중 12개(92%)였던 것이 298쌍에서 22개 중 10개(45%)로 무너졌다 —
-그 92%도 소표본이었다. (5)·(6)절에서 "제품 질문 최초의 유의한 결과"라고
-기록한 것은 과했다.
+**The 87% is retracted.** That the bias-corrected result swings 87% → 81% → 71% across
+conditions is itself the evidence that it cannot be quoted as a capability. The precision
+on "increase" calls collapsed the same way, from 12 of 13 (92%) at 52 pairs to 10 of 22
+(45%) at 298 — that 92% was small-sample too. Recording it in sections (5) and (6) as
+"the first significant result on the product question" was overreach.
 
-**다만 데이터 확대가 한 가지는 확실히 규명했다**: 적합된 편향이 6배 줄었다
-(+0.007~+0.015 → +0.0013~+0.0023). **그 편향은 소표본 인공물이었고 데이터가
-늘자 자연히 사라졌다.** 그런데 편향이 사라져도 방향 능력은 69%로 같다 —
-편향 제거가 주던 이득은 모델의 실제 신호가 아니었다.
+**But the expansion did settle one thing**: the fitted bias shrank sixfold
+(+0.007-0.015 → +0.0013-0.0023). **It was a small-sample artefact, and more data removed
+it on its own.** And with the bias gone, direction is still 69% — so the gain the bias
+correction had been providing was not the model's own signal.
 
-**현 상태 정리**: 원신호는 세 조건에서 65%/69%/69%로 안정적이며 **다수기준
-73%에 못 미친다.** 지금까지 시도해 확인된 것 —
-- 손실 설계(ΔCp / ΔCp+ΔCd / 적분 Cd): ΔCp만이 최선, 적분 항은 해로움
-- 학습 쌍 6 → 52 → 298: 52쌍까지는 개선, 그 이상은 정체
-- 좌표계 정렬: **실재하는 결함을 고쳤다**(사전학습 절대 Cd 31% 개선, 인코더
-  민감도 14.6배) 그러나 방향은 65% → 69%에 그침
-- 격자 해상도 2배: 민감도 0.021 → 0.024, 무의미
-- 편향 보정: 불안정, 철회
+**Current state**: the uncorrected signal is stable at 65%/69%/69% across three
+conditions and **falls short of the 73% majority baseline**. What has been tried and
+established:
+- Loss design (ΔCp / ΔCp+ΔCd / integrated Cd): ΔCp alone is best; the integral term hurts
+- Training pairs 6 → 52 → 298: improvement up to 52, flat beyond
+- Frame alignment: **fixed a real defect** (pretrained absolute Cd 31% better, encoder
+  sensitivity 14.6×) but direction only 65% → 69%
+- Grid resolution ×2: sensitivity 0.021 → 0.024, meaningless
+- Bias correction: unstable, retracted
 
-**남은 것과 판단**: 손실·데이터량·좌표계·해상도를 다 건드려도 69%다. 이는
-G2 라벨 자체의 ΔCd 신뢰도 문제일 가능성이 크다 — G2는 gtr 6쌍 중 2쌍에서
-LES와 부호가 어긋났고(20~33%), 그 정도 라벨 오차면 관측되는 69%와 정합한다.
-**다음은 모델을 더 만지는 것이 아니라 라벨을 검증하는 것이다**: 모델과 G2가
-엇갈리는 쌍을 골라 LES 4단계로 판정하면, 69%가 모델 한계인지 라벨 한계인지
-갈린다. 4시간짜리 런을 값지게 쓰는 유일한 용도다.
-
----
-
-### 2026-08-28(2) — 69%는 혼합값이었다: **실제 차에서는 76%** (LES 없이 규명)
-
-LES 판정을 준비하며 대상 쌍을 고르다가, **불일치 13개 중 6개가 단 두 형상**
-(b2K5nBxC 4개, 8pzSt7MP 2개)에 몰려 있음을 봤다. 무작위가 아니었다. 그리고
-형상을 봉합하려다 치수를 확인하니:
-
-- 대조군 5ikuXj53: [5.00, 1.97, 1.32] m, 체적 7.85 m³ — 차량
-- **b2K5nBxC (불일치 4쌍)**: **[4.06, 3.74, 5.00] m, 체적 35.9 m³** — 차량 아님
-
-**32 GPU-시간을 쓰기 전에 공짜로 검증할 수 있는 가설**이 생겼다: 69% 천장은
-라벨 문제가 아니라 **형상 분포** 문제일지 모른다.
-
-**`aox_g3/upload_gate.py`(이 분석 전에 다른 목적으로 작성된 생산용 분류기)로
-채점을 쪼갠 결과** — 사후에 고른 임계값이 아니라는 점이 중요하다:
-
-| 분류 | 쌍 | 실제 방향 | 다수기준 | 모델 | p | 값상관 |
-|---|---|---|---|---|---|---|
-| **full_car** | 63 | 감소 41 / 증가 22 | 65% | **48/63 = 76%** | **0.040** | **+0.62** |
-| non_car_shape | 16 | 감소 16 / **증가 0** | 100% | 5/16 = 31% | — | −0.33 |
-| component | 4 | 감소 4 / **증가 0** | 100% | 4/4 = 100% | — | +1.00 |
-
-**전체 69%와 다수기준 73%는 축퇴된 비차량 그룹이 만든 혼합값이었다.**
-non_car_shape 16쌍과 component 4쌍은 **전부 한 방향(감소)**이라 방향 정보가
-아예 없다 — 좋은 모델과 나쁜 모델을 구분할 수 없고, "증가"라고 말하면 무조건
-벌점이다. 그 20쌍이 다수기준을 73%로 끌어올려 놓고 모델 점수는 끌어내렸다.
-
-**실제 차 63쌍에서는 다수기준 65% 대비 76%, p = 0.040, 값상관 +0.62다.**
-전체 83쌍의 값상관 +0.23과 비교하면 신호가 어디 있었는지 분명하다.
-
-**더 엄격한 형상 필터**(높이 1.2~1.8 m, 폭 1.7~2.3 m)로 자르면 45쌍에서
-**다수기준 51%(감소 23/증가 22, 거의 균형) 대비 89%, p ≈ 0, '증가' 19개 중
-18개 정답(정밀도 95%)**이 나온다. 다만 그 임계값은 결과를 본 뒤 내가 정한
-것이므로, **인용은 독립 분류기 기준인 76%로 한다.** 두 기준 모두 결론은 같다.
-
-**LES 판정은 취소한다.** 판정 대상 1순위였던 b2K5nBxC가 바로 `non_car_shape`
-(폭 3.85 m, 높이 3.70 m)였다 — 차가 아닌 형상에 대해 라벨을 판정할 뻔했다.
-**형상 분류 점검이 32 GPU-시간을 아꼈다.**
-
-**정정 정리**: (5)·(6)절의 87%는 철회 상태로 두고, (7)·(8)절의 "69% 천장"은
-**"전 형상 혼합 69%, 실제 차 76%"**로 갱신한다. 라벨 신뢰도가 천장이라는
-가설은 아직 검증되지 않았고, 지금 증거는 **형상 분포**를 더 지지한다.
-
-**다음 우선순위**
-1. **벤치마크에서 비차량 형상을 분리** — 방향 정보가 없는 20쌍을 섞어 채점하면
-   모델을 과소평가한다. `upload_gate` 판정을 벤치마크 메타데이터에 굳힌다.
-2. **비차량 형상 처리 방침** — 서비스가 이런 형상을 받으면 방향 예측이 우연
-   수준(31%)이므로, `upload_gate`가 이미 내리는 판정을 추론 응답에 노출해
-   신뢰도 경고로 쓴다(그 경로는 이미 `/v1/infer`에 있다).
-3. 차량형 63쌍만으로 재학습·재채점해 76%가 더 오르는지 확인.
+**What remains, and the judgement**: after touching loss, data volume, coordinate frame,
+and resolution, it is still 69%. This may well be a reliability problem in the G2 ΔCd
+labels themselves — G2 disagreed with LES on 2 of the 6 gtr pairs (20-33%), and label
+error of that order is consistent with the observed 69%.
+**The next move is not more model work but validating the labels**: taking the pairs
+where the model and G2 disagree and adjudicating with 4-level LES separates a model limit
+from a label limit. It is the one use that makes a 4-hour run worth it.
 
 ---
 
-### 2026-08-28(3) — 차량형만 학습: 크기 정확도 45% 개선, 방향은 제자리
+### 2026-08-28 (2nd) — The 69% was a mixture: **76% on actual cars** (established without LES)
 
-`aox_g3/upload_gate.py`로 전 런을 분류하니(`classify_pair_runs.py`)
-383런 중 **full_car 313 / non_car_shape 58 / component 6 / unsure 6**,
-쌍 298개 중 **full_car 244개**로 데이터 손실이 18%뿐이었다. 교차검증기에
-형상 필터를 붙여 차량형만으로 학습·채점했다.
+While selecting pairs for LES adjudication, **6 of the 13 disagreements turned out to be
+concentrated in just two geometries** (b2K5nBxC 4, 8pzSt7MP 2). Not random. And checking
+dimensions while preparing to seal the shapes:
 
-| 조건 | 학습 쌍 | 방향 | p | 값상관 | **ΔCd MAE** | 적합 편향 |
+- Control 5ikuXj53: [5.00, 1.97, 1.32] m, volume 7.85 m³ — a vehicle
+- **b2K5nBxC (4 disagreeing pairs)**: **[4.06, 3.74, 5.00] m, volume 35.9 m³** — not a vehicle
+
+**A hypothesis testable for free before spending 32 GPU-hours**: the 69% ceiling may be a
+**shape distribution** problem rather than a label problem.
+
+**Splitting the score with `aox_g3/upload_gate.py`** (a production classifier written for
+another purpose before this analysis) — the point being that this is not a threshold
+chosen after seeing the result:
+
+| Class | Pairs | True direction | Majority | Model | p | Value corr |
 |---|---|---|---|---|---|---|
-| 전 형상 학습 → 차량 채점 | 262 | 48/63 = 76% | 0.040 | +0.62 | 0.0110 | +0.0013~+0.0023 |
-| **차량만 학습 → 차량 채점** | 218 | 49/63 = **78%** | **0.021** | **+0.68** | **0.0060** | **−0.0004~−0.0007** |
+| **full_car** | 63 | 41 down / 22 up | 65% | **48/63 = 76%** | **0.040** | **+0.62** |
+| non_car_shape | 16 | 16 down / **0 up** | 100% | 5/16 = 31% | — | −0.33 |
+| component | 4 | 4 down / **0 up** | 100% | 4/4 = 100% | — | +1.00 |
 
-**방향은 1쌍 차이라 개선으로 읽지 않는다** — 실행 전에 "63쌍에서 몇 쌍 차이는
-잡음"이라고 못박아 둔 기준을 그대로 적용한다. 실제 성과는 둘이다:
-**ΔCd MAE가 45% 줄었고**(0.0110 → 0.0060, |ΔCd| 중앙값 0.006과 같은 크기),
-**편향이 완전히 사라졌다**(−0.0005). 편향 제거가 오히려 성적을 낮추는 것
-(78% → 75%)이 편향이 진짜 0이라는 방증이다.
+**The overall 69% and the 73% majority baseline were a mixture produced by the degenerate
+non-car group.** The 16 non_car_shape and 4 component pairs all move **one way (down)**,
+so they carry no direction information — they cannot separate a good model from a bad one,
+and saying "increase" is automatically penalised. Those 20 pairs pushed the majority
+baseline up to 73% while pulling the model's score down.
 
-**현행 모델 재측정 — 앞선 보고를 정정한다.** 같은 차량형 63쌍에서 현행
-decoder-30epoch은 **52/63 = 83%**, 값상관 **+0.82**, ΔCd MAE 0.0055다.
-(4)절에서 "현행은 58%, 값상관 −0.14로 신호가 없다"고 한 것은 **방향 정보가
-없는 비차량 쌍에 희석된 값**이었다. 서비스 중인 모델은 실제 차에서 잘 하고
-있다.
+**On the 63 actual cars: 76% against a 65% majority, p = 0.040, value correlation +0.62.**
+Compared with +0.23 across all 83 pairs, it is clear where the signal was.
 
-**다만 그 83%를 일반화로 인용할 수 없다.** 현행의 학습 로그를 파보니 reaudit
-71런을 읽었고, 그 S3 잡 UID 43개 중 **8개가 차량형 벤치마크 22형상과 겹친다.**
-못 본 형상만 남기면:
+**A stricter shape filter** (height 1.2-1.8 m, width 1.7-2.3 m) gives, on 45 pairs,
+**89% against a 51% majority (23 down / 22 up, nearly balanced), p ≈ 0, and 18 of 19
+"increase" calls correct (95% precision)**. But that threshold was chosen after seeing the
+result, so **the number quoted is the independent classifier's 76%.** Both criteria lead
+to the same conclusion.
 
-| 모델 | 전체 63쌍 | 현행 미접촉 41쌍 (다수기준 **93%**) |
+**The LES adjudication is cancelled.** The top adjudication candidate, b2K5nBxC, is
+exactly `non_car_shape` (3.85 m wide, 3.70 m tall) — labels were about to be adjudicated
+for something that is not a car. **A shape-class check saved 32 GPU-hours.**
+
+**Correction summary**: the 87% from sections (5) and (6) stays retracted, and the "69%
+ceiling" of sections (7) and (8) is updated to **"69% mixed across shapes, 76% on actual
+cars."** The hypothesis that label reliability is the ceiling remains untested, and the
+current evidence favours **shape distribution**.
+
+**Next priorities**
+1. **Separate non-car shapes out of the benchmark** — scoring with 20 direction-free pairs
+   mixed in understates the model. Freeze the `upload_gate` verdict into the benchmark
+   metadata.
+2. **A policy for non-car shapes** — direction prediction on such shapes is at chance
+   (31%), so expose the verdict the `upload_gate` already produces in the inference
+   response as a confidence warning (that path already exists in `/v1/infer`).
+3. Retrain and re-score on the 63 car pairs alone to see whether 76% goes higher.
+
+---
+
+### 2026-08-28 (3rd) — Training on car geometry only: 45% better magnitude accuracy, direction unchanged
+
+Classifying every run with `aox_g3/upload_gate.py` (`classify_pair_runs.py`) gives
+**full_car 313 / non_car_shape 58 / component 6 / unsure 6** of 383 runs, and
+**244 full_car of 298 pairs** — only 18% data loss. A shape filter was added to the
+cross-validator so that training and scoring both use cars only.
+
+| Condition | Training pairs | Direction | p | Value corr | **ΔCd MAE** | Fitted bias |
+|---|---|---|---|---|---|---|
+| All shapes → car scoring | 262 | 48/63 = 76% | 0.040 | +0.62 | 0.0110 | +0.0013 to +0.0023 |
+| **Cars only → car scoring** | 218 | 49/63 = **78%** | **0.021** | **+0.68** | **0.0060** | **−0.0004 to −0.0007** |
+
+**Direction moved by one pair, which is not read as an improvement** — applying the
+criterion pinned down before the run ("a few pairs' difference out of 63 is noise"). The
+real gains are two: **ΔCd MAE fell 45%** (0.0110 → 0.0060, the same size as the median
+|ΔCd| of 0.006), and **the bias vanished entirely** (−0.0005). That bias removal now makes
+the score worse (78% → 75%) is corroboration that the bias really is zero.
+
+**Re-measuring the current model — correcting an earlier report.** On the same 63 car
+pairs the current decoder-30epoch scores **52/63 = 83%**, value correlation **+0.82**,
+ΔCd MAE 0.0055. Section (4)'s statement that "the current model is at 58% with value
+correlation −0.14, i.e. no signal" was **a figure diluted by direction-free non-car pairs**.
+The model in production does well on actual cars.
+
+**That 83% cannot be quoted as generalization, though.** Digging into the current model's
+training log shows it read 71 reaudit runs, and **8 of their 43 S3 job UIDs overlap with
+the car benchmark's 22 geometries**. Keeping only unseen geometry:
+
+| Model | All 63 pairs | 41 pairs unseen by the current model (majority **93%**) |
 |---|---|---|
-| 현행 | 83% (기준 65%, p=0.002) | 73%, 값상관 +0.54, MAE 0.0041 |
-| 교차검증 모델 | 78% (기준 65%, p=0.021) | 66%, 값상관 +0.34, MAE 0.0064 |
+| Current | 83% (baseline 65%, p=0.002) | 73%, value corr +0.54, MAE 0.0041 |
+| Cross-validated model | 78% (baseline 65%, p=0.021) | 66%, value corr +0.34, MAE 0.0064 |
 
-**방향 다양성을 가진 쌍이 하필 현행이 본 8형상에 몰려 있어**, 그걸 빼면
-41쌍 중 38쌍이 한 방향(다수기준 93%)이라 판별력이 사라진다. 현행의 83%가
-일반화인지 암기인지 **이 벤치마크로는 가릴 수 없다**.
+**The pairs carrying directional variety happen to be concentrated in the 8 geometries the
+current model saw**, so removing them leaves 38 of 41 pairs moving one way (93% majority)
+and the discriminating power disappears. Whether the current model's 83% is generalization
+or recall **cannot be separated with this benchmark**.
 
-**따라서 인용할 수 있는 것**: 교차검증 모델의 **78%**(형상 완전 분리,
-다수기준 65%, p=0.021, 값상관 +0.68, ΔCd MAE 0.0060). 현행의 83%는 참고치로
-두되 학습 중첩을 반드시 함께 표기한다.
+**So what can be quoted**: the cross-validated model's **78%** (fully geometry-separated,
+65% majority, p=0.021, value correlation +0.68, ΔCd MAE 0.0060). The current model's 83%
+stays as a reference figure, always annotated with the training overlap.
 
-**벤치마크의 구조적 한계가 드러났다**: 채점 가능한 차량형 22형상 중 8형상이
-현행 학습과 겹치고, 나머지 14형상은 방향이 거의 한쪽이다. **다음 벤치마크
-확장의 요건은 쌍 수가 아니라 "현행이 보지 않은 형상에서 항력이 증가하는 변형"**
-이다. 400쌍 풀에서 그 조건으로 재선별하거나, 없다면 그때가 LES를 쓸 자리다.
+**A structural limit of the benchmark surfaced**: of the 22 scorable car geometries, 8
+overlap with the current model's training, and the remaining 14 are almost entirely
+one-directional. **What the next benchmark expansion requires is not pair count but
+"drag-increasing deformations on geometry the current model has not seen."** Either
+re-select from the 400-pair pool under that condition, or, failing that, this is where LES
+earns its place.
 
 ---
 
-### 2026-08-28(4) — 재선별: 풀 고갈 확인, 그리고 **균형 벤치마크에서 78% (p=0.0003)**
+### 2026-08-28 (4th) — Re-selection: the pool is exhausted, and **78% on a balanced benchmark (p=0.0003)**
 
-(3)절이 남긴 요건 — "현행이 보지 않은 형상에서 항력이 증가하는 변형" — 으로
-400쌍 풀을 재선별했다(`find_drag_increasing_pairs.py`).
+The 400-pair pool was re-selected under the requirement left by section (3) —
+"drag-increasing deformations on geometry the current model has not seen"
+(`find_drag_increasing_pairs.py`).
 
-| 단계 | 남은 쌍 |
+| Stage | Pairs remaining |
 |---|---|
-| 전체 | 400 |
-| 물리적으로 타당 | 339 |
-| **항력 증가** | **89** |
-| 노이즈 기준 통과 | 24 |
-| **+ 현행 미학습 형상** | **3** (형상 2종) |
+| All | 400 |
+| Physically valid | 339 |
+| **Drag increasing** | **89** |
+| Above the noise floor | 24 |
+| **+ unseen by the current model** | **3** (2 geometries) |
 
-**풀이 고갈됐다.** 3쌍뿐이고 하나는 +0.0019로 기준에 겨우 걸친다. 구조적
-이유다 — 400쌍이 RBF **최적화** 실행 산물이라 설계상 대부분 항력을 줄인다.
-**기존 데이터로 현행 모델을 깨끗하게 검증하는 것은 불가능하다.**
+**The pool is exhausted.** Only 3 pairs, one of which barely clears the floor at +0.0019.
+The reason is structural — the 400 pairs are products of RBF *optimisation* runs, so by
+construction most of them reduce drag.
+**Cleanly validating the current model with the existing data is impossible.**
 
-**대신 후보 모델 비교용으로는 더 나은 벤치마크를 만들 수 있었다.**
-"현행 미학습" 조건을 빼면 증가 24쌍이 남고, 같은 수의 감소 쌍과 맞춰
-`build_balanced_benchmark.py`로 **40쌍 / 형상 17종 / 증가 20 : 감소 20,
-다수기준 50%**를 구성했다(`benchmarks/g2_balanced_pairs_40.json`).
-기존 63쌍(기준 65%)에서는 22쌍만 판별에 기여했지만 여기서는 40쌍 전부가
-기여한다. 이 벤치마크를 채점 대상으로 교차검증을 다시 돌렸다(17형상 중 일부가
-기존 학습 겹에 있었으므로 재실행이 필요했다).
+**But a better benchmark for comparing candidate models could be built.** Dropping the
+"unseen by the current model" condition leaves 24 increasing pairs, and matching them with
+an equal number of decreasing ones, `build_balanced_benchmark.py` produced
+**40 pairs / 17 geometries / 20 up : 20 down, a 50% majority baseline**
+(`benchmarks/g2_balanced_pairs_40.json`).
+In the previous 63-pair set (65% baseline) only 22 pairs contributed discriminating power;
+here all 40 do. Cross-validation was re-run with this as the scoring set (some of the 17
+geometries were in the previous training folds, so a re-run was necessary).
 
-| | 방향 | 다수기준(50%) 대비 p | 값상관 | '증가' 정밀도 | 적합 편향 |
+| | Direction | p vs majority (50%) | Value corr | "Increase" precision | Fitted bias |
 |---|---|---|---|---|---|
-| **보정 없음** | **31/40 = 78%** | **0.0003** | +0.52 | 25개 중 18개 (72%) | −0.0009~−0.00006 |
-| 편향 제거 | 33/40 = 82% | ~0 | +0.52 | 27개 중 20개 | — |
+| **No correction** | **31/40 = 78%** | **0.0003** | +0.52 | 18 of 25 (72%) | −0.0009 to −0.00006 |
+| Bias removed | 33/40 = 82% | ~0 | +0.52 | 20 of 27 | — |
 
-**이번 세션에서 가장 깨끗한 결과다**: 균형 잡힌 벤치마크(모든 쌍이 판별에
-기여), 형상 완전 분리, **편향 보정 없이 78%**, 적합 편향은 사실상 0.
-78%라는 값이 63쌍 벤치마크와 40쌍 균형 벤치마크에서 동일하게 나온 것도
-안정성을 뒷받침한다. 이제 편향 보정은 필요 없다 — (5)절에서 임시방편으로
-도입했던 것이 데이터가 갖춰지자 불필요해졌다.
+**This is the cleanest result of the session**: a balanced benchmark (every pair
+discriminates), full geometry separation, **78% with no bias correction**, and a fitted
+bias of effectively zero. That the 78% matches what the 63-pair car benchmark gave also
+supports its stability. Bias correction is no longer needed — what was introduced as a
+stopgap in section (5) became unnecessary once the data was adequate.
 
-**LES가 필요한 자리가 처음으로 정확해졌다.** 두 번 취소한 캠페인은 이제
-"기존 라벨 판정"이 아니라 **"현행이 안 본 차량 형상에 항력을 늘리는 변형을
-새로 만들어 라벨링"**이다. 물리적 처방도 분명하다 — 후미 뭉툭화, 후폭 확대,
-리어 루프라인 상승. 다만 그건 **현행 모델 검증용**이고, 후보 모델 개발·비교는
-방금 만든 균형 벤치마크로 충분하다.
+**Where LES is needed became precise for the first time.** The twice-cancelled campaign is
+now not "adjudicating existing labels" but **"creating and labelling drag-increasing
+deformations on car geometry the current model has not seen."** The physical prescription
+is clear too — blunt the tail, widen the rear, raise the rear roofline. That is for
+validating the current model; candidate-model development and comparison are fully served
+by the balanced benchmark just built.
 
 ---
 
-### 2026-08-28(5) — 스윕 시험: 한 번의 유의한 변형은 되고, **미세 스윕은 안 된다**
+### 2026-08-28 (5th) — Sweep test: one meaningful deformation works, **a fine sweep does not**
 
-"조금씩 변경해보고 맞는지 테스트"를 위한 데이터는 이미 있었다 — RBF 설계 단계
-DSN_001→002→003→…이 같은 차를 점진적으로 변형한 궤적이고, 교차검증 예측은
-그 형상을 학습에서 안 본 모델이 낸 것이다(`sweep_trajectories.py`).
+The data for "change it a little at a time and test whether it is right" already existed —
+the RBF design steps DSN_001 → 002 → 003 → … are a trajectory of progressive deformations
+of one car, and the cross-validated predictions come from models that never saw that car
+(`sweep_trajectories.py`).
 
-**먼저 이 시험이 성립하는지부터 확인해야 했다.** 연속 단계의 |ΔCd| 중앙값은
-**0.00011** — 균형 벤치마크 쌍(0.00713)의 **65분의 1**이고 **80%가 G2 노이즈
-기준(0.0015) 아래**다. 더 심각한 것은 **궤적 전체 폭(최대−최소 Cd)의 중앙값이
-0.00068로, 65종 중 68%가 노이즈 기준보다 좁다** — 그런 궤적에서는 "어느 설계가
-최적인가"를 라벨이 답할 수 없으므로 모델을 채점할 근거가 없다.
+**First, whether the test itself is valid.** The median |ΔCd| between consecutive steps is
+**0.00011** — a **sixty-fifth** of the balanced benchmark's pairs (0.00713) — and **80%
+falls below the G2 noise floor (0.0015)**. Worse, **the median total span of a trajectory
+(max − min Cd) is 0.00068, and 68% of the 65 trajectories are narrower than the noise
+floor** — for those, the labels cannot say which design is best, so there is nothing to
+grade the model against.
 
-라벨이 답할 수 있는 궤적만(폭 ≥ 0.0045, 단계 ≥ 0.0015) 남겨 재측정:
+Re-measured on only the trajectories the labels can resolve (span ≥ 0.0045, step ≥ 0.0015):
 
-| 지표 | 모델 | 기준선 | 판정 |
+| Metric | Model | Baseline | Verdict |
 |---|---|---|---|
-| 최적 설계 정확히 일치 | 5/14 = 36% | 우연 24% | 미미 (n=14) |
-| 최적 설계 ±1단계 이내 | 6/14 = 43% | 우연 47% | 기준선 이하 |
-| **궤적 순위상관 중앙값** | **+0.40** | 0 | 실신호 |
-| 단계별 방향(유의 단계) | 26/34 = 76% | 다수기준 79% | 기준선 수준 |
+| Optimal design exactly matched | 5/14 = 36% | chance 24% | marginal (n=14) |
+| Optimal design within ±1 step | 6/14 = 43% | chance 47% | below baseline |
+| **Median trajectory rank correlation** | **+0.40** | 0 | real signal |
+| Step direction (significant steps) | 26/34 = 76% | majority 79% | at baseline |
 
-**제품 관점의 결론 — 용도를 나눠 써야 한다.**
-1. **한 번의 유의한 변형**(|ΔCd| ≥ 0.0015, 증감 균형): **78%** (우연 50%,
-   p = 0.0003). 쓸 수 있다.
-2. **미세 스윕에서 최적점 찾기**: 정확 36% / ±1 43%(우연 47%). **쓸 수 없다.**
-3. **응답 곡선의 순서**: 순위상관 +0.40. 부분적으로 따라간다.
+**Product conclusion — use it for the right purpose.**
+1. **One meaningful deformation** (|ΔCd| ≥ 0.0015, balanced up/down): **78%** (chance 50%,
+   p = 0.0003). Usable.
+2. **Finding the optimum in a fine sweep**: exact 36% / within ±1 43% (chance 47%).
+   **Not usable.**
+3. **The order of the response curve**: rank correlation +0.40. Partially tracked.
 
-**부수 발견 — G2 최적화 루프 자체의 문제.** 기존 RBF 최적화 궤적의 **68%가
-전체 폭조차 솔버 노이즈보다 작다.** 그 최적화들은 실재하는 개선을 분해하지
-못한 채 돌았다는 뜻이다. 우리 모델 이전에 라벨 생산 쪽에서 점검할 사안이다.
+**Side finding — a problem with the G2 optimisation loop itself.** **68% of the existing
+RBF optimisation trajectories have a total span narrower than the solver's own noise.**
+Those optimisations ran without being able to resolve a real improvement. That is a matter
+to check on the label-production side, before our model.
 
 ---
 
-### 2026-08-28(6) — 프론트 반영: 실측 신뢰도와 오차를 화면에 붙였다
+### 2026-08-28 (6th) — Frontend: measured confidence and error bars put on screen
 
-측정만 하고 서비스에 반영이 없다는 지적에 따라 확인한 결과, 이번 세션의 모델
-작업은 **아무것도 배포되지 않았다**(서비스 체크포인트는 여전히
-`decoder-30epoch.pt`). 승격할 만한 깨끗한 승리가 없었으므로 그 자체는 맞다.
-대신 **이미 측정한 것을 화면에 정직하게 옮기는 작업**을 했다.
+Following the observation that everything was being measured with nothing reaching the
+service, a check confirmed that **none of this session's model work was deployed** (the
+serving checkpoint is still `decoder-30epoch.pt`). That is correct in itself, since there
+was no clean win worth promoting. Instead, the work was **honestly moving what has already
+been measured onto the screen**.
 
-**좌표계 정렬을 추론 경로에 넣는 건 보류했다.** A/B 결과(현행 모델):
+**Putting frame alignment into the inference path is deferred.** A/B result (current model):
 
-| 게이트 | 원본 | 정렬 |
+| Gate | Original | Aligned |
 |---|---|---|
 | gate15 | 0.0929 | **0.0710** |
 | Windsor | **0.0629** | 0.0886 |
 | gtr | **0.0121** | 0.0209 |
 
-사전학습 모델은 정렬로 2/3이 크게 개선되는데(Windsor 0.3245 → 0.1281) 현행은
-1/3만 개선된다. **현행이 어긋난 좌표계에 맞춰 미세조정으로 보상하고 있다는
-뜻**이므로, 정렬의 이득은 재학습한 모델을 통째로 교체할 때 얻어야 한다.
-측정 자체는 네 가지로 검증했다 — 법선 부호 뒤집힘 0/7, 필드 값 비트 단위 동일,
-점 이동 표준편차 0(순수 평행이동), 인코더·디코더 입력이 76.2% → 100%로 일관.
+The pretrained model improves greatly on 2 of 3 with alignment (Windsor 0.3245 → 0.1281)
+while the current model improves on only 1 of 3. **That means the current model has been
+compensating for the misaligned frames through fine-tuning**, so the gain from alignment
+has to be taken by replacing the model wholesale after retraining.
+The measurement itself was verified four ways — no normal-sign flips (0/7), bit-identical
+field values, zero-variance point displacement (pure translation), and encoder and decoder
+inputs moving together from 76.2% to 100%.
 
-**ΔCl을 처음 측정했다**(`measure_delta_cl.py`). 균형 벤치마크에 양력 라벨이
-이미 있었다(표면장 적분, 같은 적분이 매니페스트 항력을 0.7% 이내로 재현).
+**ΔCl was measured for the first time** (`measure_delta_cl.py`). The balanced benchmark
+already carried lift labels (integrated from the surface field, the same integration that
+reproduces the manifest's drag within 0.7%).
 
-| | 방향 | 다수기준 | p | MAE | 값상관 |
+| | Direction | Majority | p | MAE | Value corr |
 |---|---|---|---|---|---|
 | ΔCd | 78% | 50% | 0.0003 | 0.008 | +0.52 |
 | ΔCl | 72% | 55% | **0.018** | 0.019 | **−0.06** |
 
-**ΔCl은 방향이 유의하게 낫지만 크기는 정답과 무상관이다.** 부호만 읽어야 한다.
+**ΔCl beats chance on direction significantly, but its magnitude is uncorrelated with the
+truth.** Only the sign should be read.
 
-**프론트에 붙인 것** (aox-next `origin/debug`, `cdac4d7d`/`c5ced775`/`0b326e62`)
-- `RecommendationTrustNote`: 업로드 게이트 판정별로 그 형상에서 **실제 측정된**
-  방향 정확도를 표시(차량 78%/72%, 비차량 우연 수준 31%, 부품·미확인은 미측정)
-- ΔCd/ΔCl 표기를 네 자리 → 세 자리로 줄이고 **±0.008 / ±0.019**를 함께 표시
-- **'유의미' 임계값을 0.001 → 0.008**로. 기존 0.001은 실측 오차의 1/6이라
-  부호가 뒤집힐 수 있는 변화를 개선이라 불러 왔다 — 이번 수정에서 가장 실질적
-- 오차 안의 변화는 초록/주황 대신 회색 + `Too small to call`. 색으로 방향을
-  단정하지 않는다
-- 부제 "ranked by predicted Cd" → "sorted by predicted ΔCd". 정렬 기준은 밝히되
-  그 순서가 검증됐다는 함의는 뺀다(미세 스윕 최적점 적중 36% vs 우연 24%)
+**What went into the frontend** (aox-next `origin/debug`, `cdac4d7d`/`c5ced775`/`0b326e62`)
+- `RecommendationTrustNote`: displays the **actually measured** direction accuracy for that
+  shape class per upload-gate verdict (cars 78%/72%, non-car at chance 31%, components and
+  unsure unmeasured)
+- ΔCd/ΔCl shown to three decimals instead of four, with **±0.008 / ±0.019** alongside
+- **The "meaningful" threshold raised from 0.001 to 0.008.** The old 0.001 was a sixth of
+  the measured error, so changes whose sign could flip were being called improvements —
+  the most substantive part of this change
+- Changes inside the error band are grey with `Too small to call` rather than green/orange.
+  Colour no longer asserts a direction
+- Subtitle "ranked by predicted Cd" → "sorted by predicted ΔCd". State the sort key without
+  implying that the order is validated (fine-sweep optimum hit rate 36% vs chance 24%)
 
-**크기별 임계값은 두지 않았다** — 구간별 방향 정확도가 40쌍에서 4~21쌍씩이라
-단조롭지 않았고(100/67/67/100%), 근거로 삼을 수 없다.
+**No magnitude-dependent threshold was set** — per-band direction accuracy across 40 pairs
+gives 4-21 pairs per band and was not monotone (100/67/67/100%), so it cannot serve as
+evidence.
 
 ---
 
-### 2026-08-31 — 정렬 데이터로 재학습: **절대 Cd 43% 개선, 그러나 승격 보류**
+### 2026-08-31 — Retraining on aligned data: **absolute Cd 43% better, but promotion withheld**
 
-(6)절에서 "정렬의 이득은 재학습한 모델을 통째로 교체할 때 얻어야 한다"고 남긴
-다음 수를 실행했다. 시작 전에 승격 조건을 사전 등록했다 — ① 균형 40쌍 방향
-≥78% ② 표준 게이트 3종 악화 없음 ③ 절대 Cd 개선.
+Executing the next move left in section (6): "the gain from alignment has to be taken by
+replacing the model wholesale after retraining." The promotion criteria were registered
+before starting — ① balanced-40 direction ≥ 78% ② no regression on the three standard
+gates ③ absolute Cd improved.
 
-**정렬 효과 (reaudit 265런 전수, `audit_alignment_coverage.py`)**
+**Alignment effect (all 265 reaudit runs, `audit_alignment_coverage.py`)**
 
-| | 정렬 전 | 정렬 후 |
+| | Before | After |
 |---|---|---|
-| 격자 안 정점 비율(평균) | 45.2% | **87.3%** |
-| 완전 이탈(0%)인 런 | **96개** | **0개** |
-| 절반 미만인 런 | 120개 | 48개 |
+| Vertices inside the grid (mean) | 45.2% | **87.3%** |
+| Runs completely outside (0%) | **96** | **0** |
+| Runs below half | 120 | 48 |
 
-**학습 데이터의 3분의 1이 인코더 격자를 완전히 벗어나 있었다.** 남은 48개는
-치수 [4.06, 3.74, 5.00] 같은 비차량 형상이라 평행이동으로는 안 들어간다 —
-학습기에 `--min-grid-coverage` 필터를 붙여 제외한다.
+**A third of the training data was entirely outside the encoder grid.** The remaining 48
+are non-car shapes with dimensions like [4.06, 3.74, 5.00] that translation cannot bring
+inside — a `--min-grid-coverage` filter was added to the trainer to exclude them.
 
-**A/B는 깨끗하다.** 현행 학습 로그에서 실제 사용한 71런(train 54/val 9/test 8)을
-복원했고, 그 71런은 모두 정렬 후 커버리지 50% 이상이라 필터가 아무것도 자르지
-않는다. 같은 split·같은 30에폭·같은 학습기, **차이는 좌표계 정렬 하나뿐**이다.
+**The A/B is clean.** The 71 runs actually used (train 54 / val 9 / test 8) were
+reconstructed from the current model's training log, and all 71 clear 50% coverage after
+alignment, so the filter removes nothing. Same split, same 30 epochs, same trainer —
+**the only difference is frame alignment.**
 
-**표준 게이트 결과** (gate15는 학습/검증과 교집합 0개로 확인)
+**Standard gate results** (gate15 confirmed to have zero intersection with train/validation)
 
-| 모델 | gate15 MAE/순위 | Windsor | gtr Cd | ΔCd 방향 |
+| Model | gate15 MAE/rank | Windsor | gtr Cd | ΔCd direction |
 |---|---|---|---|---|
-| 현행 decoder-30ep | 0.0929 / +0.91 | 0.0629 | **0.0121** | 4/6 |
-| 재학습 원본 | 0.0954 / +0.84 | 0.0891 | 0.0063 | 4/6 |
-| **재학습 정렬** | **0.0529 / +0.83** | **0.0582** | 0.0183 | 3/6 |
+| Current decoder-30ep | 0.0929 / +0.91 | 0.0629 | **0.0121** | 4/6 |
+| Retrained, original frames | 0.0954 / +0.84 | 0.0891 | 0.0063 | 4/6 |
+| **Retrained, aligned** | **0.0529 / +0.83** | **0.0582** | 0.0183 | 3/6 |
 
-**정렬 재학습이 gate15에서 43% 개선**(0.0929 → 0.0529)됐고 Windsor도 앞선다.
-재학습 원본이 현행과 비슷한 것(0.0954 vs 0.0929)이 대조군으로서 정확히 맞는
-동작이라, 개선분은 전적으로 정렬에서 온 것이다.
+**Aligned retraining improves gate15 by 43%** (0.0929 → 0.0529) and leads on Windsor too.
+That the original-frame retrain lands near the current model (0.0954 vs 0.0929) is exactly
+what a control should do, attributing the gain entirely to alignment.
 
-**그러나 승격은 보류한다 — 조건 ①②를 못 넘었다.**
-- ② 악화 없음: **gtr Cd가 0.0121 → 0.0183으로 51% 악화**, ΔCd 방향 4/6 → 3/6
-- ① 균형 40쌍 방향: 82% → **75%**, 순위상관 +0.91 → **+0.57**
+**But promotion is withheld — criteria ① and ② were not met.**
+- ② no regression: **gtr Cd regressed 51%, 0.0121 → 0.0183**, and ΔCd direction 4/6 → 3/6
+- ① balanced-40 direction: 82% → **75%**, rank correlation +0.91 → **+0.57**
 
-**균형 40쌍의 한계도 드러났다.** 그 40쌍은 세 모델이 공통으로 학습한 형상을
-포함한다. 오염을 제거하면 **23쌍만 남고 다수기준이 87%로 축퇴**돼(증가 3 /
-감소 20) 판별력이 없다. 즉 **제품 지표로 승격을 판정할 수단이 현재 없다** —
-(4)절에서 확인한 풀 고갈이 여기서 실제 비용으로 나타났다.
+**The balanced 40 pairs showed their limit too.** Those 40 include geometry all three
+models trained on. Removing the contamination leaves **only 23 pairs with the majority
+degenerating to 87%** (3 up / 20 down), with no discriminating power. In other words,
+**there is currently no instrument that can adjudicate a promotion on the product metric** —
+the pool exhaustion identified in section (4) shows up here as a real cost.
 
-**판정**: 좌표계 정렬은 **절대 Cd에 대해 실재하고 큰 이득**(gate15 43%)이지만
-**ΔCd 방향·순위에는 손해**다. 두 지표가 반대로 움직이므로 한 모델로 둘 다
-가져갈 수 없고, 제품이 요구하는 것은 방향이므로 **현행 유지가 맞다**.
+**Verdict**: frame alignment is a **real and large gain for absolute Cd** (gate15 43%) but
+**a loss for ΔCd direction and ranking**. The two metrics move in opposite directions, so a
+single model cannot take both, and since the product needs direction, **keeping the current
+model is correct**.
 
-**다음 수 두 가지**
-1. **정렬 + 쌍 학습 결합** — 이번 재학습은 절대 Cd 손실만 썼다. 정렬된
-   데이터에 ΔCp 쌍 손실을 얹으면 방향 손실을 메울 수 있는지 확인할 값이 있다.
-2. **판정 수단 확보** — 현행이 안 본 차량 형상에 항력을 늘리는 변형이
-   필요하다. 기존 풀에 3쌍뿐이므로 **LES로 새로 만드는 것이 유일한 경로**다.
+**Two next moves**
+1. **Combine alignment with pair training** — this retrain used only the absolute Cd loss.
+   It is worth checking whether adding the ΔCp pair loss on the aligned data can make up
+   the direction loss.
+2. **Secure an instrument** — drag-increasing deformations are needed on car geometry the
+   current model has not seen. The existing pool holds three, so **creating them with LES
+   is the only path**.
 
-**정렬 + 쌍 학습 결합 (같은 날 이어서)**
+**Combining alignment with pair training (continued the same day)**
 
-앞 절의 다음 수 ①을 실행했다. 게이트 오염을 늘리지 않기 위해 **현행이 이미
-학습한 27개 형상에 대응하는 차량형 쌍 42개만** 골랐다 — 새 형상은 하나도 들이지
-않고 같은 형상에 대한 새 신호(ΔCp 필드 차이)만 더한다. 쌍 런은 학습에만 넣고
-검증·테스트는 현행과 동일하게 유지했다(`merge_pair_into_train.py`,
-`build_combined_split.py`). 학습 109런 = 절대 54 + 쌍 55.
+Next move ① from the previous section was executed. To avoid increasing gate contamination,
+**only the 42 car pairs corresponding to the 27 geometries the current model already
+trained on** were selected — no new shapes at all, only a new signal (the ΔCp field
+difference) on the same shapes. The pair runs go into training only, with validation and
+test kept identical to the current model's (`merge_pair_into_train.py`,
+`build_combined_split.py`). Training is 109 runs = 54 absolute + 55 pair.
 
-| 모델 | gate15 MAE/순위 | Windsor | gtr Cd | gtr ΔCd 방향 |
+| Model | gate15 MAE/rank | Windsor | gtr Cd | gtr ΔCd direction |
 |---|---|---|---|---|
-| **현행 decoder-30ep** | 0.0929 / +0.91 | **0.0629** | **0.0121** | 4/6 |
-| 재학습 정렬 | **0.0529** / +0.83 | 0.0582 | 0.0183 | 3/6 |
-| 결합 dw1 | 0.0585 / +0.80 | 0.0783 | 0.0391 | 4/6 |
-| 결합 dw3 | 0.0698 / +0.89 | 0.0979 | 0.0557 | 4/6 |
+| **Current decoder-30ep** | 0.0929 / +0.91 | **0.0629** | **0.0121** | 4/6 |
+| Retrained, aligned | **0.0529** / +0.83 | 0.0582 | 0.0183 | 3/6 |
+| Combined dw1 | 0.0585 / +0.80 | 0.0783 | 0.0391 | 4/6 |
+| Combined dw3 | 0.0698 / +0.89 | 0.0979 | 0.0557 | 4/6 |
 
-**결합은 gtr ΔCd 방향을 3/6 → 4/6으로 회복시켰지만 gtr Cd를 크게 악화시킨다**
-(0.0183 → 0.0391). 정렬 단독이 가졌던 gate15 이득도 일부 잃는다
-(0.0529 → 0.0585). dw3은 더 나쁘다 — 쌍 손실을 키울수록 절대 정확도가 무너진다.
+**Combining recovers gtr ΔCd direction from 3/6 to 4/6 but badly degrades gtr Cd**
+(0.0183 → 0.0391). It also gives back part of the gate15 gain alignment had on its own
+(0.0529 → 0.0585). dw3 is worse — the larger the pair loss, the more the absolute accuracy
+collapses.
 
-**균형 40쌍의 98%는 오염이다.** 결합 dw1이 39/40 = 98%를 냈지만, 확인해 보니
-**학습에 넣은 42쌍 중 17쌍이 균형 벤치마크와 동일한 쌍**이었다. 런 단위로도
-23개가 겹친다. 겹치지 않는 23쌍만 남기면 다수기준이 87%(증가 3/감소 20)로
-축퇴돼 판별력이 없다 — 참고로 그 23쌍에서 결합 dw1은 22/23이지만 다수기준
-대비 p = 0.179로 유의하지 않다.
+**The 98% on the balanced 40 is contamination.** Combined dw1 scored 39/40 = 98%, but on
+inspection **17 of the 42 pairs put into training are the same pairs the benchmark scores
+on**. At the run level 23 overlap. Keeping only the 23 non-overlapping pairs degenerates
+the majority to 87% (3 up / 20 down) with no discriminating power — for reference, combined
+dw1 scores 22/23 there, but at p = 0.179 against the majority, not significant.
 
-**판정: 승격 없음, 현행 유지.** 사전 등록 조건 ②(악화 없음)를 어느 후보도
-넘지 못했다. 세 가지가 확인됐다:
-1. **좌표계 정렬은 절대 Cd에 실재하는 큰 이득**(gate15 43% 개선)이다.
-2. **그 이득은 ΔCd 방향과 상충한다.** 쌍 손실로 방향을 되돌리면 절대 정확도가
-   그만큼 무너진다. 한 모델로 둘 다 가져가는 방법을 아직 못 찾았다.
-3. **판정 수단이 없다.** 균형 벤치마크는 학습 형상과 겹치고, 겹침을 빼면
-   축퇴된다. 이것이 지금 가장 큰 병목이다 — 모델을 더 만들어도 좋아졌는지
-   판정할 자가 없다.
+**Verdict: no promotion, keep the current model.** No candidate cleared registered
+criterion ② (no regression). Three things are established:
+1. **Frame alignment is a real, large gain for absolute Cd** (gate15 43% better).
+2. **That gain conflicts with ΔCd direction.** Recovering direction with the pair loss
+   collapses absolute accuracy by the same amount. No way to have both in one model has
+   been found yet.
+3. **There is no instrument to judge with.** The balanced benchmark overlaps with training
+   geometry, and removing the overlap makes it degenerate. This is now the largest
+   bottleneck — more models can be built, but nothing can say whether they are better.
 
-**따라서 다음은 모델이 아니라 벤치마크다.** 현행이 보지 않은 차량 형상에
-**항력을 늘리는** 변형이 필요하고, 기존 400쌍 풀에는 3쌍뿐이라 고갈됐다.
-LES로 새로 만드는 것이 유일한 경로이며, 이제 그 캠페인은 "있으면 좋은 것"이
-아니라 **다음 진전을 막고 있는 단일 병목**이다.
+**So the next step is the benchmark, not the model.** Drag-**increasing** deformations are
+needed on car geometry the current model has not seen, and the existing 400-pair pool holds
+three, so it is exhausted. Creating them with LES is the only path, and that campaign is no
+longer a nice-to-have — it is **the single thing blocking further progress**.
