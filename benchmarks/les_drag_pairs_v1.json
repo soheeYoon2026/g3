@@ -1,0 +1,52 @@
+{
+ "name": "les-drag-pairs-v1",
+ "created": "2026-09-01",
+ "purpose": "ΔCd labels from 4-level AMR-LBM LES on car geometry the serving model (decoder-30epoch) never trained on. Built because the 400-pair G2 pool holds only 3 drag-increasing pairs on unseen geometry, leaving no instrument to adjudicate a promotion on the product metric.",
+ "solver": "AMR-LBM 4-level precision, 15,000 warmup + 9,000 sampling, free placement, ground clearance 30 mm, cs_l2 0.16, XLA autotune disabled",
+ "protocol_notes": [
+  "Refinement boxes frozen from each car's baseline and reused by its variants (LES_FIX_REFINE_JSON). v8/v9 skipped this and got 4x the scatter.",
+  "Baselines were G2-solved watertight surfaces, verified watertight after STL welding and classified full_car by aox_g3/upload_gate.py.",
+  "cd_std in the result file is time-series scatter, NOT the error on the mean. The mean's standard error is recovered by block-averaging the per-900-sample cumulative means the runner logs (scripts/estimate_les_mean_error.py). For carA the two differ threefold: 0.0070 vs 0.0022.",
+  "carB ran at u_inf 0.08 because its finer base cell (41.1 mm vs carA's 50.0 mm) diverged at the default 0.10. That cost precision: SEM 0.0066 vs carA's 0.0022. ΔCd is only ever compared within one car on one frozen grid, so the differing inflow does not invalidate the deltas.",
+  "Absolute LES Cd carries a known +86% calibration offset in this implementation; only the deltas are used."
+ ],
+ "reference_area_convention": "The solver recomputes area_ref = bounding-box width x height per geometry (stl_loader.py). A deformation that widens or heightens the car therefore grows the denominator, and Cd can fall even when drag force rises - see carA/wide_rear. To raise Cd, add drag force WITHOUT changing the frontal box: extend along x only.",
+ "cars": [
+  {"id": "carA", "source_run": 65, "job_uid_prefix": "5ry9vpsU", "su2_cd": 0.2479,
+   "extents_m": [4.998, 1.967, 1.319], "les_cd": 0.2696, "les_sem": 0.0022,
+   "u_inf": 0.10, "cells_m": 83.7, "minutes": 228.9},
+  {"id": "carB", "source_run": 125, "job_uid_prefix": "c5aafeb6", "su2_cd": 0.4518,
+   "extents_m": [5.002, 1.667, 1.052], "les_cd": 0.7700, "les_sem": 0.0066,
+   "u_inf": 0.08}
+ ],
+ "pairs": [
+  {"car": "carA", "variant": "blunt_tail", "les_cd": 0.2786, "sem": 0.0031,
+   "delta_cd": 0.0090, "signal_to_noise": 2.4, "frontal_area_change_pct": 0.0,
+   "drag_force_change_pct": 3.3, "verdict": "drag_increase", "usable": true},
+  {"car": "carA", "variant": "wide_rear", "les_cd": 0.2628, "sem": 0.0035,
+   "delta_cd": -0.0068, "signal_to_noise": 1.6, "frontal_area_change_pct": 4.5,
+   "drag_force_change_pct": 1.9, "verdict": "inconclusive", "usable": false,
+   "note": "drag force rose but the reference area grew faster, so Cd fell"},
+  {"car": "carA", "variant": "raise_roof", "les_cd": 0.2643, "sem": 0.0028,
+   "delta_cd": -0.0053, "signal_to_noise": 1.5, "frontal_area_change_pct": 0.1,
+   "drag_force_change_pct": -1.9, "verdict": "inconclusive", "usable": false},
+  {"car": "carB", "variant": "blunt_tail", "les_cd": 0.7665, "sem": 0.0069,
+   "delta_cd": -0.0035, "signal_to_noise": 0.4, "frontal_area_change_pct": 0.0,
+   "drag_force_change_pct": -0.5, "verdict": "inconclusive", "usable": false,
+   "note": "the deformation that worked on carA does nothing here - the effect is shape dependent"},
+  {"car": "carB", "variant": "wide_rear", "les_cd": 0.7342, "sem": 0.0069,
+   "delta_cd": -0.0358, "signal_to_noise": 3.7, "frontal_area_change_pct": 1.5,
+   "drag_force_change_pct": -3.2, "verdict": "drag_decrease", "usable": true},
+  {"car": "carB", "variant": "raise_roof", "les_cd": 0.7321, "sem": 0.0064,
+   "delta_cd": -0.0379, "signal_to_noise": 4.1, "frontal_area_change_pct": 0.7,
+   "drag_force_change_pct": -4.3, "verdict": "drag_decrease", "usable": true}
+ ],
+ "outcome": {
+  "runs": 8,
+  "gpu_hours": 32,
+  "usable_pairs": 3,
+  "drag_increasing": 1,
+  "drag_decreasing": 2,
+  "verdict": "The campaign did not solve the bottleneck. It set out to supply drag-increasing pairs on unseen geometry and produced one. Two more usable pairs came out decreasing, which the G2 pool already has in quantity. What it did establish is the design rule for a second attempt: extend along x only so the frontal box is unchanged, and expect the effect to be shape dependent - blunt_tail gave +3.3% drag on carA and -0.5% on carB."
+ }
+}

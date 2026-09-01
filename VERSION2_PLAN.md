@@ -1446,3 +1446,71 @@ criterion ② (no regression). Three things are established:
 needed on car geometry the current model has not seen, and the existing 400-pair pool holds
 three, so it is exhausted. Creating them with LES is the only path, and that campaign is no
 longer a nice-to-have — it is **the single thing blocking further progress**.
+
+---
+
+### 2026-09-01 — LES benchmark campaign: 32 GPU-hours, one drag-increasing pair
+
+The campaign section (4) identified as "the single thing blocking further progress"
+was run: create and label drag-increasing deformations on car geometry the serving
+model has never seen. Two cars × (baseline + 3 variants) = 8 runs of 4-level LES,
+split across G3_TEST (carA) and G4_TEST2 (carB), about 4 hours each.
+
+**Shape selection** (`select_les_base_shapes.py`, `dedupe_base_shapes.py`): 44
+candidates that are full_car, watertight, and outside the serving model's training
+set. Hashing the geometry showed those 44 collapse to **10 distinct shapes and only
+5 distinct car types** — the pool's diversity is far smaller than its case count
+suggests. carA (Cd 0.2479) and carB (0.4518) were taken from opposite ends.
+
+**Deformations** (`make_drag_up_variants.py`): three smooth compact bumps designed
+to attack the wake — blunt_tail (square off the rear), wide_rear (flare the rear
+quarters), raise_roof (lift the rear roofline), 29-55 mm displacement, all verified
+watertight and still classified full_car.
+
+**Results**
+
+| Car | Variant | ΔCd | S/N | Frontal area | Drag force | Verdict |
+|---|---|---|---|---|---|---|
+| carA | **blunt_tail** | **+0.0090** | **2.4** | +0.0% | **+3.3%** | **increase ✓** |
+| carA | wide_rear | −0.0068 | 1.6 | +4.5% | +1.9% | inconclusive |
+| carA | raise_roof | −0.0053 | 1.5 | +0.1% | −1.9% | inconclusive |
+| carB | blunt_tail | −0.0035 | 0.4 | +0.0% | −0.5% | inconclusive |
+| carB | wide_rear | −0.0358 | 3.7 | +1.5% | −3.2% | decrease ✓ |
+| carB | raise_roof | −0.0379 | 4.1 | +0.7% | −4.3% | decrease ✓ |
+
+**3 of 6 pairs are usable, and only 1 is drag-increasing** — the one the campaign
+existed to produce. Frozen as `benchmarks/les_drag_pairs_v1.json`.
+
+**The scoring method had to be fixed first, and it decided the verdict.** The result
+file's `cd_std` is time-series scatter, not the error on the mean, and a 4-level grid
+legitimately *raises* it by resolving more turbulence. The runner logs a cumulative
+mean every 900 samples, so block means can be recovered by differencing and their
+scatter gives a real standard error (`estimate_les_mean_error.py`). For carA the two
+differ threefold — 0.0070 instantaneous vs **±0.0022** on the mean. Scored the naive
+way, the campaign's only success would have been discarded as noise.
+
+**Why the other two carA variants failed is now understood, and it is the useful
+output.** The solver recomputes `area_ref = bbox width × height` per geometry
+(`stl_loader.py`), so widening the car grows the denominator. carA/wide_rear raised
+the drag **force** by 1.9% while the reference area grew 4.5% — Cd fell. The physics
+worked; the normalisation swallowed it.
+
+**So the design rule for raising Cd is: add drag force without changing the frontal
+box — extend along x only.** carA/blunt_tail is exactly that (frontal area +0.0%,
+force +3.3%, all of it landing in Cd). This also explains why the 400-pair G2 pool
+holds only 3 drag-increasing pairs: most shape changes that add drag also add frontal
+area, and the two cancel.
+
+**But the recipe is not universal.** The same blunt_tail gives +3.3% force on carA and
+−0.5% on carB. carB is a much lower body (1.05 m vs 1.32 m) where squaring off the
+tail appears to tidy the wake rather than enlarge it. Good for a benchmark — a model
+must actually read the shape — but it rules out "this deformation always increases
+drag" as a generation strategy.
+
+**Honest verdict: the bottleneck is not cleared.** 32 GPU-hours bought one
+drag-increasing pair on unseen geometry, taking the total from 3 to 4. At this hit
+rate (1 in 6), the ~10 pairs needed for statistical power would cost roughly 240
+GPU-hours. A second campaign should first fix two things that cost this one dearly:
+target x-extension only, and avoid the precision loss carB suffered — its SEM was 3×
+carA's because the inflow had to drop to u_inf 0.08 for stability, which is better
+addressed by rescaling the geometry than by slowing the flow.
