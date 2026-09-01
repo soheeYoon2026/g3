@@ -1514,3 +1514,46 @@ GPU-hours. A second campaign should first fix two things that cost this one dear
 target x-extension only, and avoid the precision loss carB suffered — its SEM was 3×
 carA's because the inflow had to drop to u_inf 0.08 for stability, which is better
 addressed by rescaling the geometry than by slowing the flow.
+
+---
+
+### 2026-09-01 (2nd) — Retraction: there is no reference-area bookkeeping bug
+
+Section 2026-08-27(3) reported, as a side finding, that "the reference area is wrong
+by 3× on 3 gate labels" and concluded "this is a bookkeeping problem, not a model
+problem." **That conclusion was wrong and is retracted.**
+
+Sweeping all ~660 cases (`sweep_reference_area.py`) found 106 (16%) where the
+declared `ref_area` disagrees with the bounding-box frontal area by more than 15%,
+including 30 cases off by 2.5-9×. That looked like confirmation of a systematic bug.
+
+It is not. `which_area_matches_label.py` settles it by integrating the stored surface
+field and asking which divisor reproduces the recorded `su2_cd`:
+
+| run | label Cd | declared A | measured A | ÷ declared | ÷ measured |
+|---|---|---|---|---|---|
+| 58 | 0.2147 | 5.897 | 1.863 | **0.2146 (0%)** | 0.6792 (216%) |
+| 52 | 0.1807 | 4.470 | 1.488 | **0.1805 (0%)** | 0.5422 (200%) |
+| 79 | 0.1956 | 4.470 | 1.437 | **0.1953 (0%)** | 0.6075 (211%) |
+| 139 | 0.1440 | 5.412 | 1.047 | **0.1435 (0%)** | 0.7420 (415%) |
+| 30 | 0.3441 | 0.214 | 0.068 | **0.3437 (0%)** | 1.0854 (215%) |
+
+**The declared value reproduces the label to 0-2% on all 15 cases with a finite
+label, including every one of the "3× wrong" ones.** Label and evaluator use the same
+convention consistently. The declared reference is simply not the bounding-box
+frontal area for these shapes — a legitimate choice for slender bodies.
+
+**What the earlier analysis actually found, correctly stated**: on run_52/58/79 the
+model under-predicts the drag **force** by 3-4×. These are slender geometries
+(run_58 is 1.578 × 1.181 m in cross-section) far from the training distribution.
+Multiplying the prediction by declared/measured happened to improve the gate score
+because that ratio correlates with slenderness, which correlates with the error —
+not because it corrected a label. **It is a model problem after all, and the
+"±20% within 6/15 → 9/15" improvement reported at the time was an artefact of
+applying a fudge factor.**
+
+Consequences:
+- Priority 2 from that section ("sweep the whole training pool for the 3× error") is
+  **closed as unnecessary**. There is nothing to fix in the labels.
+- The gate's worst cases are worst because the geometry is unusual, which is the same
+  story as the shape-class split: the model does well on cars and poorly off them.
