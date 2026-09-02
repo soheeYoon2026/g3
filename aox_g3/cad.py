@@ -36,13 +36,15 @@ class CadReport:
     open_shells: int = 0
     invalid_faces: int = 0
     part_names: list = field(default_factory=list)
-    colours: int = 0
+    colours: int = 0            # colours actually assigned to faces
+    colour_palette: int = 0     # colours defined in the file, assigned or not
     bbox: list = field(default_factory=list)
     units_hint: str = ""
     triangles: int = 0
     tessellation_deflection: float = 0.0
     sewn: bool = False
     sew_tolerance: float = 0.0
+    sew_stages: list = field(default_factory=list)
     shells_after_sew: int = 0
     free_edges_after_sew: int = 0
     warnings: list = field(default_factory=list)
@@ -107,10 +109,31 @@ def read_step(path, report: Optional[CadReport] = None):
         if label.FindAttribute(TDataStd_Name.GetID_s(), name):
             report.part_names.append(name.Get().ToExtString())
 
+    # GetColors returns the palette, which is not the same as colours actually
+    # assigned to geometry: CAS-A carries 15 palette entries and assigns none of
+    # them. Since colours are how a CFD engineer picks boundary patches, the number
+    # worth reporting is how many faces carry one.
     colour_tool = XCAFDoc_DocumentTool.ColorTool_s(doc.Main())
-    colours = TDF_LabelSequence()
-    colour_tool.GetColors(colours)
-    report.colours = colours.Length()
+    palette = TDF_LabelSequence()
+    colour_tool.GetColors(palette)
+    report.colour_palette = palette.Length()
+    from OCP.Quantity import Quantity_Color
+    from OCP.XCAFDoc import XCAFDoc_ColorSurf, XCAFDoc_ColorGen
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopExp import TopExp_Explorer
+    assigned, explorer = 0, TopExp_Explorer(compound, TopAbs_FACE)
+    while explorer.More():
+        colour = Quantity_Color()
+        if colour_tool.GetColor(explorer.Current(), XCAFDoc_ColorSurf, colour) or \
+                colour_tool.GetColor(explorer.Current(), XCAFDoc_ColorGen, colour):
+            assigned += 1
+        explorer.Next()
+    report.colours = assigned
+    if palette.Length() and not assigned:
+        report.warnings.append(
+            f"{palette.Length()} colours in the palette but none assigned to a "
+            "face; boundary patches cannot be taken from the CAD and have to come "
+            "from the geometry")
     report.read_ok = True
     return compound, report
 
@@ -181,15 +204,33 @@ def sew(shape, report: CadReport, tolerance: Optional[float] = None):
     """Stitch faces that are adjacent but not topologically joined.
 
     A CATIA surface export arrives as one shell per face with essentially every
-    edge free — on CAS-A, 12,724 of 12,728. Most of those neighbours are only
-    microns to millimetres apart (median gap 5.7 mm measured); they are unstitched,
-    not missing. Wrapping without stitching means the wrap walks between every pair
-    of panels and returns a thin shell around the sheet instead of a solid body,
-    which is exactly what happened: watertight, but 0.8-6.3% of the bounding box.
+    edge free — on CAS-A, 12,724 of 12,728. They are unstitched, not missing.
 
-    So sew first and let the wrap deal only with the genuine holes. The tolerance
-    has to be larger than the unstitched gaps and smaller than real openings, and
-    that is a property of the CAD, so measure the gaps before choosing it.
+    The tolerance used to default to diagonal x 0.002, about 10.5 mm on a car,
+    justified by a measured median gap of 5.7 mm. Sweeping it showed both the
+    number and the choice were wrong. At 0.1 mm the shells already collapse from
+    2,847 to 36 and the free edges from 12,724 to 1,874, so the gaps between
+    adjacent panels are overwhelmingly sub-millimetre; the 5.7 mm median was
+    measuring the genuine openings mixed in with them.
+
+    Coarsening past that buys little and costs real damage, which only shows up
+    when the result has to go back out as CAD. OCC stores its tolerance on the
+    edges it creates, so 10 mm of slop stays in the model:
+
+        tolerance   shells   free edges   invalid faces
+             0.10       36        1,874              61
+             1.00       26        1,672              46
+             5.00       22        1,511              83
+            10.51       16        1,203              96
+
+    Surface area moves by less than 0.1% across that whole range, so nothing is
+    being reshaped either way — the choice is purely how much topological slop to
+    accept. 1 mm sits at the minimum, and diagonal/5000 puts it there for a car
+    while scaling to other sizes.
+
+    This is a single pass and is kept for when the tolerance is known. Prefer
+    sew_progressive, which reaches a coarse tolerance without paying for it on
+    every edge.
     """
     _require_ocp()
     from OCP.BRepBuilderAPI import BRepBuilderAPI_Sewing
@@ -198,7 +239,7 @@ def sew(shape, report: CadReport, tolerance: Optional[float] = None):
         if report.bbox:
             lo = np.array(report.bbox[:3])
             hi = np.array(report.bbox[3:])
-            tolerance = float(np.linalg.norm(hi - lo)) * 0.002
+            tolerance = float(np.linalg.norm(hi - lo)) / 5000.0
         else:
             tolerance = 1.0
 
@@ -210,6 +251,53 @@ def sew(shape, report: CadReport, tolerance: Optional[float] = None):
     report.sew_tolerance = tolerance
     report.sewn = True
     return sewn, report
+
+
+def sew_progressive(shape, report: CadReport, tolerances=None):
+    """Sew in stages, fine first, so a coarse tolerance costs only what it must.
+
+    A single pass at 10.5 mm is not equivalent to reaching 10.5 mm in steps, and
+    the difference is large. OCC records its tolerance on every edge it merges, so
+    one coarse pass stamps 10 mm of slop on all 12,724 free edges of a CATIA
+    surface export. Sewing again on an already-sewn shape cannot do that: the edges
+    joined at 1 mm are no longer free, so each later pass can only reach what is
+    still open.
+
+    Measured on CAS-A, against a single coarse pass:
+
+        stages                 free edges   invalid faces   holes   time
+        1.05                        1,591              33     140    7.3s
+        10.51                       1,203              96     109   19.6s
+        1.05 -> 10.51                 792              48      57    8.6s
+        1.05 -> 5 -> 10.51            765              46      56    8.9s
+        1.05 -> 21                    613              67      30    9.6s
+
+    Better on every axis at once - a third fewer free edges, half the invalid
+    faces, half the holes, and less than half the time - because most of the work
+    happens cheaply at the fine tolerance and the coarse pass has little left to
+    search. Surface area is 15.02 m2 in every row, so none of this reshapes
+    anything; it only decides how much topological slop ends up in the file.
+
+    Pushing the last stage beyond about diagonal/500 keeps closing holes but starts
+    costing invalid faces again, which is why the ladder stops there.
+    """
+    _require_ocp()
+    if tolerances is None:
+        if report.bbox:
+            lo = np.array(report.bbox[:3])
+            hi = np.array(report.bbox[3:])
+            diag = float(np.linalg.norm(hi - lo))
+        else:
+            diag = 5000.0
+        tolerances = [diag / 5000.0, diag / 1000.0, diag / 500.0]
+
+    for tolerance in sorted(tolerances):
+        stage = CadReport(bbox=report.bbox)
+        shape, stage = sew(shape, stage, tolerance)
+    report.sewn = True
+    report.sew_tolerance = max(tolerances)
+    report.sew_stages = [round(float(t), 4) for t in sorted(tolerances)]
+    return shape, report
 
 
 def tessellate(shape, report: CadReport, deflection_frac: float = 0.001):
@@ -277,7 +365,8 @@ def step_to_mesh(path, deflection_frac: float = 0.001, sew_tolerance=None,
         return None, report
     diagnose(shape, report)
     if do_sew:
-        shape, report = sew(shape, report, sew_tolerance)
+        shape, report = (sew(shape, report, sew_tolerance) if sew_tolerance
+                         else sew_progressive(shape, report))
         after = CadReport()
         diagnose(shape, after)
         report.shells_after_sew = after.shells

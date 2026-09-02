@@ -1730,3 +1730,95 @@ reports 0.01-0.09 and fails.
 CATIA output, and the remaining blocker is specific and measurable — holes wider
 than 21 mm that survive sewing. Finding and capping those is the next step, and the
 tooling to locate them (`scripts/voxel_volume.py`, the openness metric) is in place.
+
+## Returning STEP, not a mesh
+
+The requirement to hand the CAD engineer back a STEP file rules out the mesh route
+rather than adding a step to it. Its output is a triangle soup, and turning that
+back into CAD means one planar face per triangle - a 137,000-face STEP no CAD
+system opens - or refitting NURBS, which replaces the supplier's surfaces with an
+approximation. So the repair now stays in B-rep from end to end (`aox_g3/brep.py`,
+`scripts/heal_step.py`), and the mesh cascade in `aox_g3/seal.py` keeps the job it
+is right for: STL and OBJ input, where there is no topology to preserve.
+
+**Staying in B-rep also settled the question the mesh route could not.** Finding
+the leak had come down to flood-filling from outside, noticing it reached every
+interior cell, and having nothing to say about where. `ShapeAnalysis_FreeBounds`
+answers directly, in **0.0 s**: 109 closed free boundaries, the largest **4.85 m**
+across with a 16 m perimeter, against a 5.25 m car. No sealing tolerance measured
+in millimetres was ever going to close that; it was never a tuning problem.
+
+Sorted by size the boundaries name themselves - underbody, cabin opening, door
+glass, wheel arches. **CAS-A is an exterior surface model, and what is missing is
+missing by design, not damage.**
+
+**The sewing tolerance was wrong, and the note justifying it was wrong.** `cad.py`
+recorded a measured median gap of 5.7 mm and picked diagonal x 0.002 - 10.5 mm - to
+clear it. Sweeping the tolerance shows the gaps are overwhelmingly sub-millimetre:
+at 0.1 mm the shells already collapse 2,847 to 36 and the free edges 12,724 to
+1,874. The 5.7 mm median had the genuine openings mixed in with the seams.
+
+Coarsening costs real damage once the result has to leave as CAD, because OCC
+stores its tolerance on every edge it merges:
+
+| tolerance | shells | free edges | invalid faces | holes |
+|---|---|---|---|---|
+| 0.10 | 36 | 1,874 | 61 | 165 |
+| 1.00 | 26 | 1,672 | **46** | 146 |
+| 5.00 | 22 | 1,511 | 83 | 169 |
+| 10.51 | 16 | 1,203 | 96 | 109 |
+
+Surface area moves under 0.1% across the whole range, so nothing is reshaped
+either way - the only question is how much topological slop lands in the file.
+
+**Sewing in stages beats sewing once, on every axis at the same time.** Edges
+joined at 1 mm are no longer free, so a later coarser pass can only reach what is
+still open, and 10 mm of slop lands on the few hundred edges that need it instead
+of all 12,724:
+
+| stages | free edges | invalid faces | holes | largest perimeter | time |
+|---|---|---|---|---|---|
+| 1.05 | 1,591 | 33 | 140 | 35.2 m | 7.3 s |
+| 10.51 | 1,203 | 96 | 109 | 16.0 m | 19.6 s |
+| **1.05 → 5 → 10.51** | **765** | **46** | **56** | 15.7 m | **8.9 s** |
+
+A third fewer free edges, half the invalid faces, half the holes, and less than
+half the time. `cad.sew_progressive` is now the default ladder.
+
+**The STEP round trip had to be verified, and it caught two real losses.** Writing
+with pcurves on - OCC's default - produced a 106 MB file that read back **645 faces
+short and 9.6% smaller in area**. Pcurves are recomputed on import by the receiving
+system anyway, so they are off. With that and the staged sewing:
+
+| | before | after |
+|---|---|---|
+| file | 106 MB | **35.2 MB** (input is 36.6) |
+| faces written → read | 2,887 → 2,242 | **2,850 → 2,850** |
+| area | 15.02 → 13.58 m² | **15.02 → 15.00 m²** |
+| invalid faces | 130 | 33 |
+
+**And the 15 colours are a mirage.** They exist in the palette and are assigned to
+nothing - no face, no label - and the file has one part name over 2,847 faces. The
+report was counting the palette. Since colours are how a CFD engineer picks
+boundary patches, this is worth knowing: **on this file the patches have to come
+from geometry, because the CAD does not carry them.**
+
+**The surface filler cannot be trusted on its own word.** `BRepOffsetAPI_MakeFilling`
+returns `IsDone` for boundaries it has not solved. Filling 42 holes took the model
+from 15.02 m² to **191.44 m²** with nothing in the API objecting. Measuring each
+patch against the hole it closes separates the two populations cleanly - a hole
+spanning d closes with something of order d²:
+
+- good: **0.08 – 1.15** (every planar patch at exactly 0.39)
+- runaway: **1.90 – 204**, plus one with **negative area** (an inverted face)
+
+The worst single patch was **155 m² for an 871 mm hole** - ten cars' worth of
+surface. `MAX_PATCH_RATIO = 1.5` sits in the empty gap between the populations, and
+a second check catches many small patches summing to a body that is no longer the
+body that came in. With it: 32 of 46 holes filled, **15.02 → 17.43 m²**, and the 14
+rejects reported with the reason.
+
+**Where the pipeline stands.** STEP in, STEP out, verified round trip, holes
+located and classified, with the ones that need a human decision listed by size and
+position. What remains open on CAS-A is the underbody and the cabin - closing those
+is a modelling decision about what the model should be, not a repair.
