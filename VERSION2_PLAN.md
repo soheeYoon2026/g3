@@ -1557,3 +1557,60 @@ Consequences:
   **closed as unnecessary**. There is nothing to fix in the labels.
 - The gate's worst cases are worst because the geometry is unusual, which is the same
   story as the shape-class split: the model does well on cars and poorly off them.
+
+---
+
+### 2026-09-02 — Sealing cascade lifted out as a standalone service
+
+The cascade that turns a dirty STL into a watertight one lived inside the LES
+runner's `stl_loader.py`, which imports jax at module scope — using it meant
+pulling in the whole solver stack. It is now `aox_g3/seal.py` plus a CLI
+(`scripts/seal_geometry.py`), depending on nothing beyond numpy and trimesh.
+No solver wiring, by request.
+
+**Three tiers, in order of how little they disturb the shape** — the
+"reconstruct, don't repair" line of Portaneri et al. (ACM TOG 2022):
+
+1. **OpenVDB level set** (`vdb_tool`), offset bisected per shape. Preferred because
+   it closes gaps at a shorter distance than Alpha Wrap (24 mm vs 29 mm on the
+   GT-R), keeping narrow features like a wing support alive.
+2. **CGAL `alpha_wrap_3`** — takes a triangle soup, so it handles non-manifold input
+   the other tiers cannot load at all.
+3. **Voxel flood-fill seal** (`fix_shell`, Warp GPU distance field) — last, because
+   its closing distance is coarse enough to bridge a wing to the body.
+
+All measured constants were carried over with their provenance in comments
+(alpha = diag/180, offset = alpha/30, volume-ratio floor 0.5, openness threshold 5.0).
+
+**The design change that matters: a tier can no longer fail silently.**
+`SealReport` always states which tools were available, which tiers were attempted,
+and every warning. The v8 label campaign lost seven 4-hour LES runs because
+`vdb_tool` was missing on the host, tier 1 fell through unnoticed, and the
+open-shell result looked plausible until the run-to-run scatter came back 4x too
+large. Running `--tools` on G3_TEST already shows the same class of gap today:
+`vdb_tool` 있음, `fix_shell` 있음, **`cgal_alpha_wrap` 없음** — tier 2 would be
+skipped there and nobody had noticed.
+
+**Verified against a known answer.** `make_dirty_mesh.py` punches holes in a
+watertight mesh so the seal can be checked rather than merely observed to produce
+something closed. On carA_base with 140 holes (openness 0 → 7.76), tier 1 sealed it:
+
+| | volume | area | watertight |
+|---|---|---|---|
+| original (truth) | 7.8547 | — | True |
+| holed | 7.6533 | — | False |
+| **sealed** | **7.8426 (−0.15%)** | **+0.67%** | **True** |
+
+Extents came back within 5 mm on a 5 m car.
+
+**A real bug found in the port**: the LES copy hard-codes "mm" in its offset
+message, so a metre-scale mesh reports a 0.054 m bound as "0.1mm" and the operator
+reads it as a broken parameter. The cascade itself is scale-invariant (everything
+is a fraction of the diagonal); only the label was wrong. Fixed here.
+
+**A usability trap fixed**: when openness is below the threshold the right answer is
+to pass the mesh through untouched (a winding number handles it, and sealing would
+inflate volume and fill narrow gaps for nothing). But the CLI was reporting that as
+"OK" while writing a non-watertight file. It now distinguishes 수밀 from
+통과(비수밀), and `--require-watertight` makes the pass-through an error for callers
+that genuinely need a closed surface (exit code 1, verified).
