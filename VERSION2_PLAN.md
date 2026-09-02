@@ -1822,3 +1822,77 @@ rejects reported with the reason.
 located and classified, with the ones that need a human decision listed by size and
 position. What remains open on CAS-A is the underbody and the cabin - closing those
 is a modelling decision about what the model should be, not a repair.
+
+## Steps 7, 8 and 9: intersections, hidden faces, orientation
+
+`aox_g3/topology.py` and `scripts/check_topology.py`. All three work on the B-rep,
+so the result can still leave as STEP.
+
+**The checklist's order hides a dependency, and ignoring it produces confident
+nonsense.** Step 8 asks which faces the external flow reaches, answered by flooding
+the empty space from outside the bounding box. That only means "outside" if the
+flood cannot get in. On CAS-A it can - the underbody opening is 4.85 m across - so
+the flood fills the cabin, the cabin becomes "outside", and every panel with an
+interior behind it comes back as a zero-thickness baffle. Run naively it reports
+**524 baffles covering 6.52 m² on a 15 m² car**, the largest class by area, and
+every one of them an artefact.
+
+So `classify_faces` measures whether it is entitled to an answer before giving one.
+A closed car encloses 30-55% of its bounding box; CAS-A encloses **0.0%**, and the
+function refuses and says why rather than returning the numbers.
+
+**Refusing correctly says nothing about classifying correctly, so step 8 is checked
+against a case with a known answer** (`scripts/make_visibility_testcase.py`) - the
+same discipline as the 140-hole mesh used on the sealing cascade. An outer box, a
+box buried inside it, and a thin plate standing clear:
+
+| | expected | measured |
+|---|---|---|
+| hidden | inner box, 6 faces | **6** |
+| baffle | plate's two large faces | **2** |
+| skin | outer box 6 + plate's 4 thin edges | **10** |
+
+Enclosed fraction 33.5%, so it proceeded, and it was right.
+
+**Step 7 detects and splits.** `BOPAlgo_CheckerSI` performs fine but segfaults the
+interpreter when its results are read through `DS()`, so `BRepAlgoAPI_Check` is used
+instead - same algorithm, extractable findings. On CAS-A it reports **8,830
+self-intersecting pairs among 2,847 faces in 472 s**, which is why it is opt-in
+rather than part of every run.
+
+Splitting uses General Fuse, and its arguments have to be handed over separately:
+one compound holding everything asks it to intersect a shape against nothing, and
+it declines with `IsDone` false while the shape comes back untouched. Unpacked,
+on two overlapping boxes: 25 intersections → faces 12→23, edges 48→96, **re-check
+0**. On two boxes that do not touch: 0 found, **nothing changed**. Splitting raises
+the surface area because the partition faces are now real - and removing those is
+exactly what step 8 does next, so the checklist's 7-then-8 order is right.
+
+**Step 9 found a bug in its own measurement.** Curvature angle appeared to do
+nothing: 30°, 15° and 5° all returned exactly 41,090 triangles. `BRepMesh` caches
+its triangulation on the faces and reuses it whenever the new linear deflection is
+no tighter, so the parameter was never reaching the mesher. With `BRepTools.Clean_s`
+first (now also in `cad.tessellate`, which had the same latent bug):
+
+| curvature angle | triangles |
+|---|---|
+| 30° | 72,440 |
+| 15° | 163,010 |
+| 5° | 1,220,970 |
+
+Surface area holds at 15.11-15.13 m² throughout, so refinement converges without
+moving the geometry.
+
+**And Maximum Edge Length is not linear deflection**, which is worth naming because
+conflating them is silent. Linear deflection bounds chord sag, and on a planar face
+the sag is zero at any element size - the box test returned exactly 36 triangles at
+every setting, and a flat floor would come back as two enormous triangles no matter
+how small the number. Sag is left to BRepMesh; the edge length is enforced
+afterwards by subdivision. The box then goes 36 → **172,032** triangles, CAS-A
+163,010 → **333,665**, with the area unchanged in both.
+
+**Orientation**: 1,130 faces FORWARD and 1,717 REVERSED, which on its own means
+nothing - within a shell the flag is just direction. What matters is whether
+neighbours agree, and **1 of 19 shells has edges they disagree about**. `--fix-orientation`
+repairs it. Which way is "out" cannot be decided on an open shell at all; that needs
+the body closed, the same precondition step 8 has.

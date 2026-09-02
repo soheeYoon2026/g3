@@ -305,6 +305,7 @@ def tessellate(shape, report: CadReport, deflection_frac: float = 0.001):
     _require_ocp()
     import trimesh
     from OCP.BRepMesh import BRepMesh_IncrementalMesh
+    from OCP.BRepTools import BRepTools
     from OCP.TopExp import TopExp_Explorer
     from OCP.TopAbs import TopAbs_FACE
     from OCP.TopoDS import TopoDS
@@ -318,6 +319,10 @@ def tessellate(shape, report: CadReport, deflection_frac: float = 0.001):
     else:
         deflection = 0.1
     report.tessellation_deflection = deflection
+    # BRepMesh caches its triangulation on the faces and reuses it whenever the new
+    # linear deflection is no tighter, so an earlier coarser pass would come back
+    # unchanged and the parameter would appear to do nothing
+    BRepTools.Clean_s(shape)
     BRepMesh_IncrementalMesh(shape, deflection, False, 0.5, True)
 
     vertices, faces = [], []
