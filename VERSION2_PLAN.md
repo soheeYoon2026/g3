@@ -1614,3 +1614,77 @@ inflate volume and fill narrow gaps for nothing). But the CLI was reporting that
 "OK" while writing a non-watertight file. It now distinguishes 수밀 from
 통과(비수밀), and `--require-watertight` makes the pass-through an error for callers
 that genuinely need a closed surface (exit code 1, verified).
+
+---
+
+### 2026-09-02 — STEP path proven on real CATIA output; the remaining gap is hidden-geometry removal
+
+Judged the STEP route viable and built it, then ran a genuine BAIC-class file
+through end to end: `CAS-A.stp`, 36 MB, header says **CATIA V5 STEP Exchange**.
+
+**What works, measured** (`aox_g3/cad.py`, `aox_g3/symmetry.py`)
+
+| Stage | Result |
+|---|---|
+| STEP read with names/colours (`cadquery-ocp`) | **7.3 s** |
+| B-rep diagnosis | **1.7 s** — solids 0, shells 2,847, faces 2,847, **free edges 12,724 of 12,728**, invalid faces **0** |
+| **B-rep sewing** (`BRepBuilderAPI_Sewing`, tol = diag×0.002) | shells **2,847 → 16**, free edges **12,724 → 1,203**, openness **168 → 17.7** |
+| Symmetry detection + mirror | found **y=0 spanning 91% of the silhouette**, width **1,198 → 1,955 mm**, 4,743 seam vertices welded |
+| Tessellation | 0.9 s, 68,543 triangles |
+
+**Diagnosing before tessellating paid off immediately.** "Invalid faces 0 but 99.97%
+of edges free" says the surfaces are fine and only the topology is missing, which
+is what makes sewing the right move and rules out face repair. Sewing then removed
+91% of the free edges — those neighbours were unstitched, not absent.
+
+`cadquery-ocp` also settles a practical question: it installs from pip, unlike
+`pythonocc-core` which is conda-only, so an OpenCascade pipeline can be deployed
+the same way as everything else here.
+
+**Where it stops: alpha wrap returns a shell, not a body.**
+
+| alpha | watertight | volume | vs bounding box |
+|---|---|---|---|
+| diag/180 = 29.1 | True | 0.118 m³ | 0.8% |
+| diag/110 = 47.7 | True | 0.361 m³ | 2.4% |
+| diag/90 = 58.3 | True | 0.454 m³ | **3.0%** |
+
+A car should fill 30-45%. Four hypotheses were tested and three eliminated:
+
+1. **Gaps wider than alpha?** Measured: median 5.7 mm, 95th percentile 37.4 mm,
+   max 474 mm (`measure_gaps.py`). Plausible at first — but sewing cut the free
+   edges by 91% and the wrap's volume changed by less than a thousandth
+   (0.119 → 0.118 m³). Not the cause.
+2. **Half model?** Confirmed and fixed — but mirroring changed nothing either.
+3. **Surface does not enclose a volume?** Ray-cast from 400 interior points:
+   **92% odd crossings** (`check_enclosure.py`). It encloses a volume.
+4. **The wrap is wrapping interior geometry.** Wrap area / input area = **1.60**
+   (1.0 would be a solid, 2.0 a sheet wrapped both sides), and the input's
+   30.4 m² is well above the 12-20 m² of a car's exterior skin. The model carries
+   inner panels — wheel-arch liners, cabin, engine bay — and the wrap faithfully
+   reaches them through the openings.
+
+**So the missing step is hidden-geometry removal, exactly as specified in the
+research note**: flood-fill from an outside seed, keep the reachable surface,
+discard the rest. That is what Flexcompute's GeometryAI calls "Remove hidden
+geometry" with a "Min passage size", and the machinery already exists here —
+`fix_shell` does a voxel flood fill, it is just wired for sealing rather than for
+classifying reachability.
+
+**Corrected pipeline order**:
+
+```
+STEP ─▶ B-rep diagnose ─▶ sew ─▶ mirror ─▶ tessellate
+                                              │
+                                              ▼
+                              remove hidden geometry  ← missing
+                                              │
+                                              ▼
+                                   seal cascade ─▶ watertight solid
+```
+
+**One caveat on the volume test used throughout the seal cascade**: `_volume_ok`
+compares the sealed result against the *input's* volume, and for a triangle soup
+that number is a divergence-theorem artefact. It happened to be plausible here
+(4.33 m³, 47% of the box) so the verdicts stand, but for a genuinely open input
+the comparison should be against the bounding box instead.
