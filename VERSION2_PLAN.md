@@ -1688,3 +1688,45 @@ compares the sealed result against the *input's* volume, and for a triangle soup
 that number is a divergence-theorem artefact. It happened to be plausible here
 (4.33 m³, 47% of the box) so the verdicts stand, but for a genuinely open input
 the comparison should be against the bounding box instead.
+
+**Hidden-geometry removal added, and the wrap still returns a shell**
+
+`aox_g3/visibility.py` implements the missing step: voxelise, flood the empty space
+from outside the box, keep the faces that region touches. Its one parameter is the
+voxel pitch, which is Flexcompute's "Min passage size" under another name — a gap
+narrower than the pitch reads as closed and whatever hides behind it is classified
+interior. On CAS-A it runs in **0.6 s** and removes **80,731 of 137,086 faces**,
+taking the surface from 30.4 m² to **10.5 m²** — the right order for a car's skin.
+
+It did not fix the wrap. Wrapping the visible-only surface gives 0.3-1.7% of the
+bounding box, slightly worse than before, because removing faces adds holes.
+
+**The measurement everything rested on turned out to be unreliable, and checking it
+changed the diagnosis.** Volumes had been read from `trimesh.volume`, which
+integrates over faces and is meaningless when a surface leaks. Measuring instead by
+voxel occupancy — flood from outside, count what is neither wall nor outside
+(`scripts/voxel_volume.py`):
+
+| mesh | divergence | **voxel** |
+|---|---|---|
+| carA_base (a solved G2 surface) | 60.6% | **55.8%** — the two agree, it is genuinely closed |
+| cas_final (CAS-A, sewn + mirrored) | 59.1% | **0.0%** |
+| alpha wrap of it | 3.0% | 0.5% |
+| fix_shell of it | 5.5% | 1.3% |
+
+**CAS-A's plausible-looking 59.1% is false.** A flood fill from outside reaches
+every interior cell at a 21 mm pitch, so after sewing and mirroring the surface
+still has holes wider than that. The wrap is a shell because its input leaks, and
+both wrappers were right to be rejected.
+
+So `_volume_ok` was fixed rather than the wrappers: for a **watertight** input it
+still compares against the input's volume, but for an **open** one it now judges the
+result on how much of its own bounding box it fills (floor 0.15, against the 55.8%
+a real car measures). Verdicts are unchanged and now rest on a number that means
+something — the known-good 140-hole test reports **0.61 fill** and passes, CAS-A
+reports 0.01-0.09 and fails.
+
+**Where this leaves the STEP path**: everything up to the wrap is verified on real
+CATIA output, and the remaining blocker is specific and measurable — holes wider
+than 21 mm that survive sewing. Finding and capping those is the next step, and the
+tooling to locate them (`scripts/voxel_volume.py`, the openness metric) is in place.

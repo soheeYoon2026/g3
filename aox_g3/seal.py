@@ -154,9 +154,37 @@ def _fix_orientation(mesh, report: SealReport):
     return mesh
 
 
+# A body that encloses nothing fills a few percent of its box; a car fills about
+# half. Measured: carA_base, a solved G2 surface, comes to 55.8% by voxel count and
+# 60.6% by divergence, the two agreeing because it is genuinely closed.
+SEAL_MIN_BOX_FILL = 0.15
+
+
 def _volume_ok(sealed, original) -> tuple[bool, float]:
+    """Is the sealed result a body, or a shell wrapped around a sheet?
+
+    Comparing against the input's volume only works when the input is closed. For
+    an open mesh `.volume` is a divergence-theorem artefact that can land anywhere:
+    on CAS-A it read 8.96 m3, a plausible-looking 59% of the bounding box, while a
+    voxel flood fill from outside reached every interior cell - the surface encloses
+    nothing at all. Trusting that number as a denominator would pass or fail a seal
+    for no reason, so an open input is judged on how much of its own bounding box
+    the result fills instead.
+    """
     try:
         new = abs(float(sealed.volume))
+    except Exception:
+        return True, 0.0
+
+    if not bool(getattr(original, "is_watertight", False)):
+        extents = np.asarray(sealed.extents, dtype=float)
+        box = float(extents[0] * extents[1] * extents[2])
+        if box <= 0.0:
+            return True, 0.0
+        fill = new / box
+        return fill >= SEAL_MIN_BOX_FILL, fill
+
+    try:
         old = abs(float(original.volume))
     except Exception:
         return True, 0.0
