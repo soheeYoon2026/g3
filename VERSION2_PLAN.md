@@ -1896,3 +1896,24 @@ nothing - within a shell the flag is just direction. What matters is whether
 neighbours agree, and **1 of 19 shells has edges they disagree about**. `--fix-orientation`
 repairs it. Which way is "out" cannot be decided on an open shell at all; that needs
 the body closed, the same precondition step 8 has.
+
+**The 8,830 intersections are the supplier's, not ours.** Sewing was the obvious
+suspect - a tolerance ladder that pulls faces together could plausibly push them
+through each other, and if the default were doing that it would have to change.
+Counted before and after:
+
+| | self-intersections | check time |
+|---|---|---|
+| unsewn, as delivered | **24,342** | 1,376 s |
+| 1.05 alone | 7,473 | 455 s |
+| 1.05 → 5 → 10.5 (default) | 8,830 | 463 s |
+
+Sewing **removes** two thirds of them, by merging coincident neighbours that were
+crossing each other as separate faces, and makes the check three times faster.
+
+It does cost something against the fine pass alone: **+1,357 crossings, +18%**.
+That corrects the earlier note - the ladder beats the single coarse pass on every
+axis measured, but against fine-only it is a trade, buying hole structure (56 vs
+140) and free edges (765 vs 1,591) for invalid faces (46 vs 33) and crossings.
+Since step 7 splits crossings anyway and the holes are what block watertightness,
+the ladder stays the default, but the trade is now recorded rather than implied.

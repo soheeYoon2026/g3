@@ -272,11 +272,26 @@ def sew_progressive(shape, report: CadReport, tolerances=None):
         1.05 -> 5 -> 10.51            765              46      56    8.9s
         1.05 -> 21                    613              67      30    9.6s
 
-    Better on every axis at once - a third fewer free edges, half the invalid
-    faces, half the holes, and less than half the time - because most of the work
-    happens cheaply at the fine tolerance and the coarse pass has little left to
-    search. Surface area is 15.02 m2 in every row, so none of this reshapes
-    anything; it only decides how much topological slop ends up in the file.
+    Against the single coarse pass the ladder wins on every one of those - a third
+    fewer free edges, half the invalid faces, half the holes, less than half the
+    time - because most of the work happens cheaply at the fine tolerance and the
+    coarse pass has little left to search. Surface area is 15.02 m2 in every row,
+    so none of this reshapes anything; it only decides how much topological slop
+    ends up in the file.
+
+    Against the fine pass alone it is a trade rather than a win, and self-
+    intersections are the axis that shows it. Counted with BRepAlgoAPI_Check:
+
+        unsewn                    24,342
+        1.05 alone                 7,473
+        1.05 -> 5 -> 10.5          8,830
+
+    Sewing does not create them - the supplier's CAD already carries 24,342, and
+    stitching coincident neighbours together removes two thirds - but the coarse
+    stages do add back about 1,400 over the fine pass. So the ladder buys hole
+    structure and free edges at the cost of ~13 invalid faces and ~18% more
+    crossings, and the crossings are step 7's job anyway. Worth knowing before
+    changing the default in either direction.
 
     Pushing the last stage beyond about diagonal/500 keeps closing holes but starts
     costing invalid faces again, which is why the ladder stops there.
