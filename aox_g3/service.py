@@ -6,6 +6,7 @@ import asyncio
 import base64
 import gzip
 import io
+import math
 import os
 import tempfile
 import time
@@ -180,3 +181,173 @@ async def infer(
             # Shadow operation is best-effort and must never fail production.
             pass
     return response
+
+
+# ── /v1/recommend ─────────────────────────────────────────────────────────────
+# 플랫폼의 "Recommend lower-Cd shapes". 계산은 aox_g3.recommend 에, 여기는
+# /v1/infer 와 같은 인증·업로드·임시 디렉터리·락·오류 규약만 맡는다.
+RECOMMEND_MAX_CANDIDATES = int(os.environ.get("G3_RECOMMEND_MAX_CANDIDATES", "12"))
+RECOMMEND_MAX_CONTROL_POINTS = 72
+
+
+def _parse_control_points(raw: str) -> list[list[float]]:
+    import json
+
+    try:
+        points = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="control_points must be JSON") from exc
+    if not isinstance(points, list) or not 1 <= len(points) <= RECOMMEND_MAX_CONTROL_POINTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"control_points must hold 1 to {RECOMMEND_MAX_CONTROL_POINTS} XYZ points",
+        )
+    parsed: list[list[float]] = []
+    for point in points:
+        if not isinstance(point, (list, tuple)) or len(point) != 3:
+            raise HTTPException(status_code=400, detail="every control point must be an XYZ triple")
+        try:
+            values = [float(v) for v in point]
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="control points must be numeric") from exc
+        if not all(math.isfinite(v) for v in values):
+            raise HTTPException(status_code=400, detail="control points must be finite")
+        parsed.append(values)
+    return parsed
+
+
+@app.post("/v1/recommend")
+async def recommend(
+    stl: UploadFile = File(...),
+    control_points: str = Form(...),
+    top: int = Form(3),
+    symmetric: bool = Form(True),
+    u_x: float = Form(30.0),
+    density: float = Form(1.225),
+    flow_axis: str = Form("+x"),
+    ref_length: float = Form(5.0),
+    ref_area: float = Form(1.0),
+    grid_x: int = Form(96),
+    grid_y: int = Form(64),
+    grid_z: int = Form(48),
+    authorization: str | None = Header(default=None),
+):
+    import numpy as np
+    import trimesh
+
+    from . import recommend as rec
+
+    _authorize(authorization)
+    if not MODEL_PATH.is_file():
+        raise HTTPException(status_code=503, detail="G3 checkpoint is unavailable")
+    file_name = (stl.filename or "").lower()
+    if not (file_name.endswith(".stl") or file_name.endswith(".stl.gz")):
+        raise HTTPException(status_code=400, detail="only STL uploads are accepted")
+    if not (8 <= grid_x <= 128 and 8 <= grid_y <= 128 and 8 <= grid_z <= 128):
+        raise HTTPException(status_code=400, detail="grid dimensions must be between 8 and 128")
+    points = _parse_control_points(control_points)
+    top = max(1, min(int(top), len(points)))
+
+    payload = await stl.read(MAX_UPLOAD_BYTES + 1)
+    if file_name.endswith(".gz"):
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(payload)) as compressed:
+                payload = compressed.read(MAX_UPLOAD_BYTES + 1)
+        except (OSError, EOFError) as exc:
+            raise HTTPException(status_code=400, detail="invalid compressed STL") from exc
+    if not payload or len(payload) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="STL is empty or exceeds the upload limit")
+
+    started = time.perf_counter()
+    with tempfile.TemporaryDirectory(prefix="aox-g3-rec-") as temp_dir:
+        temp = Path(temp_dir)
+        base_path = temp / "baseline.stl"
+        base_path.write_bytes(payload)
+        try:
+            mesh = trimesh.load(str(base_path), force="mesh", process=False)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"could not read STL: {exc}") from exc
+        vertices = np.asarray(mesh.vertices, dtype=float)
+        faces = np.asarray(mesh.faces)
+        normals = np.asarray(mesh.vertex_normals, dtype=float)
+        if len(vertices) == 0 or len(faces) == 0:
+            raise HTTPException(status_code=400, detail="STL has no triangles")
+
+        length, width_centre = rec.vehicle_frame(vertices)
+        magnitude = rec.PUSH_FRACTION * length
+        radius = rec.RADIUS_FRACTION * length
+
+        def evaluate(stl_path: Path, out_dir: Path) -> dict:
+            argv = [
+                "--stl", str(stl_path),
+                "--model", str(MODEL_PATH),
+                "--out-dir", str(out_dir),
+                "--grid", str(grid_x), str(grid_y), str(grid_z),
+                "--u-x", str(u_x),
+                "--density", str(density),
+                "--ref-length", str(ref_length),
+                "--ref-area", str(ref_area),
+                "--coefficient-expert", COEFFICIENT_EXPERT,
+            ]
+            return infer_fields(argv)
+
+        try:
+            async with INFERENCE_LOCK:
+                baseline = await run_in_threadpool(evaluate, base_path, temp / "baseline")
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"G3 baseline inference failed: {exc}") from exc
+        cd0 = baseline["drag_coefficient"]
+        cl0 = baseline["lift_coefficient"]
+
+        chosen = rec.select_candidates(np.asarray(points), RECOMMEND_MAX_CANDIDATES)
+        results: list[dict] = []
+        for order, control_id in enumerate(chosen):
+            pushed, vertex_index, displacement = rec.push_inward(
+                vertices, normals, np.asarray(points[control_id]), magnitude, radius,
+                symmetric=symmetric, width_centre=width_centre,
+            )
+            candidate_path = temp / f"candidate-{order:02d}.stl"
+            trimesh.Trimesh(pushed, faces, process=False).export(str(candidate_path))
+            try:
+                # 후보마다 락을 따로 잡는다 — 그 사이 /v1/infer 가 끼어들 수 있게.
+                async with INFERENCE_LOCK:
+                    summary = await run_in_threadpool(evaluate, candidate_path, temp / f"candidate-{order:02d}")
+                cd = summary["drag_coefficient"]
+                cl = summary["lift_coefficient"]
+            except Exception as exc:  # 한 후보가 죽어도 나머지는 돌려준다
+                cd = cl = None
+                failure = str(exc)
+            else:
+                failure = None
+            origin = vertices[vertex_index]
+            results.append({
+                "label": f"Point {control_id}: push in {magnitude:.0f} mm",
+                "control_id": int(control_id),
+                "position": [float(v) for v in origin],
+                "displacement": [float(v) for v in displacement],
+                "influence_radius": float(radius),
+                "symmetric": bool(symmetric),
+                "preview_points": [],
+                "cd": cd,
+                "cl": cl,
+                "delta_cd": None if cd is None or cd0 is None else float(cd - cd0),
+                "delta_cl": None if cl is None or cl0 is None else float(cl - cl0),
+                "error": failure,
+            })
+
+    ranked = rec.rank(results, top)
+    return {
+        "model": MODEL_PATH.resolve().name,
+        "device": baseline.get("device"),
+        "elapsed_seconds": round(time.perf_counter() - started, 3),
+        "candidate_count": len(results),
+        "requested_control_points": len(points),
+        "baseline": {"cd": cd0, "cl": cl0},
+        "recommendations": ranked,
+        "limitations": [
+            f"Screened {len(results)} of {len(points)} control points, spread along the length axis.",
+            f"Each candidate pushes the surface inward by {magnitude:.0f} mm with a {radius:.0f} mm influence radius; outward pushes are not tried.",
+            "Ranked by predicted delta Cd only; delta Cl is reported, not ranked.",
+            "Finite-difference screening on the surrogate, not a sensitivity solve.",
+        ],
+    }
