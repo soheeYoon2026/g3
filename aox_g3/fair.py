@@ -356,7 +356,16 @@ EAR_CLIP_MAX_VERTICES = 300
 
 # ---------------------------------------------------------------- refinement
 
-def refine(points, triangles, boundary_count, target_edge):
+# A patch never needs more triangles than this. The refinement triples the count
+# per pass and the target edge comes from the boundary, so a scanned mesh with
+# 0.05-inch boundary edges around a 28-inch hole asked for 2,089,408 triangles in
+# one patch - three million across GTR35, a 211 MB file. Capping both the target
+# edge (never finer than size/40) and the count keeps a patch proportionate.
+MAX_PATCH_TRIANGLES = 4000
+
+
+def refine(points, triangles, boundary_count, target_edge,
+           max_triangles: int = MAX_PATCH_TRIANGLES):
     """Insert centroids until patch edges are about the boundary's length.
 
     Boundary edges are never split, so the patch keeps its connection to the body.
@@ -364,6 +373,8 @@ def refine(points, triangles, boundary_count, target_edge):
     points = [np.asarray(p, dtype=float) for p in points]
     tris = [tuple(t) for t in triangles]
     for _ in range(12):
+        if len(tris) >= max_triangles:
+            break
         new_tris, inserted = [], 0
         for a, b, c in tris:
             pa, pb, pc = points[a], points[b], points[c]
@@ -621,7 +632,9 @@ def fill_holes(mesh, sealing_size: float, held=(), hold_radius: float = 60.0,
 
         # Refine to the boundary's own edge length
         boundary_edges = np.linalg.norm(np.roll(pts, -1, axis=0) - pts, axis=1)
-        target = float(np.median(boundary_edges))
+        # Never finer than a fortieth of the hole: a fine scan around a large
+        # hole would otherwise dictate millions of triangles
+        target = max(float(np.median(boundary_edges)), size / 40.0)
         local_points, local_tris = refine(base_points, triangles, n, target)
 
         # One-ring of the loop in the body: pinned during fairing
