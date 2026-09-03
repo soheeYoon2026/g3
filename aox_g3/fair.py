@@ -92,8 +92,20 @@ def stitch(mesh, tolerance: float):
     from scipy.spatial import cKDTree
 
     vertices = np.asarray(mesh.vertices, dtype=float)
-    tree = cKDTree(vertices)
-    pairs = tree.query_pairs(tolerance, output_type="ndarray")
+
+    # Only vertices that lie on an open edge may merge. A seam between two
+    # tessellated faces is a pair of boundary vertices a hair apart; an interior
+    # vertex a hair from its neighbour is simply a small triangle. Merging
+    # everything within 2 mm collapsed the wheel spokes and the fillets - 163,000
+    # triangles became 47,000 and the loop count went up, not down.
+    edges = np.asarray(mesh.edges_sorted)
+    unique, counts = np.unique(edges, axis=0, return_counts=True)
+    on_boundary = np.unique(unique[counts == 1])
+    if len(on_boundary) == 0:
+        return mesh
+    tree = cKDTree(vertices[on_boundary])
+    local_pairs = tree.query_pairs(tolerance, output_type="ndarray")
+    pairs = on_boundary[local_pairs] if len(local_pairs) else np.zeros((0, 2), int)
     parent = np.arange(len(vertices))
 
     def find(i):

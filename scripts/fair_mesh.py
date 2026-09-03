@@ -61,7 +61,8 @@ print(f"  경계 고리 {report.loops_before_stitch} → 병합 후 {report.loop
       f"  (단순 고리 아님 {report.loops_skipped_shape})")
 print(f"  검토 {report.loops_considered}  메움 {report.loops_filled}  "
       f"봉합크기 초과 {report.loops_skipped_large}  B-rep 보류 {report.loops_skipped_held}")
-print(f"  삼각형 추가 {report.triangles_added:,}   수밀 {out.is_watertight}")
+print(f"  삼각형 추가 {report.triangles_added:,}   결과 삼각형 {len(out.faces):,} "
+      f"(입력 {len(mesh.faces):,})   수밀 {out.is_watertight}")
 
 filled = [h for h in report.holes if h.filled]
 if filled:

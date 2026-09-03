@@ -2182,3 +2182,15 @@ the models where it will.
 Stitching note: merging vertices within 2 mm closed the tessellation seams but
 left 27 non-simple boundary components (T-junction chains) that are neither
 filled nor counted as holes; the wrap downstream absorbs them.
+
+**Stitching had to be restricted to boundary vertices.** Merging every vertex
+within 2 mm collapsed the fine triangles of the spokes and fillets - 163,014
+triangles became 47,000 and the loop count rose from 36 to 47. Only vertices that
+lie on an open edge may merge now: a tessellation seam is two boundary vertices a
+hair apart, an interior vertex a hair from its neighbour is just a small
+triangle. Result on CAS-A: 163,014 → 211,058 triangles (35 patches, +49,188;
+1,144 degenerate after merging, 0.7%), loops 36 → 42 with 3 non-simple, and the
+rendered mesh shows closed wheel discs, a continuous hood, and the bounding box
+unchanged. Four loops remain and all are intent-held: the underbody (now one
+loop with the cabin band at the mesh level, perimeter 15.7 m), the glass overlay,
+the rear vent overlay, and one small one.
