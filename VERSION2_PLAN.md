@@ -2041,3 +2041,50 @@ first and is a poor discriminator - the populations nearly touch at 0.0149 vs 0.
 **13 of the 27 patches were welding a second skin a few millimetres above an
 existing panel.** Nothing in a rendering would have shown it, and the mesher would
 have been handed two surfaces where the flow sees one.
+
+## Closed rims, the hood slit, and two more lessons about "backed"
+
+The user chose the closed-rim simplification for the wheels and photographed a gap
+still open at the front. Both traced to real defects in the pipeline.
+
+**The hood slit exposed a flaw in the backing test.** The slit (boundary 471, along
+the hood's leading edge) was being rejected as an overlapping panel at "61%
+backed" - but a sliver patch has no interior, every sample sits millimetres from
+the slit's own walls, and plain proximity cannot tell walls beside from panels
+behind. Backing now requires the nearest surface to lie along the patch normal
+(dot > 0.6). The slit fills; true overlays (glass at 4 mm behind, dot ≈ 1) are
+still caught.
+
+**Closed rims are an explicit request, not a repair.** `--close-near X,Y,Z,R`
+(argparse note: values starting with a minus need `--close-near=-41,...`) closes
+boundaries near the given point even when backed, labelled a simplification in the
+report. The rims' spokes really are behind the caps, so the backing test was right
+to refuse - it takes a human decision to overrule it, which is the point.
+
+**Two construction bugs in the projected caps, both found by their acceptance
+numbers.** Spoke-ring caps came out at area ratio 1.7-1.9, which is impossible for
+a planar patch inside its own loop's bounding box - the projected wire's winding
+was arbitrary, and `MakeFace` on the padded plane face kept the complement. Build
+on the infinite `gp_Pln` with `Inside=True` and winding stops mattering. Then the
+spoke-gap caps still failed: curve projection fragments those eight-edge loops
+into disconnected arcs, and the "largest loop" is an open arc. Fallback
+`_polygon_cap` walks the wire in traversal order (`BRepTools_WireExplorer` - plain
+TopExp order is not sequential), samples each edge, snaps the points to the fitted
+plane, and closes a polygon by construction.
+
+| | filled | max ratio | max reach | wheel-region leftovers |
+|---|---|---|---|---|
+| v10 | 14 / 46 | 0.39 | 0.32 | 11 |
+| **v13** | **38 / 46** | **0.39** | **0.03** | **0** |
+
+Remaining 8: underbody + symmetry plane (4851, decision pending), cabin band
+(2537, over sealing size), the glass overlay (871) and three smaller overlays
+correctly held for the intersection step, and one 38 mm NullObject failure.
+
+**Honest caveats.** Re-reading the written STEP and re-sewing counts 26 free
+boundaries, not 8: some cap seams re-split on round trip, consistent with polygon
+chord error plus plane residual locally exceeding the 10.5 mm sewing tolerance.
+And the full-model General Fuse for the glass overlay failed outright on all
+2,847 faces after 300 s (the "local" experiment had a bug that made it global:
+margin 0.6 x the cabin's 2537 mm covered the car). Resolving the glass overlap
+needs a genuinely local fuse, still to be done.

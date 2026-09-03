@@ -31,6 +31,11 @@ ap.add_argument("--seal-below", type=float,
                 help="close holes smaller than this (default: diagonal/100)")
 ap.add_argument("--fill-all", action="store_true",
                 help="close every hole regardless of size — will seal real inlets")
+ap.add_argument("--close-near", action="append", default=[],
+                metavar="X,Y,Z,R",
+                help="deliberate simplification: close boundaries whose centre is "
+                     "within R of this point even when surface lies behind them "
+                     "(e.g. a closed wheel rim); repeatable")
 ap.add_argument("--sew-tolerance", type=float)
 ap.add_argument("--pcurves", action="store_true",
                 help="write parametric curves into the STEP (much larger file)")
@@ -87,10 +92,18 @@ if args.list_only:
         print(f"\n보고서: {args.report}")
     raise SystemExit(0)
 
+close_near = []
+for spec in args.close_near:
+    parts = [float(v) for v in spec.replace(" ", "").split(",")]
+    if len(parts) != 4:
+        raise SystemExit(f"--close-near 는 X,Y,Z,R 이어야 합니다: {spec!r}")
+    close_near.append(tuple(parts))
+
 t0 = time.time()
 shape, heal_report = brep.heal(shape, sealing_size=args.seal_below,
                                fill_all=args.fill_all,
-                               sew_tolerance=args.sew_tolerance)
+                               sew_tolerance=args.sew_tolerance,
+                               close_near=close_near)
 print(f"\n봉합 {time.time() - t0:5.1f}s   봉합크기 {heal_report.sealing_size:.1f}")
 print(f"  구멍 {heal_report.boundaries_found}개 중 "
       f"{heal_report.boundaries_filled}개 메움, {heal_report.boundaries_left}개 남김")

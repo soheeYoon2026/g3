@@ -34,6 +34,9 @@ ap.add_argument("--label-top", type=int, default=6,
                 help="give this many of the largest holes their own colour")
 ap.add_argument("--focus-hole", type=int,
                 help="centre the views on the Nth largest hole (1 = largest)")
+ap.add_argument("--focus-point", metavar="X,Y,Z",
+                help="centre the views on this point (for a filled hole, which is "
+                     "no longer in the list)")
 ap.add_argument("--focus-span", type=float,
                 help="how much of the model to show around the focus point")
 ap.add_argument("--title", default="")
@@ -201,7 +204,14 @@ extent = float(np.linalg.norm(hi - lo))
 # Zooming in on one opening is how a hole list becomes a thing you can identify:
 # a frame with nothing behind it and a frame with a panel sitting 4 mm back look
 # identical in a table of sizes and centroids.
-if args.focus_hole and holes:
+if args.focus_point:
+    centre = np.array([float(v) for v in
+                       args.focus_point.replace(" ", "").split(",")])
+    span = args.focus_span or extent * 0.25
+    lo = centre - span * 0.5
+    hi = centre + span * 0.5
+    print(f"확대: 점 {np.round(centre, 0)}  범위 {span:.0f}")
+elif args.focus_hole and holes:
     picked = holes[min(args.focus_hole, len(holes)) - 1][0]
     centre = np.asarray(picked.centre, dtype=float)
     span = args.focus_span or (2.0 * picked.size)

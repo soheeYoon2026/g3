@@ -67,8 +67,16 @@ MAX_PATCH_REACH = 0.75
 # opening also has surface near its rim. What separates them is how much of the
 # patch has something under it: measured on CAS-A the genuine holes run 21-47% and
 # the overlaps 61-100%, with nothing in between.
+#
+# "Under" has to mean along the normal, not merely nearby. The hood's leading-edge
+# slit taught this: a sliver patch has no interior, every sample sits millimetres
+# from the slit's own walls, and plain distance called it 61% backed and refused to
+# close it - the gap the user then photographed. An overlapping panel has surface
+# behind it; a slit has surface beside it. So a sample only counts as backed when
+# the nearest surface lies along the patch normal.
 MAX_BACKED_FRACTION = 0.55
 BACKING_PROBE_FRAC = 1.0 / 1000.0   # about 5 mm on a 5 m car
+BACKING_NORMAL_DOT = 0.6            # how aligned with the normal "behind" must be
 
 
 @dataclass
@@ -325,7 +333,14 @@ class _Backing:
         return own
 
     def backed_fraction(self, patch, own):
-        """What share of the patch has existing surface within the probe distance."""
+        """What share of the patch has existing surface behind it, along its normal.
+
+        Distance alone misreads thin slits. A sliver patch bridging a panel gap has
+        no interior - every sample sits millimetres from the slit's own walls - so
+        plain proximity calls it backed and the gap never closes. The walls are
+        beside the patch; an overlapping panel is behind it. The direction to the
+        nearest surface, dotted with the patch normal, tells them apart.
+        """
         if not self.ok:
             return 0.0
         import trimesh
@@ -342,10 +357,19 @@ class _Backing:
             if len(patch_mesh.faces) == 0:
                 return 0.0
             points = np.asarray(patch_mesh.triangles_center, dtype=float)
+            normals = np.asarray(patch_mesh.face_normals, dtype=float)
             if len(points) > 300:
-                points = points[np.linspace(0, len(points) - 1, 300).astype(int)]
-            _, distance, _ = trimesh.proximity.closest_point(other, points)
-            return float((distance < self.probe).mean())
+                pick = np.linspace(0, len(points) - 1, 300).astype(int)
+                points, normals = points[pick], normals[pick]
+            closest, distance, _ = trimesh.proximity.closest_point(other, points)
+            towards = closest - points
+            length = np.linalg.norm(towards, axis=1)
+            safe = length > 1e-9
+            alignment = np.zeros(len(points))
+            alignment[safe] = np.abs(
+                (towards[safe] / length[safe, None] * normals[safe]).sum(axis=1))
+            backed = (distance < self.probe) & (alignment > BACKING_NORMAL_DOT)
+            return float(backed.mean())
         except Exception:
             return 0.0
 
@@ -410,6 +434,70 @@ def _fitted_plane_face(boundary: Boundary):
                                         float(u.max() + pad),
                                         float(v.min() - pad),
                                         float(v.max() + pad))
+        return maker.Face() if maker.IsDone() else None
+    except Exception:
+        return None
+
+
+def _polygon_cap(wire, boundary: Boundary):
+    """Cap the loop with a polygon of its own samples, projected to its plane.
+
+    The curve-projection route fragments on the wheel spoke gaps: eight edges come
+    back as four disconnected arcs, the largest 'loop' is open, and the face built
+    on it fails every acceptance test. None of that can happen to a polygon. The
+    wire is walked in order (BRepTools_WireExplorer gives traversal order, plain
+    TopExp does not), each edge sampled, every point dropped onto the fitted
+    plane, and the polygon closed by construction. The cost is polygonal edges
+    instead of the true curves - a few millimetres of chord error on a 200 mm
+    spoke gap, under the sewing tolerance that joins the cap in.
+    """
+    from OCP.BRep import BRep_Tool
+    from OCP.BRepAdaptor import BRepAdaptor_Curve
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakePolygon
+    from OCP.BRepTools import BRepTools_WireExplorer
+    from OCP.gp import gp_Ax3, gp_Dir, gp_Pln, gp_Pnt
+    from OCP.TopoDS import TopoDS
+
+    origin = np.asarray(boundary.plane_origin, dtype=float)
+    normal = np.asarray(boundary.plane_normal, dtype=float)
+    if not np.isfinite(normal).all() or np.linalg.norm(normal) < 1e-9:
+        return None
+    normal = normal / np.linalg.norm(normal)
+
+    try:
+        points = []
+        explorer = BRepTools_WireExplorer(wire)
+        while explorer.More():
+            edge = explorer.Current()
+            reversed_ = str(edge.Orientation()).endswith("REVERSED")
+            curve = BRepAdaptor_Curve(edge)
+            first, last = BRep_Tool.Range_s(edge)
+            ts = np.linspace(first, last, 8)
+            if reversed_:
+                ts = ts[::-1]
+            for t in ts[:-1]:   # the edge's last point is the next edge's first
+                p = curve.Value(float(t))
+                points.append((p.X(), p.Y(), p.Z()))
+            explorer.Next()
+        if len(points) < 3:
+            return None
+        pts = np.asarray(points, dtype=float)
+        flat = pts - np.outer((pts - origin) @ normal, normal)
+        # Collapse consecutive duplicates, which MakePolygon refuses
+        keep = np.ones(len(flat), dtype=bool)
+        keep[1:] = np.linalg.norm(np.diff(flat, axis=0), axis=1) > 1e-6
+        flat = flat[keep]
+        if len(flat) < 3:
+            return None
+
+        polygon = BRepBuilderAPI_MakePolygon()
+        for p in flat:
+            polygon.Add(gp_Pnt(*p))
+        polygon.Close()
+        if not polygon.IsDone():
+            return None
+        plane = gp_Pln(gp_Ax3(gp_Pnt(*origin), gp_Dir(*normal)))
+        maker = BRepBuilderAPI_MakeFace(plane, polygon.Wire(), True)
         return maker.Face() if maker.IsDone() else None
     except Exception:
         return None
@@ -490,7 +578,18 @@ def _plane_cap(wire, boundary: Boundary, plane_face):
             return None
         loops.sort(key=lambda pair: -pair[0])
 
-        maker = BRepBuilderAPI_MakeFace(plane_face, loops[0][1])
+        # Build on the infinite plane with Inside=True, not on the padded face.
+        # A projected wire arrives with arbitrary orientation, and MakeFace on a
+        # bounded face keeps whatever side the winding points at - on the wheel
+        # spoke rings that was the padding minus the loop, a complement whose area
+        # exceeded the loop's own bounding box (ratio 1.7-1.9, geometrically
+        # impossible for the loop's inside) and every cap was rejected for it.
+        # Inside=True pins the face to the loop's interior regardless of winding.
+        from OCP.gp import gp_Ax3, gp_Dir, gp_Pln, gp_Pnt
+        origin = np.asarray(boundary.plane_origin, dtype=float)
+        normal = np.asarray(boundary.plane_normal, dtype=float)
+        plane = gp_Pln(gp_Ax3(gp_Pnt(*origin), gp_Dir(*normal)))
+        maker = BRepBuilderAPI_MakeFace(plane, loops[0][1], True)
         if not maker.IsDone():
             return None
         for _, inner in loops[1:]:
@@ -500,6 +599,7 @@ def _plane_cap(wire, boundary: Boundary, plane_face):
                 pass
         face = maker.Face()
         fixer = ShapeFix_Face(face)
+        fixer.FixOrientationMode = 1
         fixer.Perform()
         return fixer.Face()
     except Exception:
@@ -578,6 +678,10 @@ def fill_boundary(wire, boundary: Boundary, supports=None, degree: int = 3,
     cap = _plane_cap(wire, boundary, plane_face)
     if cap is not None and _accept_patch(cap, boundary, "projected"):
         return cap
+    if plane_face is not None:
+        cap = _polygon_cap(wire, boundary)
+        if cap is not None and _accept_patch(cap, boundary, "polygon"):
+            return cap
 
     # Then the solved surface, for boundaries too far from any plane to project.
     # G1 to the neighbouring faces is deliberately not offered: measured on every
@@ -605,7 +709,7 @@ def fill_boundary(wire, boundary: Boundary, supports=None, degree: int = 3,
 
 def heal(shape, sealing_size: Optional[float] = None,
          report: Optional[HealReport] = None, fill_all: bool = False,
-         sew_tolerance: Optional[float] = None):
+         sew_tolerance: Optional[float] = None, close_near=None):
     """Close the holes below the sealing size, leave the rest, build a solid.
 
     The sealing size is the parameter the product has to expose, and the reason it
@@ -614,6 +718,15 @@ def heal(shape, sealing_size: Optional[float] = None,
     changes the answer rather than fixing the model. So the threshold has to sit
     below the smallest opening that is real, and everything above it is reported
     instead of sealed.
+
+    close_near is the explicit override for deliberate simplifications, and exists
+    because of wheels. A modelled wheel has spokes lying just behind the rim ring,
+    so the backing test rightly refuses to cap it - a cap over spokes is a second
+    skin. Closing the rim anyway is a standard aerodynamic simplification (a closed
+    rim), but it is a modelling decision, so it has to be asked for: each entry is
+    (x, y, z, radius), every boundary whose centre falls inside skips the backing
+    rejection, and the patch is labelled a simplification in the report. The size
+    and shape checks still apply - a deliberate cap may not run away either.
     """
     from OCP.BRep import BRep_Builder
     from OCP.BRepBuilderAPI import BRepBuilderAPI_Sewing
@@ -672,15 +785,25 @@ def heal(shape, sealing_size: Optional[float] = None,
             boundary.note = boundary.note or "filling failed"
             report.left_open.append(boundary)
             continue
+        centre = np.asarray(boundary.centre, dtype=float)
+        requested = any(
+            float(np.linalg.norm(centre - np.asarray(point[:3]))) <= float(point[3])
+            for point in (close_near or ()))
         boundary.backed_fraction = backing.backed_fraction(
             face, backing.own_faces(wire, supports))
         if boundary.backed_fraction > MAX_BACKED_FRACTION:
-            boundary.note = (
-                f"{100 * boundary.backed_fraction:.0f}% of the patch has surface "
-                "under it — this is an overlapping panel, not an opening; it "
-                "belongs to the intersection step")
-            report.left_open.append(boundary)
-            continue
+            if requested:
+                boundary.note = (
+                    f"closed on request as a simplification — "
+                    f"{100 * boundary.backed_fraction:.0f}% of the patch has "
+                    "surface behind it (e.g. spokes behind a rim)")
+            else:
+                boundary.note = (
+                    f"{100 * boundary.backed_fraction:.0f}% of the patch has "
+                    "surface under it — this is an overlapping panel, not an "
+                    "opening; it belongs to the intersection step")
+                report.left_open.append(boundary)
+                continue
         boundary.filled = True
         report.filled.append(boundary)
         report.patch_area += boundary.patch_area
