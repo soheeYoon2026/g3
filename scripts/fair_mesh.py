@@ -28,7 +28,9 @@ ap.add_argument("--out", type=Path)
 ap.add_argument("--report", type=Path)
 ap.add_argument("--heal-report", type=Path,
                 help="heal_step.py JSON; its left_open list is honoured")
-ap.add_argument("--seal-below", type=float, default=900.0)
+ap.add_argument("--seal-below", type=float,
+                help="close loops up to this size (default: diagonal/6, which "
+                     "is 875 on CAS-A in mm and 34 on an inch-unit model)")
 ap.add_argument("--curvature-angle", type=float, default=15.0)
 ap.add_argument("--stitch", type=float, help="vertex merge distance")
 ap.add_argument("--no-sew", action="store_true")
@@ -60,8 +62,12 @@ if args.heal_report and args.heal_report.exists():
         held.append((*b["centre"], b["size"]))
     print(f"B-rep 단계가 남긴 개구부 {len(held)}개는 그대로 둡니다")
 
+diag = float(np.linalg.norm(np.asarray(mesh.bounds[1]) - np.asarray(mesh.bounds[0])))
+seal_below = args.seal_below if args.seal_below is not None else diag / 6.0
+print(f"봉합 크기 {seal_below:.1f} (대각선 {diag:.0f})")
+
 t0 = time.time()
-out, report = fair.fill_holes(mesh, sealing_size=args.seal_below, held=held,
+out, report = fair.fill_holes(mesh, sealing_size=seal_below, held=held,
                               stitch_tolerance=args.stitch)
 print(f"\n메쉬 봉합 {time.time() - t0:.1f}s   정점 병합 거리 {report.stitch_tolerance:.2f}")
 print(f"  경계 고리 {report.loops_before_stitch} → 병합 후 {report.loops_after_stitch}"

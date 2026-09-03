@@ -285,6 +285,75 @@ def min_weight_triangulation(points, outer_normals):
     return triangles, weight.get((0, n - 1), INF)
 
 
+def ear_clip(points, normal):
+    """Triangulate a large loop by ear clipping in its best-fit plane. O(n^2).
+
+    Minimum-weight triangulation is O(n^3) and fine up to sixty-odd vertices; a
+    scanned STL's boundary loops run to hundreds (GTR35: 474 on a loop under the
+    sealing size) and would take hours. Ear clipping gives a valid triangulation
+    of the projected polygon in seconds. It is only as good as the projection -
+    a loop that folds over in its own plane defeats it - so the caller falls back
+    to a fan when it fails.
+    """
+    pts = np.asarray(points, dtype=float)
+    n = len(pts)
+    if n < 3 or n > EAR_CLIP_MAX_VERTICES:
+        # The inside test below is linear per candidate, so this is cubic in the
+        # worst case; past a few hundred vertices the fan is the honest choice
+        return []
+    normal = np.asarray(normal, dtype=float)
+    normal /= max(np.linalg.norm(normal), 1e-12)
+    # In-plane basis
+    helper = np.array([1.0, 0.0, 0.0]) if abs(normal[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    u = np.cross(normal, helper)
+    u /= np.linalg.norm(u)
+    v = np.cross(normal, u)
+    centre = pts.mean(axis=0)
+    flat = np.stack([(pts - centre) @ u, (pts - centre) @ v], axis=1)
+
+    # Ensure counter-clockwise
+    area2 = np.sum(flat[:, 0] * np.roll(flat[:, 1], -1) - np.roll(flat[:, 0], -1) * flat[:, 1])
+    order = list(range(n)) if area2 > 0 else list(range(n))[::-1]
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    def inside(p, a, b, c):
+        return (cross(a, b, p) >= -1e-12 and cross(b, c, p) >= -1e-12
+                and cross(c, a, p) >= -1e-12)
+
+    triangles = []
+    remaining = order[:]
+    guard = 0
+    while len(remaining) > 3 and guard < 4 * n:
+        guard += 1
+        clipped = False
+        m = len(remaining)
+        for i in range(m):
+            i0, i1, i2 = remaining[i - 1], remaining[i], remaining[(i + 1) % m]
+            a, b, c = flat[i0], flat[i1], flat[i2]
+            if cross(a, b, c) <= 1e-12:
+                continue  # reflex or degenerate
+            if any(inside(flat[k], a, b, c) for k in remaining
+                   if k not in (i0, i1, i2)):
+                continue
+            triangles.append((i0, i1, i2))
+            del remaining[i]
+            clipped = True
+            break
+        if not clipped:
+            return []  # the projection folded; let the caller fall back
+    if len(remaining) == 3:
+        triangles.append(tuple(remaining))
+    return triangles
+
+
+# Loops up to this many vertices get the minimum-weight (flattest) triangulation;
+# larger ones are ear-clipped in their plane, and past the second limit a fan
+MIN_WEIGHT_MAX_VERTICES = 60
+EAR_CLIP_MAX_VERTICES = 300
+
+
 # ---------------------------------------------------------------- refinement
 
 def refine(points, triangles, boundary_count, target_edge):
@@ -504,17 +573,29 @@ def fill_holes(mesh, sealing_size: float, held=(), hold_radius: float = 60.0,
             owners = edge_owner.get((min(u, v), max(u, v)), [])
             if owners:
                 outer[k] = face_normals[owners[0]]
-        triangles, _ = min_weight_triangulation(pts, outer)
+        base_points = list(pts)
+        if n <= MIN_WEIGHT_MAX_VERTICES:
+            triangles, _ = min_weight_triangulation(pts, outer)
+        else:
+            centred = pts - centre
+            _, _, vt = np.linalg.svd(centred, full_matrices=False)
+            triangles = ear_clip(pts, vt[2])
+            if not triangles:
+                # Fan from the centroid as a last resort: adds one vertex, always
+                # produces a valid patch, never smooth. Better than a hole.
+                base_points.append(centre)
+                triangles = [(k, (k + 1) % n, n) for k in range(n)]
+                result.note = "ear clipping folded; fan used"
         if not triangles:
             result.note = "triangulation failed"
             report.holes.append(result)
             continue
         # The patch must be wound consistently with the body: across a shared
         # edge, a manifold's two triangles traverse it in opposite directions.
-        # The DP patch traverses the loop in increasing order, so if the body
-        # triangle across the first owned edge also runs loop[k] -> loop[k+1]
-        # the patch has to be reversed. Averaging body normals - the previous
-        # test - is meaningless on a ring whose normals point every way.
+        # Find a boundary edge both sides own and compare the directions; the
+        # DP patch runs the loop forward, ear clipping may run it either way, so
+        # the patch's own direction is read rather than assumed. Averaging body
+        # normals - the first version - is meaningless on a ring.
         for k in range(n):
             u, v = loop[k], loop[(k + 1) % n]
             owners = edge_owner.get((min(u, v), max(u, v)), [])
@@ -523,18 +604,25 @@ def fill_holes(mesh, sealing_size: float, held=(), hold_radius: float = 60.0,
             tri = faces[owners[0]]
             body_forward = any(tri[i] == u and tri[(i + 1) % 3] == v
                                for i in range(3))
-            if body_forward:
+            patch_tri = next((t for t in triangles
+                              if k in t and (k + 1) % n in t), None)
+            if patch_tri is None:
+                continue
+            patch_forward = any(patch_tri[i] == k and patch_tri[(i + 1) % 3] == (k + 1) % n
+                                for i in range(3))
+            if patch_forward == body_forward:
                 triangles = [(a, c, b) for a, b, c in triangles]
             break
 
-        # Seam angle of the flat patch
+        # Seam angle of the flat patch (base_points, not pts: a fan has one
+        # extra vertex the triangles refer to)
         result.seam_angle_flat_max, result.seam_angle_flat_median = \
-            _seam_angles(pts, triangles, outer, n)
+            _seam_angles(np.asarray(base_points), triangles, outer, n)
 
         # Refine to the boundary's own edge length
         boundary_edges = np.linalg.norm(np.roll(pts, -1, axis=0) - pts, axis=1)
         target = float(np.median(boundary_edges))
-        local_points, local_tris = refine(list(pts), triangles, n, target)
+        local_points, local_tris = refine(base_points, triangles, n, target)
 
         # One-ring of the loop in the body: pinned during fairing
         ring_faces, ring_pts = [], set()
