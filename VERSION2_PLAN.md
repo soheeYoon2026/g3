@@ -1917,3 +1917,41 @@ axis measured, but against fine-only it is a trade, buying hole structure (56 vs
 140) and free edges (765 vs 1,591) for invalid faces (46 vs 33) and crossings.
 Since step 7 splits crossings anyway and the holes are what block watertightness,
 the ladder stays the default, but the trade is now recorded rather than implied.
+
+## Rendering the result found a defect the numbers had passed
+
+`scripts/render_geometry.py` draws the body from four views with its free
+boundaries on it. It is local-only - the geometry is confidential - and uses a
+numpy z-buffer rather than a viewer, so it needs no display.
+
+Looking at it corrected two things.
+
+**The read of what CAS-A is missing was wrong.** The earlier note said the wheel
+arches and wheels were absent. They are not: the wheels are modelled down to the
+spokes, and the ~200 mm openings are the gaps between spokes. What is actually
+open, largest first, is the **underbody together with the symmetry plane** (it is a
+half model, y = −983…220, so the whole centreline silhouette is one free boundary
+of 4.85 m), the **glass**, which is a separate piece never sewn to the body, and
+the **wheels**, open where they meet the ground.
+
+**And the accepted patches were escaping the body.** The healed model rendered with
+fins near the wheels, and its bounding box was **269 mm wider** than the input's.
+The area test cannot see this: a sliver has almost no area. One patch closing a
+238 mm hole reached **9.3 m** away - twice the length of the car - at an area ratio
+of 0.26.
+
+Measuring how far each patch escapes the hole's own bounding box, relative to the
+hole size, splits the populations across an empty gap:
+
+    kept       0.00 0.00 0.01 … 0.40 0.49 0.52
+    rejected   1.18 1.18 1.20 … 3.23 7.44 17.90 42.04
+
+`MAX_PATCH_REACH = 0.75` sits in the gap and stands on its own: a cap over a hole
+of extent d is a hemisphere at worst, which rises d/2. With it, **18 of the 32
+patches that had been accepted are rejected**: 14 filled instead of 32, area
+15.02 → **16.58 m²** instead of 17.43, and the bounding box back to the input's
+exactly. The known-answer box case is unaffected - still closed, valid, 0.204 m³.
+
+Two lessons, both cheap and both missed until something was looked at: a geometric
+check needs a distance test as well as a size test, and a pipeline that only ever
+prints numbers will pass things a single picture rejects immediately.

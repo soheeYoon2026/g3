@@ -42,6 +42,19 @@ import numpy as np
 # two populations is wide and empty, so the cut sits in the middle of it.
 MAX_PATCH_RATIO = 1.5
 
+# Area is not enough. A patch can be perfectly sized and still be somewhere else:
+# a 238 mm hole produced one reaching 9.3 m away - twice the length of the car - at
+# an area ratio of 0.26, because a long thin sliver has hardly any area. Measuring
+# instead how far the patch escapes the hole's own bounding box, relative to the
+# hole's size, separates the two populations across an empty gap:
+#
+#     kept      0.00 0.00 0.01 ... 0.40 0.49 0.52
+#     rejected  1.18 1.18 1.20 ... 3.23 7.44 17.90 42.04
+#
+# 0.75 sits in the gap and is defensible on its own: a cap over a hole of extent d
+# is a hemisphere at worst, which rises d/2.
+MAX_PATCH_REACH = 0.75
+
 
 @dataclass
 class Boundary:
@@ -49,17 +62,20 @@ class Boundary:
     size: float = 0.0          # bounding box diagonal of the loop
     length: float = 0.0        # perimeter
     centre: tuple = (0.0, 0.0, 0.0)
+    bbox: tuple = ()           # (lo, hi) of the loop, for the reach test
     edges: int = 0
     planar: bool = False
     filled: bool = False
     fill_method: str = ""
     patch_area: float = 0.0
     patch_ratio: float = 0.0
+    patch_reach: float = 0.0
     note: str = ""
 
     def as_dict(self):
         d = asdict(self)
         d["centre"] = [round(float(v), 1) for v in self.centre]
+        d["bbox"] = [[round(float(v), 1) for v in corner] for corner in self.bbox]
         return d
 
 
@@ -126,10 +142,11 @@ def _wire_metrics(wire):
             p = curve.Value(float(t))
             points.append((p.X(), p.Y(), p.Z()))
     if not points:
-        return length, 0.0, np.zeros(3), n, False
+        return length, 0.0, np.zeros(3), n, False, (np.zeros(3), np.zeros(3))
     pts = np.asarray(points)
     centre = pts.mean(axis=0)
-    size = float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0)))
+    lo, hi = pts.min(axis=0), pts.max(axis=0)
+    size = float(np.linalg.norm(hi - lo))
     # Planar to within a thousandth of its own size: the smallest singular value of
     # the centred point cloud is the out-of-plane spread
     centred = pts - centre
@@ -138,7 +155,7 @@ def _wire_metrics(wire):
     except Exception:
         flatness = float("inf")
     planar = size > 0 and flatness / max(size, 1e-9) < 1e-3
-    return length, size, centre, n, planar
+    return length, size, centre, n, planar, (lo, hi)
 
 
 def free_boundaries(shape, split_closed: bool = False):
@@ -158,8 +175,9 @@ def free_boundaries(shape, split_closed: bool = False):
                              (finder.GetOpenWires(), dangling)):
         for w in _explore(compound, TopAbs_WIRE):
             wire = TopoDS.Wire_s(w)
-            length, size, centre, n, planar = _wire_metrics(wire)
+            length, size, centre, n, planar, box = _wire_metrics(wire)
             bucket.append((Boundary(size=size, length=length, centre=tuple(centre),
+                                    bbox=(tuple(box[0]), tuple(box[1])),
                                     edges=n, planar=planar), wire))
     holes.sort(key=lambda pair: -pair[0].size)
     dangling.sort(key=lambda pair: -pair[0].size)
@@ -175,7 +193,16 @@ def _accept_patch(face, boundary: Boundary, method: str) -> bool:
     which means an inverted face. Left unchecked those go into the STEP and change
     the flow answer instead of fixing the model, so every patch is measured against
     the hole it claims to close before it is accepted.
+
+    Two measurements are needed, not one. Area catches the patches that balloon.
+    Distance catches the ones that are the right size in the wrong place, which
+    area cannot see at all: a sliver reaching 9.3 m out of a 238 mm hole scored
+    0.26 on area and looked healthy. Rendering the result is what exposed them -
+    the healed body was 269 mm wider than the input and grew fins near the wheels -
+    and with both tests 18 of the 32 patches that had been accepted are rejected.
     """
+    from OCP.Bnd import Bnd_Box
+    from OCP.BRepBndLib import BRepBndLib
     from OCP.BRepGProp import BRepGProp
     from OCP.GProp import GProp_GProps
 
@@ -198,6 +225,28 @@ def _accept_patch(face, boundary: Boundary, method: str) -> bool:
         boundary.note = (f"{method} patch is {boundary.patch_ratio:.1f}x the hole's "
                          f"own scale ({area / 1e6:.2f} m2) — the surface ran away")
         return False
+
+    if boundary.bbox and boundary.size > 0:
+        try:
+            box = Bnd_Box()
+            BRepBndLib.Add_s(face, box)
+            plo = np.array([box.CornerMin().X(), box.CornerMin().Y(),
+                            box.CornerMin().Z()])
+            phi = np.array([box.CornerMax().X(), box.CornerMax().Y(),
+                            box.CornerMax().Z()])
+            hlo = np.asarray(boundary.bbox[0], dtype=float)
+            hhi = np.asarray(boundary.bbox[1], dtype=float)
+            escape = float(np.maximum(
+                np.concatenate([hlo - plo, phi - hhi]), 0.0).max())
+            boundary.patch_reach = escape / boundary.size
+        except Exception:
+            boundary.patch_reach = 0.0
+        if boundary.patch_reach > MAX_PATCH_REACH:
+            boundary.note = (
+                f"{method} patch reaches {escape:.0f} beyond the hole "
+                f"({boundary.patch_reach:.1f}x its size) — it is not over the hole")
+            return False
+
     boundary.fill_method = method
     return True
 
