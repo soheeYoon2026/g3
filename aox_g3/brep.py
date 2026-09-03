@@ -78,6 +78,14 @@ MAX_BACKED_FRACTION = 0.55
 BACKING_PROBE_FRAC = 1.0 / 1000.0   # about 5 mm on a 5 m car
 BACKING_NORMAL_DOT = 0.6            # how aligned with the normal "behind" must be
 
+# A backed patch is only a second skin if it has real area. The hood's leading
+# edge slit sits over a cowl panel 5 mm below along its normal - genuinely
+# "backed", 96% - yet the cap bridging it is a strip at 0.09 of the hole's own
+# scale, and a strip over a shallow step closes a panel gap rather than doubling a
+# surface. Overlays that matter are wide: glass 0.33, wheel rims 0.39, the flank
+# panel 0.19. Below this ratio the backing verdict is not applied.
+SLIT_PATCH_RATIO = 0.12
+
 
 @dataclass
 class Boundary:
@@ -111,7 +119,12 @@ class HealReport:
     sealing_size: float = 0.0
     boundaries_found: int = 0
     boundaries_filled: int = 0
-    boundaries_left: int = 0
+    boundaries_left: int = 0            # holes not filled — bookkeeping
+    free_boundaries_after: int = 0      # loops the shape still has — measured
+    floating_caps: int = 0              # caps placed but not joined (two loops each)
+    faces_after_fine_sew: int = 0
+    free_after_fine_sew: int = 0
+    patch_sew_tolerance: float = 0.0
     faces_before: int = 0
     faces_after: int = 0
     shells_after: int = 0
@@ -439,6 +452,57 @@ def _fitted_plane_face(boundary: Boundary):
         return None
 
 
+def _shared_edge_cap(wire, boundary: Boundary):
+    """Build the cap on the boundary's own edges, so it never needs sewing.
+
+    Every other cap here owns its edges - projected curves or a polygon - and then
+    has to be sewn to the body, and that seam is where the loops came back. At
+    10.5 mm about half the caps missed and the shape carried 51 free boundaries
+    while reporting 8; at 40 mm they joined but 480 edges went sloppy and the STEP
+    reader inflated one to 249 mm. Sewing is the wrong tool for a seam we made.
+
+    CAD bounds a face by edges it shares with its neighbours. Give MakeFace the
+    boundary wire itself and the cap shares those TopoDS_Edge objects with the
+    body: the edge now has two faces and the loop is simply gone. The wire is not
+    on the plane; ShapeFix_Face adds the pcurves and raises the tolerance on
+    exactly those edges to the plane deviation, and nothing else is touched.
+    Measured on CAS-A: 33 of 43 fillable loops close this way, 46 free boundaries
+    become 13 after only a 1 mm sew, and the largest edge tolerance is the largest
+    plane residual (26.9 mm) rather than 249. The ten that fail are the wheel spoke
+    gaps, whose 8-10 edge loops sit 7-12% of their size off any plane and come back
+    as invalid faces; those fall through to the polygon cap.
+    """
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+    from OCP.BRepCheck import BRepCheck_Analyzer
+    from OCP.ShapeFix import ShapeFix_Face
+    from OCP.gp import gp_Ax3, gp_Dir, gp_Pln, gp_Pnt
+
+    if not boundary.plane_normal or boundary.size <= 0:
+        return None
+    if boundary.plane_residual > MAX_PLANE_RESIDUAL_FRAC * boundary.size:
+        return None
+    origin = np.asarray(boundary.plane_origin, dtype=float)
+    normal = np.asarray(boundary.plane_normal, dtype=float)
+    if not np.isfinite(normal).all() or np.linalg.norm(normal) < 1e-9:
+        return None
+    try:
+        plane = gp_Pln(gp_Ax3(gp_Pnt(*origin), gp_Dir(*normal)))
+        maker = BRepBuilderAPI_MakeFace(plane, wire, True)
+        if not maker.IsDone():
+            return None
+        face = maker.Face()
+        fixer = ShapeFix_Face(face)
+        fixer.SetPrecision(max(boundary.plane_residual, 1e-3))
+        fixer.SetMaxTolerance(max(2.0 * boundary.plane_residual, 1e-2))
+        fixer.Perform()
+        face = fixer.Face()
+        if not BRepCheck_Analyzer(face).IsValid():
+            return None
+        return face
+    except Exception:
+        return None
+
+
 def _polygon_cap(wire, boundary: Boundary):
     """Cap the loop with a polygon of its own samples, projected to its plane.
 
@@ -674,6 +738,11 @@ def fill_boundary(wire, boundary: Boundary, supports=None, degree: int = 3,
 
     # Projection first: a planar cap cannot run away, and on this geometry that
     # matters more than the millimetres of step it introduces.
+    # On the boundary's own edges first: no seam to sew, no tolerance to spend
+    cap = _shared_edge_cap(wire, boundary)
+    if cap is not None and _accept_patch(cap, boundary, "shared"):
+        return cap
+
     plane_face = _fitted_plane_face(boundary)
     cap = _plane_cap(wire, boundary, plane_face)
     if cap is not None and _accept_patch(cap, boundary, "projected"):
@@ -764,8 +833,12 @@ def heal(shape, sealing_size: Optional[float] = None,
             "the topology is broken there and filling cannot fix it")
 
     builder = BRep_Builder()
-    patches = TopoDS_Compound()
-    builder.MakeCompound(patches)
+    # Caps that share the body's edges need only a fine sew; caps that own their
+    # edges need a tolerance covering their plane residual, applied in context
+    shared_patches = TopoDS_Compound()
+    builder.MakeCompound(shared_patches)
+    loose_patches = TopoDS_Compound()
+    builder.MakeCompound(loose_patches)
     # Built once: the patches take their shape from the faces they border, and are
     # then checked against what is already behind them
     supports = face_supports(shape)
@@ -791,7 +864,13 @@ def heal(shape, sealing_size: Optional[float] = None,
             for point in (close_near or ()))
         boundary.backed_fraction = backing.backed_fraction(
             face, backing.own_faces(wire, supports))
-        if boundary.backed_fraction > MAX_BACKED_FRACTION:
+        narrow = boundary.patch_ratio < SLIT_PATCH_RATIO
+        if boundary.backed_fraction > MAX_BACKED_FRACTION and narrow:
+            boundary.note = (
+                f"narrow strip ({boundary.patch_ratio:.2f} of the hole's scale) "
+                f"bridging a step — {100 * boundary.backed_fraction:.0f}% backed "
+                "but too thin to double a surface")
+        if boundary.backed_fraction > MAX_BACKED_FRACTION and not narrow:
             if requested:
                 boundary.note = (
                     f"closed on request as a simplification — "
@@ -807,7 +886,12 @@ def heal(shape, sealing_size: Optional[float] = None,
         boundary.filled = True
         report.filled.append(boundary)
         report.patch_area += boundary.patch_area
-        builder.Add(patches, face)
+        # "planar" caps are MakeFace(wire) on the original wire, so they share
+        # edges exactly as "shared" ones do; only projected and polygon caps own
+        # their edges and need the coarser, context-limited sew
+        method = boundary.fill_method.split("(")[0]
+        builder.Add(shared_patches if method in ("shared", "planar")
+                    else loose_patches, face)
         n_patches += 1
     report.boundaries_filled = n_patches
     report.boundaries_left = len(report.left_open)
@@ -819,13 +903,55 @@ def heal(shape, sealing_size: Optional[float] = None,
             f"{report.area_before / 1e6:.2f} m2 model — check them before using it")
 
     if n_patches:
-        # Re-sew rather than splicing faces into the shell by hand: the patches are
-        # built on the boundary edges, so sewing rejoins them at the right places
-        sewer = BRepBuilderAPI_Sewing(sew_tolerance or diag * 0.002)
+        # Two kinds of patch, two ways of joining them.
+        #
+        # Shared-edge caps already share their edges with the body, so a fine pass
+        # (diagonal/5000, about 1 mm) is enough to fold them into the shells and
+        # cannot add slop anywhere. Caps that own their edges - projected or
+        # polygon - sit off their loop by the loop's plane residual and need a
+        # tolerance that covers it; sewing the whole body at that tolerance is what
+        # inflated 480 edges and let the STEP reader reach 249 mm, so those are
+        # sewn in context mode: the body is loaded as context and only the added
+        # patches are matched against it.
+        loose = [b for b in report.filled
+                 if b.fill_method.split("(")[0] not in ("shared", "planar")]
+        fine = diag / 5000.0
+        sewer = BRepBuilderAPI_Sewing(fine)
         sewer.Add(shape)
-        sewer.Add(patches)
+        sewer.Add(shared_patches)
         sewer.Perform()
         shape = sewer.SewedShape()
+        # Instrumented: the shared caps went missing somewhere between here and the
+        # end (v15: 38 patches, +19 faces), so record the state after each pass
+        report.faces_after_fine_sew = len(_explore(shape, TopAbs_FACE))
+        report.free_after_fine_sew = len(free_boundaries(shape)[0])
+
+        report.patch_sew_tolerance = float(fine)
+        if loose:
+            # Caps that own their edges are left floating, deliberately.
+            #
+            # Every way of sewing them in was measured and every one damages the
+            # body: a global pass at 1.5x their residual (40 mm) inflates 480 edge
+            # tolerances, context mode (Load/Add) silently drops the caps from
+            # the result, and local-tolerance mode - tolerance set on the cap
+            # edges only - still propagates through shared vertices to 460 edges.
+            # Sewing carries slop wherever the topology connects, and these seams
+            # need 14-27 mm of it.
+            #
+            # So the cap is placed but not joined. It sits within its loop's plane
+            # residual of the rim, which closes the opening for the wrap that
+            # produces the CFD mesh downstream, and the STEP that goes back to the
+            # CAD engineer shows a face there instead of a hole. The count of
+            # floating caps is reported so nobody mistakes them for joined ones.
+            report.floating_caps = len(loose)
+            assembly = TopoDS_Compound()
+            builder.MakeCompound(assembly)
+            builder.Add(assembly, shape)
+            builder.Add(assembly, loose_patches)
+            folder = BRepBuilderAPI_Sewing(fine)
+            folder.Add(assembly)
+            folder.Perform()
+            shape = folder.SewedShape()
 
     shells = _explore(shape, TopAbs_SHELL)
     for s in shells:
@@ -844,7 +970,11 @@ def heal(shape, sealing_size: Optional[float] = None,
     report.faces_after = len(_explore(shape, TopAbs_FACE))
     report.shells_after = len(_explore(shape, TopAbs_SHELL))
     report.solids_after = len(_explore(shape, TopAbs_SOLID))
+    # Measured, not bookkept: boundaries_left counts holes that were not filled,
+    # which is a different number from the free boundaries the shape still has.
+    # A cap that did not sew in adds two loops the hole count never sees.
     remaining, _ = free_boundaries(shape)
+    report.free_boundaries_after = len(remaining)
     report.closed = len(remaining) == 0
     report.valid = bool(BRepCheck_Analyzer(shape).IsValid())
 

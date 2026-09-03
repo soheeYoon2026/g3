@@ -104,9 +104,17 @@ shape, heal_report = brep.heal(shape, sealing_size=args.seal_below,
                                fill_all=args.fill_all,
                                sew_tolerance=args.sew_tolerance,
                                close_near=close_near)
-print(f"\n봉합 {time.time() - t0:5.1f}s   봉합크기 {heal_report.sealing_size:.1f}")
+print(f"\n봉합 {time.time() - t0:5.1f}s   봉합크기 {heal_report.sealing_size:.1f}   "
+      f"캡 꿰맴 오차 {heal_report.patch_sew_tolerance:.1f}")
 print(f"  구멍 {heal_report.boundaries_found}개 중 "
-      f"{heal_report.boundaries_filled}개 메움, {heal_report.boundaries_left}개 남김")
+      f"{heal_report.boundaries_filled}개 메움, {heal_report.boundaries_left}개 안 메움")
+floating = getattr(heal_report, "floating_caps", 0)
+print(f"  실측 잔여 자유경계 {heal_report.free_boundaries_after}개"
+      + (f"  (모서리를 공유 못 한 캡 {floating}개는 붙이지 않고 놓아둠 — "
+         f"고리 최대 {2 * floating}개까지 여기서 나올 수 있음)" if floating else "")
+      + ("" if heal_report.free_boundaries_after
+         <= heal_report.boundaries_left + 2 * floating
+         else "  ← 설명되지 않는 잔여 있음"))
 print(f"  면 {heal_report.faces_before:,} → {heal_report.faces_after:,}   "
       f"셸 {heal_report.shells_after}  고체 {heal_report.solids_after}")
 print(f"  닫힘 {'예' if heal_report.closed else '아니오'}   "

@@ -2097,3 +2097,50 @@ problem. OCC's intersection step cannot resolve the overlapping styling panels i
 the state they arrive, which makes the supplier's trimmed surfaces the only clean
 path to closing the glass and the other overlays. Recorded in the question list
 for BAIC as the first-priority request.
+
+## Re-read seams: the "8" was bookkeeping, and sewing was the wrong tool for caps
+
+The premise was wrong. The healed shape never had 8 free boundaries; `8` was
+`46 − 38`, the count of holes not filled, and the actual free-boundary count of the
+shape had never been measured. Measured in one process: **memory 51, STEP re-read
+36, BREP re-read 51**. STEP loses nothing — the reader's own healing even merges
+some — and the round-trip caveat recorded earlier was a phantom.
+
+The real cause: patches were sewn to the body at 10.5 mm, and a projected cap sits
+off its loop by the loop's plane residual, up to 27 mm. About half the caps never
+joined, each unjoined cap contributing two loops. **Every way of sewing them in was
+then measured, and every one damages the body**:
+
+| | free boundaries | edges > 10 mm tol | max tol after STEP re-read |
+|---|---|---|---|
+| global sew 10.5 mm (v13) | 51 | 96 | 14 |
+| global sew at 1.5× residual = 40 mm (v14) | 41 | **480** | **249 mm** |
+| context mode `Load`/`Add` | caps silently dropped from the result | | |
+| local-tolerance mode, tolerance on cap edges only | 11 | **460** | |
+
+Sewing carries slop wherever the topology connects.
+
+**So build the cap on the boundary's own edges instead** (`_shared_edge_cap`):
+`MakeFace(gp_Pln, wire, Inside=True)` with the original wire, then `ShapeFix_Face`
+to add pcurves and raise tolerance on exactly those edges to the plane deviation.
+The cap shares the body's `TopoDS_Edge` objects; the edge simply has two faces and
+the loop is gone. No sewing beyond a 1 mm fold. 29 of 40 caps close this way
+(shared 21 + exact planar 8, which was already built on the wire). The 11 that
+fail validity — wheel spoke gaps, 7-12% off any plane — fall through to projected
+or polygon caps and are **placed but not joined**, reported as such: they sit within
+their residual of the rim, which the downstream wrap closes.
+
+One more rule from this: the hood slit came back as "96% backed" once built as a
+shared cap — a cowl panel really is 5 mm below it along the normal — yet the cap is
+a strip at 0.09 of the hole's scale that cannot double a surface. Backing rejection
+now applies only above `SLIT_PATCH_RATIO = 0.12` (glass 0.33, rims 0.39, flank
+0.19 still caught; slits 0.09/0.08 pass).
+
+| | filled | free boundaries (measured) | STEP re-read | edges > 10 mm |
+|---|---|---|---|---|
+| v13 | 38 | 51 | 36 | 96 |
+| **v17** | **40** | **14** | **12** | 145 (cap rims only, max 26.9) |
+
+Remaining 6: underbody + symmetry plane, cabin band, glass overlay, two smaller
+overlays, one 38 mm NullObject. `heal_step.py` now prints the measured count and
+the number of floating caps beside the bookkept one.
