@@ -322,13 +322,14 @@ async def recommend(
             origin = vertices[vertex_index]
             results.append({
                 # STL 단위를 모른다(m 도 mm 도 온다). 전장 비율로만 말한다.
-                "label": f"Point {control_id}: push in {rec.PUSH_FRACTION:.1%} of length",
+                # 프론트가 label 을 SVG id 와 React key 로 쓴다 — 공백·% 없이.
+                "label": f"control-{control_id}",
                 "control_id": int(control_id),
                 "position": [float(v) for v in origin],
                 "displacement": [float(v) for v in displacement],
                 "influence_radius": float(radius),
                 "symmetric": bool(symmetric),
-                "preview_points": [],
+                "preview_points": rec.preview_points(pushed, origin, radius),
                 "cd": cd,
                 "cl": cl,
                 "delta_cd": None if cd is None or cd0 is None else float(cd - cd0),
@@ -344,6 +345,11 @@ async def recommend(
         "candidate_count": len(results),
         "requested_control_points": len(points),
         "baseline": {"cd": cd0, "cl": cl0},
+        "overview_points": rec.overview_points(vertices),
+        "overview_bounds": {
+            "min": [float(v) for v in vertices.min(axis=0)],
+            "max": [float(v) for v in vertices.max(axis=0)],
+        },
         "push_fraction": rec.PUSH_FRACTION,
         "radius_fraction": rec.RADIUS_FRACTION,
         "vehicle_length": float(length),

@@ -107,3 +107,42 @@ def rank(results: list[dict], top: int) -> list[dict]:
         return float("inf") if value is None else float(value)
 
     return sorted(results, key=key)[: max(int(top), 0)]
+
+# ── 카드 미리보기용 점 ────────────────────────────────────────────────────────
+# 프론트의 RecommendationZoom 이 그리는 두 그림의 데이터. 둘 다 정규화해서 보낸다:
+#   overview  : 차 전체 실루엣. 중심 기준, 전장의 절반으로 나눠 x 가 [-1, 1].
+#   preview   : 밀린 자리 주변. 눌린 점 기준, 영향 반경으로 나눠 |p| ≤ 1.
+# 픽셀 좌표로 바꾸는 건 프론트 몫이고, 여기서는 단위를 없애기만 한다.
+
+OVERVIEW_POINTS = 480
+PREVIEW_POINTS = 120
+
+
+def _subsample(points: np.ndarray, count: int, seed: int = 0) -> np.ndarray:
+    if len(points) <= count:
+        return points
+    picks = np.random.default_rng(seed).choice(len(points), size=count, replace=False)
+    return points[np.sort(picks)]
+
+
+def overview_points(vertices: np.ndarray, count: int = OVERVIEW_POINTS) -> list[list[float]]:
+    """차 전체를 전장의 절반으로 정규화한 점 구름. 세 축 같은 배율이라 비례가 산다."""
+    lo = vertices.min(axis=0)
+    hi = vertices.max(axis=0)
+    centre = (lo + hi) / 2.0
+    half_length = max(float(hi[LENGTH_AXIS] - lo[LENGTH_AXIS]) / 2.0, 1e-9)
+    sampled = _subsample(vertices, count)
+    return ((sampled - centre) / half_length).round(4).tolist()
+
+
+def preview_points(
+    vertices: np.ndarray,
+    origin: np.ndarray,
+    radius: float,
+    count: int = PREVIEW_POINTS,
+) -> list[list[float]]:
+    """눌린 자리 반경 안의 점들을 그 자리 기준, 반경 단위로."""
+    safe_radius = max(float(radius), 1e-9)
+    offsets = vertices - np.asarray(origin, dtype=float)
+    inside = offsets[(offsets ** 2).sum(axis=1) <= safe_radius * safe_radius]
+    return (_subsample(inside, count) / safe_radius).round(4).tolist()

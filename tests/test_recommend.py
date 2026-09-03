@@ -87,3 +87,26 @@ def test_rank_orders_by_delta_cd_and_pushes_missing_values_last():
     ]
     assert [r["control_id"] for r in rank(results, 3)] == [3, 4, 1]
     assert rank(results, 0) == []
+
+def test_overview_points_are_normalised_by_half_length_and_centred():
+    from aox_g3.recommend import overview_points
+    vertices = np.array([[0, -900, 0], [4600, 900, 1400]], dtype=float)
+    pts = np.array(overview_points(vertices))
+    assert pts.shape == (2, 3)
+    assert np.allclose(pts[:, 0], [-1, 1])          # 길이축이 [-1, 1]
+    assert np.allclose(pts[:, 2], [-1400 / 4600, 1400 / 4600], atol=1e-4)  # 같은 배율 (4자리 반올림)
+
+
+def test_overview_points_are_subsampled_to_the_cap():
+    from aox_g3.recommend import overview_points
+    vertices = np.random.default_rng(1).random((5000, 3)) * 1000
+    assert len(overview_points(vertices, count=480)) == 480
+
+
+def test_preview_points_are_local_and_within_the_unit_ball():
+    from aox_g3.recommend import preview_points
+    vertices, _ = _grid_surface()
+    pts = np.array(preview_points(vertices, np.array([500.0, 0.0, 0.0]), 200.0))
+    assert len(pts) > 0
+    assert np.all(np.linalg.norm(pts, axis=1) <= 1.0 + 1e-9)
+    assert np.allclose(pts.mean(axis=0), 0, atol=0.25)  # 눌린 점 주변에 모여 있다
