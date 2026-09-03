@@ -2001,3 +2001,43 @@ brings it to +2.43 m².
 Nearly double the holes closed, nothing out of bounds, bounding box identical to the
 input, and 13.8 s instead of 163 s. What is left is the underbody with the symmetry
 plane, the glass, and a few panel gaps.
+
+## The glass is not missing — it overlaps, and 13 patches were covering surface
+
+Asked to attach the glass, the first job was deciding what "the glass" is: present
+but unstitched, or absent. Two measurements disagreed, and the disagreement was the
+finding.
+
+Distance to the nearest face said almost every remaining hole has geometry right
+against it, **median 0.00 mm**, the 4.85 m underbody boundary included. That cannot
+be taken at face value on a model that self-intersects 8,830 times, because a face
+passing straight through a boundary also measures zero.
+
+Pairing free boundaries against each other said the opposite - the 871 mm glass
+loop has no other free boundary within **668 mm**, 0% of its samples near one - so
+it is not one side of an unstitched seam.
+
+Both are right. **Zooming in settled it**: the loop sits on a continuous panel, 4 mm
+above it, and looking through it shows body, not sky. Styling CAD models panels
+oversized and overlapping and trims them later, so a panel laid on another has a
+free loop the whole way round with solid surface underneath. That is also what the
+8,830 self-intersections are.
+
+**So this belongs to step 7, not step 6** - and worse, filling had already been
+doing the wrong thing. Auditing every patch against what was behind it:
+
+- genuine openings: **21-47%** of the patch has surface under it (only near the rim)
+- overlapping panels: **61-100%**, backed everywhere
+
+Nothing in between, so `MAX_BACKED_FRACTION = 0.55`. The median distance was checked
+first and is a poor discriminator - the populations nearly touch at 0.0149 vs 0.0204
+- because a real opening also has surface near its edge. Coverage separates them.
+
+| | filled | area added |
+|---|---|---|
+| projection, unchecked | 27 / 46 | +2.43 m² |
+| **projection + backing check** | **14 / 46** | **+1.01 m²** |
+
+**13 of the 27 patches were welding a second skin a few millimetres above an
+existing panel.** Nothing in a rendering would have shown it, and the mesher would
+have been handed two surfaces where the flow sees one.

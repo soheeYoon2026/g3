@@ -55,6 +55,21 @@ MAX_PATCH_RATIO = 1.5
 # is a hemisphere at worst, which rises d/2.
 MAX_PATCH_REACH = 0.75
 
+# A free boundary does not always bound an opening. Styling CAD models panels
+# oversized and overlapping and trims them later, so a panel laid on another has a
+# free loop the whole way round with solid surface underneath. CAS-A's rear side
+# glass is exactly that - the loop sits 4 mm above a continuous panel, and looking
+# through it shows body, not sky. Capping one welds a second skin a few millimetres
+# above the first, which no rendering will show and which hands the mesher two
+# surfaces where the flow sees one.
+#
+# The median distance to existing surface barely separates the two, because a real
+# opening also has surface near its rim. What separates them is how much of the
+# patch has something under it: measured on CAS-A the genuine holes run 21-47% and
+# the overlaps 61-100%, with nothing in between.
+MAX_BACKED_FRACTION = 0.55
+BACKING_PROBE_FRAC = 1.0 / 1000.0   # about 5 mm on a 5 m car
+
 
 @dataclass
 class Boundary:
@@ -73,6 +88,7 @@ class Boundary:
     patch_area: float = 0.0
     patch_ratio: float = 0.0
     patch_reach: float = 0.0
+    backed_fraction: float = 0.0
     note: str = ""
 
     def as_dict(self):
@@ -268,6 +284,70 @@ def _accept_patch(face, boundary: Boundary, method: str) -> bool:
 
     boundary.fill_method = method
     return True
+
+
+class _Backing:
+    """Asks what is already underneath a proposed patch.
+
+    Built once per heal: the shape is tessellated with each triangle remembering
+    its B-rep face, so a patch can be tested against everything except the faces
+    its own boundary belongs to. Without that exclusion the answer is always zero -
+    the nearest surface to a hole's rim is the face the rim is part of.
+    """
+
+    def __init__(self, shape, probe):
+        from aox_g3 import topology
+        self.ok = False
+        self.probe = probe
+        try:
+            import trimesh  # noqa: F401
+            self.mesh, self.owner, faces = topology.tessellate_with_owner(shape)
+            if len(self.mesh.faces) == 0:
+                return
+            self.index_of = {face: i for i, face in enumerate(faces)}
+            self.ok = True
+        except Exception:
+            self.ok = False
+
+    def own_faces(self, wire, supports):
+        from OCP.TopAbs import TopAbs_EDGE
+        from OCP.TopoDS import TopoDS
+        own = set()
+        if not self.ok or supports is None:
+            return own
+        for e in _explore(wire, TopAbs_EDGE):
+            edge = TopoDS.Edge_s(e)
+            if supports.Contains(edge):
+                for f in supports.FindFromKey(edge):
+                    index = self.index_of.get(TopoDS.Face_s(f))
+                    if index is not None:
+                        own.add(index)
+        return own
+
+    def backed_fraction(self, patch, own):
+        """What share of the patch has existing surface within the probe distance."""
+        if not self.ok:
+            return 0.0
+        import trimesh
+        from aox_g3 import topology
+        try:
+            keep = (~np.isin(self.owner, list(own)) if own
+                    else np.ones(len(self.owner), bool))
+            if not keep.any():
+                return 0.0
+            other = trimesh.Trimesh(vertices=self.mesh.vertices,
+                                    faces=np.asarray(self.mesh.faces)[keep],
+                                    process=False)
+            patch_mesh = topology.tessellate_by_curvature(patch, 20.0)
+            if len(patch_mesh.faces) == 0:
+                return 0.0
+            points = np.asarray(patch_mesh.triangles_center, dtype=float)
+            if len(points) > 300:
+                points = points[np.linspace(0, len(points) - 1, 300).astype(int)]
+            _, distance, _ = trimesh.proximity.closest_point(other, points)
+            return float((distance < self.probe).mean())
+        except Exception:
+            return 0.0
 
 
 def face_supports(shape):
@@ -573,8 +653,14 @@ def heal(shape, sealing_size: Optional[float] = None,
     builder = BRep_Builder()
     patches = TopoDS_Compound()
     builder.MakeCompound(patches)
-    # Built once: the patches take their shape from the faces they border
+    # Built once: the patches take their shape from the faces they border, and are
+    # then checked against what is already behind them
     supports = face_supports(shape)
+    backing = _Backing(shape, diag * BACKING_PROBE_FRAC)
+    if not backing.ok:
+        report.warnings.append(
+            "could not tessellate to check what is behind each patch; overlapping "
+            "panels may be capped instead of left to the intersection step")
     n_patches = 0
     for boundary, wire in holes:
         if not fill_all and boundary.size > sealing_size:
@@ -584,6 +670,15 @@ def heal(shape, sealing_size: Optional[float] = None,
         face = fill_boundary(wire, boundary, supports)
         if face is None:
             boundary.note = boundary.note or "filling failed"
+            report.left_open.append(boundary)
+            continue
+        boundary.backed_fraction = backing.backed_fraction(
+            face, backing.own_faces(wire, supports))
+        if boundary.backed_fraction > MAX_BACKED_FRACTION:
+            boundary.note = (
+                f"{100 * boundary.backed_fraction:.0f}% of the patch has surface "
+                "under it — this is an overlapping panel, not an opening; it "
+                "belongs to the intersection step")
             report.left_open.append(boundary)
             continue
         boundary.filled = True

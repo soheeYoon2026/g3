@@ -32,6 +32,10 @@ ap.add_argument("--mirror", action="store_true",
                 help="mirror the half model about y=0 for the picture only")
 ap.add_argument("--label-top", type=int, default=6,
                 help="give this many of the largest holes their own colour")
+ap.add_argument("--focus-hole", type=int,
+                help="centre the views on the Nth largest hole (1 = largest)")
+ap.add_argument("--focus-span", type=float,
+                help="how much of the model to show around the focus point")
 ap.add_argument("--title", default="")
 args = ap.parse_args()
 
@@ -193,6 +197,18 @@ lo = np.asarray(mesh.bounds[0], dtype=float)
 hi = np.asarray(mesh.bounds[1], dtype=float)
 centre = 0.5 * (lo + hi)
 extent = float(np.linalg.norm(hi - lo))
+
+# Zooming in on one opening is how a hole list becomes a thing you can identify:
+# a frame with nothing behind it and a frame with a panel sitting 4 mm back look
+# identical in a table of sizes and centroids.
+if args.focus_hole and holes:
+    picked = holes[min(args.focus_hole, len(holes)) - 1][0]
+    centre = np.asarray(picked.centre, dtype=float)
+    span = args.focus_span or (2.0 * picked.size)
+    lo = centre - span * 0.5
+    hi = centre + span * 0.5
+    print(f"확대: {args.focus_hole}번째 구멍 크기 {picked.size:.0f}  "
+          f"중심 {np.round(centre, 0)}  범위 {span:.0f}")
 
 size = (args.width, args.height)
 title_font = load_font(19)
