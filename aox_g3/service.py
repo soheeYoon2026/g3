@@ -321,7 +321,8 @@ async def recommend(
                 failure = None
             origin = vertices[vertex_index]
             results.append({
-                "label": f"Point {control_id}: push in {magnitude:.0f} mm",
+                # STL 단위를 모른다(m 도 mm 도 온다). 전장 비율로만 말한다.
+                "label": f"Point {control_id}: push in {rec.PUSH_FRACTION:.1%} of length",
                 "control_id": int(control_id),
                 "position": [float(v) for v in origin],
                 "displacement": [float(v) for v in displacement],
@@ -343,10 +344,15 @@ async def recommend(
         "candidate_count": len(results),
         "requested_control_points": len(points),
         "baseline": {"cd": cd0, "cl": cl0},
+        "push_fraction": rec.PUSH_FRACTION,
+        "radius_fraction": rec.RADIUS_FRACTION,
+        "vehicle_length": float(length),
         "recommendations": ranked,
         "limitations": [
             f"Screened {len(results)} of {len(points)} control points, spread along the length axis.",
-            f"Each candidate pushes the surface inward by {magnitude:.0f} mm with a {radius:.0f} mm influence radius; outward pushes are not tried.",
+            f"Each candidate pushes the surface inward by {rec.PUSH_FRACTION:.1%} of the vehicle length "
+            f"({magnitude:.4g} in STL units) with an influence radius of {rec.RADIUS_FRACTION:.0%} of length "
+            f"({radius:.4g}); outward pushes are not tried.",
             "Ranked by predicted delta Cd only; delta Cl is reported, not ranked.",
             "Finite-difference screening on the surrogate, not a sensitivity solve.",
         ],
