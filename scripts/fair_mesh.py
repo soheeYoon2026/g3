@@ -34,17 +34,24 @@ ap.add_argument("--stitch", type=float, help="vertex merge distance")
 ap.add_argument("--no-sew", action="store_true")
 args = ap.parse_args()
 
-shape, cad_report = cad.read_step(args.src)
-if shape is None:
-    raise SystemExit(f"읽기 실패: {cad_report.warnings}")
-cad.diagnose(shape, cad_report)
-if not args.no_sew:
-    shape, cad_report = cad.sew_progressive(shape, cad_report)
-
 t0 = time.time()
-mesh = topology.tessellate_by_curvature(shape, args.curvature_angle)
-print(f"삼각화 {time.time() - t0:.1f}s   삼각형 {len(mesh.faces):,}  "
-      f"정점 {len(mesh.vertices):,}")
+if args.src.suffix.lower() in (".stl", ".obj", ".ply"):
+    # A mesh input skips the B-rep stage entirely; this is the path for models
+    # that only exist as triangles
+    import trimesh
+    mesh = trimesh.load(args.src, force="mesh")
+    print(f"메쉬 읽기 {time.time() - t0:.1f}s   삼각형 {len(mesh.faces):,}  "
+          f"정점 {len(mesh.vertices):,}   수밀 {mesh.is_watertight}")
+else:
+    shape, cad_report = cad.read_step(args.src)
+    if shape is None:
+        raise SystemExit(f"읽기 실패: {cad_report.warnings}")
+    cad.diagnose(shape, cad_report)
+    if not args.no_sew:
+        shape, cad_report = cad.sew_progressive(shape, cad_report)
+    mesh = topology.tessellate_by_curvature(shape, args.curvature_angle)
+    print(f"삼각화 {time.time() - t0:.1f}s   삼각형 {len(mesh.faces):,}  "
+          f"정점 {len(mesh.vertices):,}")
 
 held = []
 if args.heal_report and args.heal_report.exists():

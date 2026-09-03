@@ -2194,3 +2194,17 @@ rendered mesh shows closed wheel discs, a continuous hood, and the bounding box
 unchanged. Four loops remain and all are intent-held: the underbody (now one
 loop with the cabin band at the mesh level, perimeter 15.7 m), the glass overlay,
 the rear vent overlay, and one small one.
+
+## Frontal area: 2.522 m² against BAIC's 2.52 m²
+
+`scripts/frontal_area.py` projects every triangle onto the plane normal to the
+flow and rasterises the union at 0.5 mm - a sum of triangle areas would count the
+overlapping styling panels twice and the back faces as well. On the mirrored
+CAS-A, both the healed STEP (v17) and the patched mesh give **2.522 m²**, against
+the 2.52 m² BAIC reports using in STAR-CCM+. That is the first external check
+that the reconstruction matches their reference geometry, and it holds without
+clipping at a ground plane.
+
+The bounding-box W×H is 3.324 m² (the body fills 75.9% of it). The LES pipeline
+used bbox W×H as `area_ref`, which on this car would overstate the reference area
+by 32% and understate Cd by the same factor.
