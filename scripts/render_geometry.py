@@ -177,14 +177,31 @@ def hole_lines(shape):
     return out, holes
 
 
-shape, report = cad.read_step(args.step)
-if shape is None:
-    raise SystemExit(f"읽기 실패: {report.warnings}")
-cad.diagnose(shape, report)
-shape, report = cad.sew_progressive(shape, report)
-
-mesh = topology.tessellate_by_curvature(shape, 20.0)
-lines, holes = ([], []) if args.no_holes else hole_lines(shape)
+if args.step.suffix.lower() in (".stl", ".obj", ".ply"):
+    # A mesh has no B-rep to query; its open loops are drawn from the triangles
+    import trimesh
+    mesh = trimesh.load(args.step, force="mesh")
+    holes, lines = [], []
+    if not args.no_holes:
+        from aox_g3 import fair as _fair
+        loops, _ = _fair.boundary_loops(mesh)
+        for rank, loop in enumerate(sorted(
+                loops, key=lambda l: -np.linalg.norm(
+                    mesh.vertices[l].max(0) - mesh.vertices[l].min(0)))):
+            pts = np.asarray(mesh.vertices[loop + [loop[0]]], dtype=float)
+            size = float(np.linalg.norm(pts.max(0) - pts.min(0)))
+            lines.append((rank, size, pts))
+            holes.append((brep.Boundary(size=size, length=float(
+                np.linalg.norm(np.diff(pts, axis=0), axis=1).sum()),
+                centre=tuple(pts.mean(0))), None))
+else:
+    shape, report = cad.read_step(args.step)
+    if shape is None:
+        raise SystemExit(f"읽기 실패: {report.warnings}")
+    cad.diagnose(shape, report)
+    shape, report = cad.sew_progressive(shape, report)
+    mesh = topology.tessellate_by_curvature(shape, 20.0)
+    lines, holes = ([], []) if args.no_holes else hole_lines(shape)
 print(f"삼각형 {len(mesh.faces):,}   구멍 {len(holes)}개   "
      f"경계상자 {np.round(np.asarray(mesh.bounds[1]) - np.asarray(mesh.bounds[0]), 0)}")
 

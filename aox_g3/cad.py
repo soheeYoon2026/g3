@@ -355,9 +355,14 @@ def tessellate(shape, report: CadReport, deflection_frac: float = 0.001):
         for i in range(1, triangulation.NbNodes() + 1):
             p = triangulation.Node(i).Transformed(transform)
             vertices.append((p.X(), p.Y(), p.Z()))
+        # A REVERSED face's stored triangulation follows the surface, not the
+        # face, so its winding is flipped here to keep normals consistent
+        from OCP.TopAbs import TopAbs_REVERSED
+        flip = face.Orientation() == TopAbs_REVERSED
         for i in range(1, triangulation.NbTriangles() + 1):
             a, b, c = triangulation.Triangle(i).Get()
-            faces.append((offset + a - 1, offset + b - 1, offset + c - 1))
+            tri = (offset + a - 1, offset + b - 1, offset + c - 1)
+            faces.append((tri[0], tri[2], tri[1]) if flip else tri)
         explorer.Next()
 
     if not faces:

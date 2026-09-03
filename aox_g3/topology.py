@@ -228,6 +228,8 @@ def tessellate_with_owner(shape, deflection_frac: float = 0.001,
     BRepTools.Clean_s(shape)
     BRepMesh_IncrementalMesh(shape, deflection, False, angular, True)
 
+    from OCP.TopAbs import TopAbs_REVERSED
+
     vertices, triangles, owner, faces = [], [], [], []
     for f in _explore(shape, TopAbs_FACE):
         face = TopoDS.Face_s(f)
@@ -242,9 +244,15 @@ def tessellate_with_owner(shape, deflection_frac: float = 0.001,
         for i in range(1, triangulation.NbNodes() + 1):
             p = triangulation.Node(i).Transformed(transform)
             vertices.append((p.X(), p.Y(), p.Z()))
+        # A REVERSED face's triangulation is stored in the surface's own
+        # parametrisation; the face points the other way, so the winding has to
+        # be flipped or 1,717 of CAS-A's faces come out inside-out and any seam
+        # angle against them reads as a fold
+        flip = face.Orientation() == TopAbs_REVERSED
         for i in range(1, triangulation.NbTriangles() + 1):
             a, b, c = triangulation.Triangle(i).Get()
-            triangles.append((offset + a - 1, offset + b - 1, offset + c - 1))
+            tri = (offset + a - 1, offset + b - 1, offset + c - 1)
+            triangles.append((tri[0], tri[2], tri[1]) if flip else tri)
             owner.append(index)
 
     mesh = trimesh.Trimesh(vertices=np.asarray(vertices, dtype=float),
@@ -470,6 +478,8 @@ def tessellate_by_curvature(shape, curvature_angle_deg: float = 15.0,
     BRepMesh_IncrementalMesh(shape, float(linear_deflection), relative,
                              angular, True)
 
+    from OCP.TopAbs import TopAbs_REVERSED
+
     vertices, triangles = [], []
     for f in _explore(shape, TopAbs_FACE):
         face = TopoDS.Face_s(f)
@@ -482,9 +492,12 @@ def tessellate_by_curvature(shape, curvature_angle_deg: float = 15.0,
         for i in range(1, triangulation.NbNodes() + 1):
             p = triangulation.Node(i).Transformed(transform)
             vertices.append((p.X(), p.Y(), p.Z()))
+        # See tessellate_with_owner: REVERSED faces need their winding flipped
+        flip = face.Orientation() == TopAbs_REVERSED
         for i in range(1, triangulation.NbTriangles() + 1):
             a, b, c = triangulation.Triangle(i).Get()
-            triangles.append((offset + a - 1, offset + b - 1, offset + c - 1))
+            tri = (offset + a - 1, offset + b - 1, offset + c - 1)
+            triangles.append((tri[0], tri[2], tri[1]) if flip else tri)
 
     mesh = trimesh.Trimesh(vertices=np.asarray(vertices, dtype=float),
                            faces=np.asarray(triangles, dtype=np.int64),

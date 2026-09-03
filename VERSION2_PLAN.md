@@ -2144,3 +2144,41 @@ now applies only above `SLIT_PATCH_RATIO = 0.12` (glass 0.33, rims 0.39, flank
 Remaining 6: underbody + symmetry plane, cabin band, glass overlay, two smaller
 overlays, one 38 mm NullObject. `heal_step.py` now prints the measured count and
 the number of floating caps beside the bookkept one.
+
+## Smooth patches for the solver mesh (`aox_g3/fair.py`)
+
+Decision from the user: leave the large openings alone, do the best with what is
+there, and make the gaps that are closed follow the surrounding surface rather
+than a flat cap. Implemented as Liepa's hole filling on the tessellation:
+minimum-weight triangulation (worst dihedral first, area as tie-break), centroid
+refinement to the boundary's edge density, and a bi-Laplacian fairing with the
+loop and its one-ring pinned. This is structurally unable to run away, unlike the
+B-rep G1 solver: the boundary is fixed and the interior is interpolated.
+
+Three things had to be fixed before the numbers meant anything:
+
+- **Tessellation winding.** REVERSED B-rep faces were emitted with the surface's
+  winding, so 1,717 of CAS-A's faces came out inside-out and every seam angle
+  against them read as a fold. Flipping them brings shared-edge winding agreement
+  to 99.8% (100% on the box case). This also affected `cad.tessellate`.
+- **Edge flips broke orientation** when the shared edge's direction was not
+  checked; fixed by deriving the quad's cyclic order from the first triangle.
+- **Fairing slid vertices in-plane.** Solved for full positions, the uniform
+  bi-Laplacian moved a flat wheel ring's interior by a median 178 mm and up to
+  837 mm while staying within 0.7 mm of the plane, flipping the boundary
+  triangles. Only the normal component of the displacement is applied now,
+  capped at a quarter of the hole size, with a turn-over guard.
+
+**What the measurement then says**: of the 19 loops filled on the raw CAS-A mesh,
+6 are pocket rims (wheel spoke gaps, whose neighbours are the spokes' side walls;
+the flat patch meets them at ~100° and is kept flat by rule), and the other 13
+already meet their neighbours at a **median 6°** with the flat min-weight patch;
+fairing moves that to 7°. The large max angles (100-180°) on those loops are the
+few wall edges in otherwise smooth loops - geometry, not patch quality. On this
+model there is no hole in a smoothly curved panel where fairing would matter; the
+flattest triangulation is already the smooth answer, and the fairing stays in for
+the models where it will.
+
+Stitching note: merging vertices within 2 mm closed the tessellation seams but
+left 27 non-simple boundary components (T-junction chains) that are neither
+filled nor counted as holes; the wrap downstream absorbs them.
