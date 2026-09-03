@@ -34,8 +34,13 @@ ap = argparse.ArgumentParser(description=__doc__)
 ap.add_argument("--step", type=Path, required=True)
 ap.add_argument("--hole", type=int, default=2,
                 help="which hole to work around, 1 = largest")
-ap.add_argument("--margin", type=float, default=0.6,
-                help="how far past the hole to take faces, as a fraction of its size")
+ap.add_argument("--near", metavar="X,Y,Z",
+                help="pick the hole nearest this point instead — rank shifts "
+                     "between versions of the file, a position does not")
+ap.add_argument("--margin", type=float, default=150.0,
+                help="how far past the hole's box to take faces, absolute. The "
+                     "first run scaled this with the hole and a 2.5 m opening "
+                     "swallowed the whole car")
 args = ap.parse_args()
 
 
@@ -51,12 +56,18 @@ if shape is None:
 cad.diagnose(shape, report)
 shape, report = cad.sew_progressive(shape, report)
 holes, _ = brep.free_boundaries(shape)
-boundary, wire = holes[min(args.hole, len(holes)) - 1]
+if args.near:
+    point = np.array([float(v) for v in args.near.replace(" ", "").split(",")])
+    boundary, wire = min(
+        holes, key=lambda pair: np.linalg.norm(
+            np.asarray(pair[0].centre, dtype=float) - point))
+else:
+    boundary, wire = holes[min(args.hole, len(holes)) - 1]
 print(f"대상 구멍: 크기 {boundary.size:.0f}  중심 "
       f"{np.round(np.asarray(boundary.centre), 0)}")
 
-lo = np.asarray(boundary.bbox[0], dtype=float) - args.margin * boundary.size
-hi = np.asarray(boundary.bbox[1], dtype=float) + args.margin * boundary.size
+lo = np.asarray(boundary.bbox[0], dtype=float) - args.margin
+hi = np.asarray(boundary.bbox[1], dtype=float) + args.margin
 
 builder = BRep_Builder()
 region = TopoDS_Compound()
@@ -102,5 +113,5 @@ print(f"분할 후 재검사 {recheck.seconds:.1f}s → 자기교차 "
       f"{recheck.self_intersections:,}건")
 after = brep.free_boundaries(split)[0]
 print(f"자유경계 {len(before)} → {len(after)}개")
-for b in sorted(after, key=lambda x: -x.size)[:6]:
+for b, _ in sorted(after, key=lambda pair: -pair[0].size)[:6]:
     print(f"    크기 {b.size:8.1f}  둘레 {b.length:9.1f}")

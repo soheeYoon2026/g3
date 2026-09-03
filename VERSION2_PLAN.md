@@ -2088,3 +2088,12 @@ And the full-model General Fuse for the glass overlay failed outright on all
 2,847 faces after 300 s (the "local" experiment had a bug that made it global:
 margin 0.6 x the cabin's 2537 mm covered the car). Resolving the glass overlap
 needs a genuinely local fuse, still to be done.
+
+**General Fuse fails on this CAD even locally.** The glass-region experiment,
+rerun properly (hole picked by position, absolute 150 mm margin, 192 faces, 3.5 m²),
+still returns "general fuse failed" with the shape unchanged; that region alone
+carries 2,276 self-intersections. So the failure at full scale was not a scale
+problem. OCC's intersection step cannot resolve the overlapping styling panels in
+the state they arrive, which makes the supplier's trimmed surfaces the only clean
+path to closing the glass and the other overlays. Recorded in the question list
+for BAIC as the first-priority request.
