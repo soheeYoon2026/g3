@@ -1955,3 +1955,49 @@ exactly. The known-answer box case is unaffected - still closed, valid, 0.204 m�
 Two lessons, both cheap and both missed until something was looked at: a geometric
 check needs a distance test as well as a size test, and a pipeline that only ever
 prints numbers will pass things a single picture rejects immediately.
+
+## Filling by projection, after solving for the surface kept failing
+
+Four ways of building a patch were measured on every hole, and the two that looked
+most principled were the worst.
+
+**Tangency to the neighbouring faces makes it dramatically worse.** `Add(edge,
+support, G1)` is accepted on all 407 boundary edges, so the constraint really is
+applied - and the patches get further away, not closer:
+
+| hole | free | free + G1 | plane-anchored | plane-anchored + G1 |
+|---|---|---|---|---|
+| 209.8 | reach **1.18** | 42.1 | 1.90 | 25.5 |
+| 217.0 | 90.2 | 527.8 | 123.6 | **53,447** |
+| 207.8 | 4.28 | 588.8 | 330.6 | **74,647** |
+
+A free boundary edge borders exactly one face, so asking one surface to be tangent
+to a ring of unrelated panels along a convoluted 3D loop has no solution near the
+hole, and the solver satisfies it by leaving. It also cost 13x the runtime. Dropped.
+
+**Anchoring the solve on a fitted plane helps, but not enough** - reach 2.98 → 1.56
+on one hole, still over the 0.75 bar.
+
+**So stop solving.** The holes are far flatter than the old planarity test (1e-3)
+allowed: measured against their own size, 21 of 44 are within 0.05 of their best-fit
+plane, 32 within 0.10, **43 within 0.20**, and the worst absolute deviation on the
+whole car is under 10 mm. Project the boundary onto that plane and build the face
+there. The patch is planar by construction, so its reach is zero and no acceptance
+test can be surprised by it; the price is a step of a few millimetres where the real
+boundary is off the plane - inside a wheel-spoke gap, on a 4.8 m car, below the
+tolerance the sewing ladder already closes.
+
+**One bug worth recording**: the projection returns several loops, not one. A wheel
+rim projects to an outer ring and an inner one, and capping only the outer covers
+the spokes too - patches came out 3x the area of the exact planar caps on comparable
+holes, +4.25 m² total. Taking the largest loop as the bound and the rest as holes
+brings it to +2.43 m².
+
+| | filled | area added | max reach |
+|---|---|---|---|
+| free solve (was) | 14 / 46 | +1.56 m² | (18 rejected, up to 42x) |
+| **projection** | **27 / 46** | **+2.43 m²** | **0.44** |
+
+Nearly double the holes closed, nothing out of bounds, bounding box identical to the
+input, and 13.8 s instead of 163 s. What is left is the underbody with the symmetry
+plane, the glass, and a few panel gaps.
