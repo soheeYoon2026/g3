@@ -41,6 +41,11 @@ ap.add_argument("--close-near", action="append", default=[], metavar="X,Y,Z,R",
                 help="deliberate simplification such as a closed rim; repeatable")
 ap.add_argument("--no-mirror", action="store_true",
                 help="the model is already a full car; do not mirror for area/full mesh")
+ap.add_argument("--auto", action="store_true",
+                help="measure the model and propose sealing size, sewing ladder, "
+                     "closed-rim points and mirroring; explicit flags still win")
+ap.add_argument("--params", type=Path,
+                help="a proposal JSON from propose_parameters.py to use instead of --auto")
 ap.add_argument("--wrap", action="store_true", help="also run the CGAL wrap tier")
 ap.add_argument("--no-render", action="store_true")
 ap.add_argument("--curvature-angle", type=float, default=15.0)
@@ -110,12 +115,37 @@ mirror = not args.no_mirror
 if not is_mesh_input:
     from aox_g3 import brep, cad
 
+    proposal = None
     with stage("cad"):
         shape, cad_report = cad.read_step(args.src)
         if shape is None:
             raise RuntimeError(f"STEP reader refused: {cad_report.warnings}")
         cad.diagnose(shape, cad_report)
-        shape, cad_report = cad.sew_progressive(shape, cad_report)
+        stages_to_use = None
+        if args.params and args.params.exists():
+            proposal = json.loads(args.params.read_text())
+            log(f"   파라미터 제안 읽음: {args.params}")
+        elif args.auto:
+            from aox_g3 import autotune
+            t_auto = time.time()
+            prop, _ = autotune.propose(shape, cad_report, do_sweep=True)
+            proposal = prop.as_dict()
+            (args.out / "params.json").write_text(
+                json.dumps(proposal, ensure_ascii=False, indent=2), encoding="utf-8")
+            log(f"   자동 제안 {time.time() - t_auto:.0f}s → params.json")
+            for line in prop.rationale:
+                log(f"   · {line}")
+        if proposal:
+            stages_to_use = proposal.get("sew_stages") or None
+            if args.seal_below is None and proposal.get("seal_below"):
+                args.seal_below = float(proposal["seal_below"])
+            if not args.close_near and proposal.get("close_near"):
+                args.close_near = [",".join(str(v) for v in p) for p in proposal["close_near"]]
+            if not args.no_mirror and proposal.get("half_model") is False:
+                args.no_mirror = True
+                mirror = False
+            summary["numbers"]["params_source"] = "params" if args.params else "auto"
+        shape, cad_report = cad.sew_progressive(shape, cad_report, tolerances=stages_to_use)
         after = cad.CadReport()
         cad.diagnose(shape, after)
         (args.out / "cad.json").write_text(json.dumps(

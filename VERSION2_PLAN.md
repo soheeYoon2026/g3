@@ -2208,3 +2208,36 @@ clipping at a ground plane.
 The bounding-box W×H is 3.324 m² (the body fills 75.9% of it). The LES pipeline
 used bbox W×H as `area_ref`, which on this car would overstate the reference area
 by 32% and understate Cd by the same factor.
+
+## The parameters propose themselves (`aox_g3/autotune.py`)
+
+Everything a person typed on CAS-A is now measured from the model and written
+down with its reasoning: `propose_parameters.py` prints it, `prepare_geometry.py
+--auto` uses it, explicit flags still win. On CAS-A the proposal reproduces the
+hand-picked values without being told them:
+
+| parameter | by hand | proposed | how |
+|---|---|---|---|
+| unit | mm | mm | diagonal 5,253 is a car in mm |
+| half model | yes, y=0 | yes, y=0 | 99% of vertices on one side |
+| sewing ladder | 1.05 → 5.25 → 10.5 | **1.05 → 5.25 → 10.5** | single-pass sweep for the start (invalid faces lowest, 33), cumulative sweep for the end (before invalid faces pass 2×) |
+| sealing size | 900 | 1,487 | widest log-gap in the hole sizes, 2537 ↔ 871 |
+| closed rims | (−41,−910,76) (2689,−905,62) | (−41,−812,75) (2689,−863,62) | round loops, low, near either end |
+
+The full automatic run then matches the manual one: 40 of 46 holes, 14 free
+boundaries measured, frontal area 2.522 m², STEP 35.5 MB. On the clean Cv10 it
+proposes one fine stage, no rims, and changes nothing.
+
+Two lessons from getting there. A single-pass sweep alone concluded nothing past
+1 mm was worth it, because a single pass at 10.5 mm stamps every edge (96
+invalid) while reaching it through 1 and 5 mm touches only what is open (58) -
+the sweep has to be cumulative, as the ladder is. And starting cumulative sewing
+at the finest tolerance available is worse than starting at 1 mm (63 invalid vs
+33): sub-millimetre sewing manufactures tiny edges. So the start is chosen by
+single passes and the end by accumulation, which is exactly the order the manual
+work happened in.
+
+What the proposal does not decide it lists as questions: whether the rims should
+be closed, what to do with openings above the sealing size, whether the symmetry
+plane is right. Those are the same questions as before; they just arrive with
+the numbers attached.

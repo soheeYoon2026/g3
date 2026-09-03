@@ -33,6 +33,23 @@ that fails is recorded and the rest still run. `log.txt` is the console output.
 
 A mesh input (`.stl`, `.obj`, `.ply`) skips `cad`, `heal` and `intent`.
 
+## Letting the pipeline propose its own parameters
+
+```
+.venv/bin/python scripts/propose_parameters.py --in CAS-A.stp --out params.json
+.venv/bin/python scripts/prepare_geometry.py --in CAS-A.stp --out var/runs/cas-a --auto
+```
+
+`--auto` (or `--params params.json` from the first command) measures the model
+and fills in what a person otherwise types: the unit, whether it is a half model
+and where the symmetry plane is, the sewing ladder (a single-pass sweep picks the
+start where invalid faces are lowest, a cumulative sweep from there picks how far
+the tolerance may climb), the sealing size (the widest gap in the hole-size
+distribution), and closed-rim points (round loops, low, near either end). Every
+proposal comes with its reasoning in `params.json`, and any explicit flag
+overrides it. It does not decide intent; the questions it cannot answer are
+listed under `questions`.
+
 ## Options that need a human
 
 - **`--seal-below`** — holes up to this size are closed without asking. It has to
