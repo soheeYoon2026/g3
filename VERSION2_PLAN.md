@@ -2274,3 +2274,15 @@ What this is and is not: a CFD-ready closed surface for trend work, with two
 declared assumptions (flat floor at the sill, symmetry at y=0) that move the
 absolute Cd. Not a CAD model, and not to be compared with a reference that
 modelled the real underbody without saying so. Output names carry `assumed`.
+
+**Finer wraps and a CAD counterpart.** The 29 mm wrap reads as coarse; the
+alpha sets the facet size. Both finer settings stay watertight and converge on
+the reference area: 15 mm → 550,656 triangles, 7.34 m³, 2.526 m²; 10 mm →
+1,226,558 triangles, 7.33 m³, 2.525 m² (BAIC 2.52, our tessellation 2.522).
+A wrapped mesh handed back as STEP would be one planar face per triangle, so
+`scripts/add_floor_step.py` writes the assumptions as real geometry instead: the
+healed half body, its mirror across y=0 (exact transform), and the flat floor as
+one planar face on the footprint outline the wrap stage found. 5,791 faces,
+40.55 m², 70.8 MB, re-reads cleanly; not a sewn solid (the overlapping panels
+still prevent that), but a CAD file that opens, measures and edits. Solver gets
+the STL, the engineer gets the STEP, both carry the same two assumptions.
