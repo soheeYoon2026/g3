@@ -160,3 +160,49 @@ def test_influence_radius_grows_with_delta_so_bumps_stay_smooth():
     assert narrow.radius < wide.radius
     # 기울기 대리지표: δ / 반경 이 커지면 뿔이 된다.
     assert wide.delta / wide.radius <= 0.45
+
+
+def test_geometry_rejects_do_not_eat_the_surrogate_budget():
+    """기하 기각은 1 ms 다 — 예산(서로게이트 호출)을 깎으면 표본만 잃는다."""
+    vertices, normals = _grid_surface()
+    param = parametrise(vertices, normals, np.array([[500.0, 0.0, 0.0]]), symmetric=False)
+
+    def picky(deformed):
+        s = _scales_of(param, deformed)[0]
+        if s > 0.3:  # 절반 넘게 기하에서 걸리는 설정
+            return {"cd": None, "cl": None, "ok": False, "error": "surface folded", "rejected": True}
+        return {"cd": 0.3 + 0.02 * s * s, "cl": 0.0, "ok": True}
+
+    result = optimise(picky, param, vertices, budget=10, top=2)
+    assert result.evaluated == 10  # 서로게이트는 예산만큼 다 불렀다
+    assert result.rejected > 0
+    assert result.failed == 0  # 기하 기각은 서로게이트 실패가 아니다
+    assert len(result.history) == result.evaluated + result.rejected
+
+
+def test_optimise_stops_when_every_shape_is_rejected():
+    vertices, normals = _grid_surface()
+    param = parametrise(vertices, normals, np.array([[500.0, 0.0, 0.0]]), symmetric=False)
+
+    def always_rejected(_deformed):
+        return {"cd": None, "cl": None, "ok": False, "error": "volume changed +80%", "rejected": True}
+
+    result = optimise(always_rejected, param, vertices, budget=10, top=3)
+    assert result.evaluated == 0
+    assert result.rejected <= 10 * 6 + 1  # ATTEMPT_LIMIT 로 막힌다
+    assert result.best == []
+
+
+def test_baseline_is_not_offered_as_a_recommendation():
+    vertices, normals = _grid_surface()
+    param = parametrise(vertices, normals, np.array([[500.0, 0.0, 0.0]]), symmetric=False)
+
+    def only_baseline_survives(deformed):
+        s = _scales_of(param, deformed)[0]
+        if abs(s) > 1e-9:
+            return {"cd": None, "cl": None, "ok": False, "error": "surface folded", "rejected": True}
+        return {"cd": 0.3, "cl": 0.0, "ok": True}
+
+    result = optimise(only_baseline_survives, param, vertices, budget=8, top=3)
+    assert result.baseline is not None and result.baseline["cd"] == 0.3
+    assert result.best == []  # 안 바꾼 차를 추천이라고 내보내지 않는다

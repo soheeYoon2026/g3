@@ -54,6 +54,8 @@ BUDGET = 40
 TOP = 5
 # 서로게이트는 결정적이다 — 같은 입력이면 같은 출력. 잡음항은 수치 안정용.
 SURROGATE_NOISE = 1e-4
+# 기하 기각은 예산을 안 먹지만, 전부 기각되는 설정에서 무한루프가 되면 안 된다.
+ATTEMPT_LIMIT = 6
 # 자료(body_bo.py)의 값 그대로: 0.25~1.0 스윕에서 0.50 이 최선, 바닥 0 이면 영원히 못 돌아온다.
 FEAS_ELL = 0.50
 FEAS_NOISE = 0.10
@@ -278,8 +280,9 @@ def _to_unit(scales: np.ndarray) -> np.ndarray:
 class Result:
     history: list[dict] = field(default_factory=list)
     best: list[dict] = field(default_factory=list)
-    evaluated: int = 0
-    failed: int = 0
+    evaluated: int = 0  # 서로게이트를 실제로 부른 횟수
+    failed: int = 0  # 서로게이트가 실현불가(OOD)라고 답한 횟수
+    rejected: int = 0  # 기하 검사에서 서로게이트 전에 걸러진 횟수
 
     @property
     def baseline(self) -> dict | None:
@@ -340,33 +343,51 @@ def optimise(
 
     def run(u: np.ndarray, kind: str) -> dict:
         scales = _to_scales(u)
-        record = {"scales": [float(v) for v in scales], "kind": kind, "cd": None, "cl": None, "ok": False, "error": None}
+        record = {
+            "scales": [float(v) for v in scales],
+            "kind": kind,
+            "cd": None,
+            "cl": None,
+            "ok": False,
+            "error": None,
+            "rejected": False,
+        }
         try:
             out = evaluate(param.deform(vertices, scales))
+            # rejected=True 는 "서로게이트를 부르지도 않았다"는 뜻 — 예산에서 빼 준다.
+            record["rejected"] = bool(out.get("rejected"))
             ok = bool(out.get("ok", True)) and out.get("cd") is not None
             record["cd"] = None if out.get("cd") is None else float(out["cd"])
             record["cl"] = None if out.get("cl") is None else float(out["cl"])
             record["ok"] = ok
             if not ok:
+                # 이유 문자열은 실현가능성 GP 의 라벨이자 사용자에게 보일 문구다.
                 record["error"] = out.get("error") or "infeasible"
         except Exception as exc:  # 한 설계의 실패가 잡을 죽이면 안 된다
             record["error"] = str(exc)
         result.history.append(record)
-        result.evaluated += 1
+        if record["rejected"]:
+            result.rejected += 1
+        else:
+            result.evaluated += 1
         XA.append(u)
         OK.append(1.0 if record["ok"] else 0.0)
         if record["ok"]:
             X.append(u)
             Y.append(record["cd"])
             S.append(float(out.get("cd_std") or SURROGATE_NOISE))
-        else:
+        elif not record["rejected"]:
             result.failed += 1
         if on_progress:
             on_progress(result.evaluated, budget)
         return record
 
     run(np.full(dim, 0.5), "baseline")
-    while result.evaluated < budget:
+    # 기하 기각은 1 ms 라 예산(=서로게이트 호출)에 넣지 않는다. 다만 전부 기각되는
+    # 설정(δ 를 과하게 키운 경우)에서 영원히 돌면 안 되니 시도 횟수로 막는다.
+    attempts, max_attempts = 0, budget * ATTEMPT_LIMIT
+    while result.evaluated < budget and attempts < max_attempts:
+        attempts += 1
         if result.evaluated < n_init or len(X) < 2:
             u = rng.random(dim)
             kind = "init"
@@ -378,7 +399,9 @@ def optimise(
         run(u, kind)
 
     # 결과: 성공한 설계를 cd 오름차순으로, GP 의 표준편차를 붙여서
-    valid = [h for h in result.history if h["ok"]]
+    # baseline(s=0)은 추천이 아니라 비교 기준이다 — 카드로 내보내면 "안 바꾼 차"를
+    # 추천하는 꼴이 된다(δ 를 과하게 키워 전부 기각될 때 실제로 그랬다).
+    valid = [h for h in result.history if h["ok"] and h["kind"] != "baseline"]
     if valid:
         sd = np.zeros(len(valid))
         if len(X) >= 2:

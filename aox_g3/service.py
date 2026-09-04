@@ -437,6 +437,7 @@ async def _run_optimize_job(
     import trimesh
 
     from . import optimize as opt
+    from .feasibility import geometry_ok, summarise
     from .preview import render_candidate_png
 
     loop = asyncio.get_running_loop()
@@ -473,6 +474,12 @@ async def _run_optimize_job(
                 # optimise() 는 워커 스레드에서 돈다. 추론은 이벤트 루프의 락 아래에서 —
                 # /v1/infer 와 GPU 를 번갈아 쓰게 — 코루틴으로 넘기고 결과를 기다린다.
                 counter["n"] += 1
+                # 기하 검사부터. 접히거나 노면을 뚫은 형상은 추론에 넣을 것도 없고,
+                # 실현불가 라벨로 실현가능성 GP 에 들어가 그 지대를 피하게 한다.
+                # 서로게이트의 OOD 판정은 δ 10%(50 cm 변형)에서도 한 번도 안 걸렸다.
+                sound, why = geometry_ok(vertices, deformed, faces)
+                if not sound:
+                    return {"cd": None, "cl": None, "ok": False, "error": why, "rejected": True}
                 stl_path = temp / f"design-{counter['n']:03d}.stl"
                 trimesh.Trimesh(deformed, faces, process=False).export(str(stl_path))
                 summary = asyncio.run_coroutine_threadsafe(
@@ -539,11 +546,15 @@ async def _run_optimize_job(
                     "gp_std": item["gp_std"],
                 })
 
+            reasons = summarise(r["error"] or "infeasible" for r in result.history if not r["ok"])
+
             _optimize_job_update(job_id, status="succeeded", result={
                 "model": MODEL_PATH.resolve().name,
                 "elapsed_seconds": round(time.perf_counter() - started, 3),
                 "candidate_count": result.evaluated,
                 "failed_count": result.failed,
+                "rejected_count": result.rejected,
+                "infeasible_reasons": reasons,
                 "budget": budget,
                 "delta_fraction": delta_fraction,
                 "max_points": OPTIMIZE_MAX_POINTS,
@@ -557,7 +568,11 @@ async def _run_optimize_job(
                 "limitations": [
                     f"Bayesian optimisation over {param.size} control points, each moving up to "
                     f"{delta_fraction:.1%} of the vehicle length along its surface normal (in or out).",
-                    f"{result.evaluated} surrogate evaluations ({result.failed} failed); ranked by predicted Cd.",
+                    f"{result.evaluated} surrogate evaluations; {result.rejected} shapes were rejected by the "
+                    "geometry check before the surrogate ran. Ranked by predicted Cd, then spread apart so the "
+                    "cards differ.",
+                    "Infeasible means the deformed body folded through itself, changed volume or frontal "
+                    "area too much, or sank below the floor — checked before the surrogate runs.",
                     "The GP standard deviation is the optimiser's own uncertainty, not the surrogate's validation error.",
                     "Screening on the surrogate, not CFD. Validate the chosen shape with G2 before use.",
                 ],
