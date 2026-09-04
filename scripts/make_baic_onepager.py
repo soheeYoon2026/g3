@@ -1,9 +1,9 @@
 """One page for BAIC: what happened to CAS-A between their STEP and a CFD surface.
 
-Four panels left to right, each with a real render and its numbers, and a strip
-underneath saying what still needs their answer. Built locally with PIL - the
-geometry is theirs, but it does not go through any hosting on the way. A PPTX
-wrapper with the same image is written when python-pptx is available.
+Deliberately plain - a working figure, not a slide. Four renders in a row with
+one-line captions, a small table of measured numbers, a few sentences on what was
+assumed and what was not attempted. Built locally with PIL; a PPTX wrapper with
+the same image is written when python-pptx is available.
 """
 
 import argparse
@@ -16,114 +16,116 @@ ap.add_argument("--out", type=Path, required=True, help="output PNG")
 ap.add_argument("--raw", type=Path, required=True, help="render of the raw model with holes")
 ap.add_argument("--healed", type=Path, required=True, help="render of the healed STEP")
 ap.add_argument("--wrapped", type=Path, required=True, help="render of the watertight wrap")
+ap.add_argument("--date", default="2026-09-04")
 args = ap.parse_args()
 
 
-def font(size, bold=False):
-    for path in ("/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf" if bold else
-                 "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
-                 "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc"):
+def font(size, bold=False, mono=False):
+    candidates = (
+        ["/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf",
+         "/usr/share/fonts/dejavu/DejaVuSansMono.ttf"] if mono else
+        ["/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf"] if bold else
+        ["/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf"]
+    ) + ["/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc"]
+    for path in candidates:
         if Path(path).exists():
             return ImageFont.truetype(path, size)
     return ImageFont.load_default()
 
 
-# Tile geometry of render_geometry.py sheets: 2x2 tiles of 760x520, 10 px gaps,
-# 34 px title band
 def tile(sheet, row, col):
     x = 10 + col * 770
     y = 44 + row * 530
-    # skip the tile's own label band at the top
     return sheet.crop((x + 1, y + 34, x + 759, y + 519))
 
 
 W, H = 1920, 1080
 page = Image.new("RGB", (W, H), (255, 255, 255))
 d = ImageDraw.Draw(page)
-INK = (28, 30, 36)
-MUTED = (96, 100, 110)
-ACCENT = (24, 96, 176)
-RULE = (214, 218, 224)
+INK = (20, 20, 20)
+GREY = (110, 110, 110)
+RULE = (200, 200, 200)
 
-d.text((60, 42), "CAS-A: from styling surfaces to a CFD-ready closed surface",
-       fill=INK, font=font(38, bold=True))
-d.text((60, 92), "Automated where the geometry decides; explicit where an engineer must. "
-                 "All numbers measured on the CAS-A STEP you provided.",
-       fill=MUTED, font=font(20))
+d.text((70, 48), f"CAS-A cleanup trial  ({args.date})", fill=INK, font=font(30, bold=True))
+d.text((70, 92), "AOX AI Modeler + CAD kernel + wrapper. Our own choices where the intent was unknown; "
+                 "treat as a reference, not a result.", fill=GREY, font=font(18))
 
+raw = Image.open(args.raw).convert("RGB")
+healed = Image.open(args.healed).convert("RGB")
+wrapped = Image.open(args.wrapped).convert("RGB")
+
+x0, y0, pw, ph, gap = 70, 140, 425, 272, 26
 panels = [
-    ("1  As received", args.raw, (0, 0), [
-        "CATIA V5 export, 2,847 faces / 2,847 shells",
-        "12,724 free edges; panels overlap",
-        "(glass sits 4 mm above the body)",
-        "46 openings: underbody 4.85 m, cabin,",
-        "wheels, panel gaps",
-    ], "coloured lines = open boundaries"),
-    ("2  Automated healing (B-rep)", args.healed, (0, 0), [
-        "Sewn in stages 1 → 5 → 10.5 mm → 19 shells",
-        "40 of 46 openings closed",
-        "Every patch verified: within 10 mm,",
-        "nothing added outside the body",
-        "Returned as STEP — real surfaces, 35 MB",
-    ], "remaining lines = left for decisions"),
-    ("3  Engineering decisions", args.wrapped, (1, 0), [
-        "Underbody: flat floor at the sill (z = 150)",
-        "Symmetry: mirrored about y = 0",
-        "Wheels: closed rims (on request)",
-        "Glass overlay: needs trimmed CAD,",
-        "not repair — left as is",
-    ], "underside after the decisions; each one declared"),
-    ("4  CFD-ready surface", args.wrapped, (0, 0), [
-        "Alpha wrap 15 mm → watertight",
-        "550,656 triangles, volume 7.34 m³",
-        "Frontal area 2.526 m² (yours: 2.52)",
-        "Overlaps and seams resolved by the wrap",
-        "Solver gets this STL; engineer gets the STEP",
-    ], "one closed surface, no hole left"),
+    (tile(raw, 0, 0), "received — 2,847 surfaces, none sewn; coloured lines are the 46 open loops"),
+    (tile(healed, 0, 0), "after automatic sewing and capping — 40 of 46 loops closed, written back to STEP"),
+    (tile(wrapped, 1, 0), "underside — flat floor put at the sill line, body mirrored about y=0"),
+    (tile(wrapped, 0, 0), "wrapped at 15 mm — closed surface for the solver"),
 ]
-
-x0, y0 = 60, 140
-pw, gap = 435, 20
-ph = 300
-for i, (title, path, (row, col), lines, caption) in enumerate(panels):
+for i, (img, caption) in enumerate(panels):
     x = x0 + i * (pw + gap)
-    sheet = Image.open(path).convert("RGB")
-    img = tile(sheet, row, col).resize((pw, ph), Image.LANCZOS)
-    page.paste(img, (x, y0 + 40))
-    d.rectangle([x, y0 + 40, x + pw - 1, y0 + 40 + ph - 1], outline=RULE)
-    d.text((x, y0), title, fill=ACCENT, font=font(24, bold=True))
-    d.text((x, y0 + 40 + ph + 8), caption, fill=MUTED, font=font(15))
-    ty = y0 + 40 + ph + 38
-    for line in lines:
-        d.text((x, ty), "•  " + line, fill=INK, font=font(16))
-        ty += 25
-    if i < len(panels) - 1:
-        ax = x + pw + 3
-        ay = y0 + 40 + ph // 2
-        d.polygon([(ax, ay - 8), (ax + 14, ay), (ax, ay + 8)], fill=ACCENT)
+    page.paste(img.resize((pw, ph), Image.LANCZOS), (x, y0))
+    d.rectangle([x, y0, x + pw - 1, y0 + ph - 1], outline=RULE)
+    # caption wraps by hand at ~48 chars
+    words, lines, cur = caption.split(), [], ""
+    for w in words:
+        if len(cur) + len(w) + 1 > 52:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = (cur + " " + w).strip()
+    lines.append(cur)
+    for k, line in enumerate(lines):
+        d.text((x, y0 + ph + 10 + k * 22), line, fill=INK, font=font(16))
 
-# bottom strip
-sy = 700
-d.line([(60, sy), (W - 60, sy)], fill=RULE, width=2)
-d.text((60, sy + 18), "What we need from BAIC to remove the assumptions",
-       fill=INK, font=font(24, bold=True))
-asks = [
-    ("Underbody", "Is there an underbody model, or is a flat floor acceptable? At what ground clearance?"),
-    ("Trimmed surfaces", "The ANSA-cleaned counterpart of the same CAS — lets us resolve the overlapping panels and benchmark the automation."),
-    ("Wheels", "Closed rims, or open spokes / rotating wheels? This moves Cd directly."),
-    ("Openings to keep", "Smallest inlet or slot that must stay open, so the sealing size sits below it."),
+# numbers, as a plain monospace table
+ty = 500
+d.line([(70, ty), (W - 70, ty)], fill=RULE, width=1)
+rows = [
+    ("", "received", "after sewing", "after capping", "wrapped"),
+    ("surfaces / shells", "2,847 / 2,847", "2,847 / 19", "2,895 / 19", "—"),
+    ("free edges", "12,724", "724", "—", "0"),
+    ("open loops", "—", "46", "6 + 4 unjoined caps", "0"),
+    ("triangles", "—", "—", "161k (tessellated)", "550,656"),
+    ("frontal area, full car", "—", "—", "2.522 m²", "2.526 m²  (STAR-CCM+ setup: 2.52)"),
+    ("volume", "—", "—", "—", "7.34 m³  (49 % of bounding box)"),
 ]
-ay = sy + 62
-for label, text in asks:
-    d.text((60, ay), label, fill=ACCENT, font=font(19, bold=True))
-    d.text((300, ay), text, fill=INK, font=font(19))
-    ay += 34
+mono = font(17, mono=True)
+cols = [70, 360, 560, 780, 1060]
+for r, row in enumerate(rows):
+    yy = ty + 16 + r * 27
+    for c, cell in enumerate(row):
+        d.text((cols[c], yy), cell, fill=GREY if r == 0 else INK, font=mono)
 
-d.text((60, H - 70), "Frontal area from projected union of triangles, 0.5 mm raster. "
-                     "Volume 49% of bounding box (a closed car measures 50-56%). "
-                     "Flat floor at the sill moves absolute Cd; intended for trend work until the underbody is known.",
-       fill=MUTED, font=font(15))
-d.text((60, H - 44), "AOX · geometry preparation for G3 · 2026-09-04", fill=MUTED, font=font(15))
+# notes
+ny = ty + 16 + len(rows) * 27 + 22
+d.line([(70, ny), (W - 70, ny)], fill=RULE, width=1)
+notes = [
+    "What was done automatically: sewing in three tolerance stages (1, 5, 10.5 mm), detection of the open loops, "
+    "capping of the loops below 900 mm on their own edges, a check on every cap (size, position, nothing behind it), "
+    "STEP round trip.",
+    "What we decided ourselves, because we do not know the intent: the underbody is a flat plane at the sill line "
+    "(z = 150 mm, 460 mm above the tyre contact); the model is mirrored about y = 0; the wheel rims are closed. "
+    "A flat floor at that height changes the absolute Cd, so the numbers are for trends, not for comparison with a "
+    "run that had the real underbody.",
+    "What was not attempted: the styling panels overlap each other (the glass sits about 4 mm above the body, "
+    "8,830 self-intersections in the file as delivered). The wrap covers them; a proper resolution needs the "
+    "trimmed surfaces. If the cleanup has to reproduce an ANSA workflow this takes considerably longer than this trial.",
+]
+yy = ny + 18
+for note in notes:
+    words, cur = note.split(), ""
+    for w in words:
+        if len(cur) + len(w) + 1 > 150:
+            d.text((70, yy), cur, fill=INK, font=font(16))
+            yy += 23
+            cur = w
+        else:
+            cur = (cur + " " + w).strip()
+    d.text((70, yy), cur, fill=INK, font=font(16))
+    yy += 23 + 12
+
+d.text((70, H - 50), "attached: CAS-A-assumed-wrapped-15mm.stl (solver), CAS-A-assumed-half-floor.stp (CAD, half body + floor face)",
+       fill=GREY, font=font(15))
 
 args.out.parent.mkdir(parents=True, exist_ok=True)
 page.save(args.out)
