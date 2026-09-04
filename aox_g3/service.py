@@ -386,7 +386,9 @@ async def recommend(
 # 돌려주고, 상태는 GET 으로 묻는다. 잡 기록은 프로세스 메모리에만 있다(테스트 박스).
 OPTIMIZE_BUDGET = int(os.environ.get("G3_OPTIMIZE_BUDGET", "40"))
 OPTIMIZE_MAX_POINTS = int(os.environ.get("G3_OPTIMIZE_MAX_POINTS", "6"))
-OPTIMIZE_DELTA_FRACTION = float(os.environ.get("G3_OPTIMIZE_DELTA_FRACTION", "0.02"))
+# δ 기본값 5% (2026-09-04 실측). 2% 는 ΔCd −0.5%, 5% 는 −0.8% 로 두 배. 10% 는 5% 와
+# 같은 값에서 멈춰 더 키울 이유가 없다. 요청마다 delta_fraction 으로 덮어쓸 수 있다.
+OPTIMIZE_DELTA_FRACTION = float(os.environ.get("G3_OPTIMIZE_DELTA_FRACTION", "0.05"))
 OPTIMIZE_JOBS: dict[str, dict] = {}
 OPTIMIZE_JOBS_LOCK = threading.Lock()
 OPTIMIZE_JOB_TTL_SECONDS = 6 * 3600
@@ -426,6 +428,7 @@ async def _run_optimize_job(
     top: int,
     symmetric: bool,
     budget: int,
+    delta_fraction: float,
     infer_kwargs: dict,
 ) -> None:
     import numpy as np
@@ -451,7 +454,7 @@ async def _run_optimize_job(
 
             param = opt.parametrise(
                 vertices, normals, np.asarray(points, dtype=float),
-                max_points=OPTIMIZE_MAX_POINTS, delta_fraction=OPTIMIZE_DELTA_FRACTION, symmetric=symmetric,
+                max_points=OPTIMIZE_MAX_POINTS, delta_fraction=delta_fraction, symmetric=symmetric,
             )
             counter = {"n": 0}
 
@@ -539,7 +542,7 @@ async def _run_optimize_job(
                 "candidate_count": result.evaluated,
                 "failed_count": result.failed,
                 "budget": budget,
-                "delta_fraction": OPTIMIZE_DELTA_FRACTION,
+                "delta_fraction": delta_fraction,
                 "max_points": OPTIMIZE_MAX_POINTS,
                 "control_ids": param.control_ids,
                 "baseline": {"cd": cd0, "cl": cl0},
@@ -550,7 +553,7 @@ async def _run_optimize_job(
                 ],
                 "limitations": [
                     f"Bayesian optimisation over {param.size} control points, each moving up to "
-                    f"{OPTIMIZE_DELTA_FRACTION:.0%} of the vehicle length along its surface normal (in or out).",
+                    f"{delta_fraction:.1%} of the vehicle length along its surface normal (in or out).",
                     f"{result.evaluated} surrogate evaluations ({result.failed} failed); ranked by predicted Cd.",
                     "The GP standard deviation is the optimiser's own uncertainty, not the surrogate's validation error.",
                     "Screening on the surrogate, not CFD. Validate the chosen shape with G2 before use.",
@@ -567,6 +570,7 @@ async def recommend_optimize(
     top: int = Form(5),
     symmetric: bool = Form(True),
     budget: int = Form(OPTIMIZE_BUDGET),
+    delta_fraction: float = Form(OPTIMIZE_DELTA_FRACTION),
     u_x: float = Form(30.0),
     density: float = Form(1.225),
     ref_length: float = Form(5.0),
@@ -587,6 +591,8 @@ async def recommend_optimize(
     points = _parse_control_points(control_points)
     top = max(1, min(int(top), 10))
     budget = max(8, min(int(budget), 80))
+    # δ 는 실험 변수다(2026-09-04: 2% 에선 응답이 선형·OOD 0 → 5% 시도). 0.5~10% 로 묶는다.
+    delta_fraction = max(0.005, min(float(delta_fraction), 0.10))
 
     payload = await stl.read(MAX_UPLOAD_BYTES + 1)
     if file_name.endswith(".gz"):
@@ -611,7 +617,7 @@ async def recommend_optimize(
             "error": None,
         }
     asyncio.create_task(_run_optimize_job(
-        job_id, payload, points, top=top, symmetric=symmetric, budget=budget,
+        job_id, payload, points, top=top, symmetric=symmetric, budget=budget, delta_fraction=delta_fraction,
         infer_kwargs={
             "u_x": u_x, "density": density, "ref_length": ref_length, "ref_area": ref_area,
             "grid_x": grid_x, "grid_y": grid_y, "grid_z": grid_z,
