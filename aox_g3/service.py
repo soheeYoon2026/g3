@@ -10,6 +10,8 @@ import math
 import os
 import tempfile
 import time
+import uuid
+import threading
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, Header, HTTPException, UploadFile
@@ -377,3 +379,251 @@ async def recommend(
             "Finite-difference screening on the surrogate, not a sensitivity solve.",
         ],
     }
+
+
+# ── /v1/recommend/optimize — BO+GP 형상 최적화, 비동기 잡 ────────────────────
+# 평가 40번이면 1분 안팎이라 요청 안에서 기다리게 하지 않는다. 잡을 만들고 바로
+# 돌려주고, 상태는 GET 으로 묻는다. 잡 기록은 프로세스 메모리에만 있다(테스트 박스).
+OPTIMIZE_BUDGET = int(os.environ.get("G3_OPTIMIZE_BUDGET", "40"))
+OPTIMIZE_MAX_POINTS = int(os.environ.get("G3_OPTIMIZE_MAX_POINTS", "6"))
+OPTIMIZE_DELTA_FRACTION = float(os.environ.get("G3_OPTIMIZE_DELTA_FRACTION", "0.02"))
+OPTIMIZE_JOBS: dict[str, dict] = {}
+OPTIMIZE_JOBS_LOCK = threading.Lock()
+OPTIMIZE_JOB_TTL_SECONDS = 6 * 3600
+
+
+def _optimize_job_get(job_id: str) -> dict | None:
+    with OPTIMIZE_JOBS_LOCK:
+        job = OPTIMIZE_JOBS.get(job_id)
+        return dict(job) if job else None
+
+
+def _optimize_job_update(job_id: str, **fields) -> None:
+    with OPTIMIZE_JOBS_LOCK:
+        job = OPTIMIZE_JOBS.get(job_id)
+        if job is not None:
+            job.update(fields)
+            job["updated_at"] = time.time()
+
+
+def _optimize_jobs_expire() -> None:
+    cutoff = time.time() - OPTIMIZE_JOB_TTL_SECONDS
+    with OPTIMIZE_JOBS_LOCK:
+        for key in [k for k, v in OPTIMIZE_JOBS.items() if v.get("updated_at", 0) < cutoff]:
+            OPTIMIZE_JOBS.pop(key, None)
+
+
+async def _locked_infer(argv: list[str]) -> dict:
+    async with INFERENCE_LOCK:
+        return await run_in_threadpool(infer_fields, argv)
+
+
+async def _run_optimize_job(
+    job_id: str,
+    payload: bytes,
+    points: list[list[float]],
+    *,
+    top: int,
+    symmetric: bool,
+    budget: int,
+    infer_kwargs: dict,
+) -> None:
+    import numpy as np
+    import trimesh
+
+    from . import optimize as opt
+    from .preview import render_candidate_png
+
+    loop = asyncio.get_running_loop()
+    started = time.perf_counter()
+    _optimize_job_update(job_id, status="running")
+    try:
+        with tempfile.TemporaryDirectory(prefix="aox-g3-opt-") as temp_dir:
+            temp = Path(temp_dir)
+            base_path = temp / "baseline.stl"
+            base_path.write_bytes(payload)
+            mesh = trimesh.load(str(base_path), force="mesh", process=False)
+            vertices = np.asarray(mesh.vertices, dtype=float)
+            faces = np.asarray(mesh.faces)
+            normals = np.asarray(mesh.vertex_normals, dtype=float)
+            if len(vertices) == 0 or len(faces) == 0:
+                raise ValueError("STL has no triangles")
+
+            param = opt.parametrise(
+                vertices, normals, np.asarray(points, dtype=float),
+                max_points=OPTIMIZE_MAX_POINTS, delta_fraction=OPTIMIZE_DELTA_FRACTION, symmetric=symmetric,
+            )
+            counter = {"n": 0}
+
+            def argv_for(stl_path: Path, out_dir: Path) -> list[str]:
+                return [
+                    "--stl", str(stl_path), "--model", str(MODEL_PATH), "--out-dir", str(out_dir),
+                    "--grid", str(infer_kwargs["grid_x"]), str(infer_kwargs["grid_y"]), str(infer_kwargs["grid_z"]),
+                    "--u-x", str(infer_kwargs["u_x"]), "--density", str(infer_kwargs["density"]),
+                    "--ref-length", str(infer_kwargs["ref_length"]), "--ref-area", str(infer_kwargs["ref_area"]),
+                    "--coefficient-expert", COEFFICIENT_EXPERT,
+                ]
+
+            def evaluate(deformed: np.ndarray) -> dict:
+                # optimise() 는 워커 스레드에서 돈다. 추론은 이벤트 루프의 락 아래에서 —
+                # /v1/infer 와 GPU 를 번갈아 쓰게 — 코루틴으로 넘기고 결과를 기다린다.
+                counter["n"] += 1
+                stl_path = temp / f"design-{counter['n']:03d}.stl"
+                trimesh.Trimesh(deformed, faces, process=False).export(str(stl_path))
+                summary = asyncio.run_coroutine_threadsafe(
+                    _locked_infer(argv_for(stl_path, temp / f"design-{counter['n']:03d}")), loop
+                ).result()
+                expert = summary.get("coefficient_experts", {}).get(summary.get("coefficient_expert"), {})
+                # 분포밖(OOD) 판정은 실현불가로 넣는다 — 서로게이트가 모르는 형상의 Cd 로
+                # 최적화하면 노이즈를 좇는다. 실현가능성 GP 가 그 지대를 피하게 한다.
+                in_distribution = expert.get("in_distribution")
+                ok = summary.get("drag_coefficient") is not None and in_distribution is not False
+                return {
+                    "cd": summary.get("drag_coefficient"),
+                    "cl": summary.get("lift_coefficient"),
+                    "ok": ok,
+                    "error": None if ok else "out of distribution",
+                }
+
+            def on_progress(done: int, total: int) -> None:
+                _optimize_job_update(job_id, progress={"done": done, "total": total})
+
+            # baseline 은 optimise() 안에서 s=0 으로 한 번 평가된다.
+            result = await run_in_threadpool(
+                opt.optimise, evaluate, param, vertices, budget=budget, top=top, on_progress=on_progress,
+            )
+            base = result.baseline if (result.baseline and result.baseline["ok"]) else None
+            cd0 = base["cd"] if base else None
+            cl0 = base["cl"] if base else None
+
+            recommendations = []
+            for item in result.best:
+                scales = np.asarray(item["scales"], dtype=float)
+                deformed = param.deform(vertices, scales)
+                preview_png = None
+                try:
+                    png_path = temp / f"best-{item['rank']:02d}.png"
+                    # 변형된 형상을 그대로 캡처한다 — 사용자 요청: 움직인 형상을 보여 줄 것.
+                    biggest = int(np.argmax(np.abs(scales))) if len(scales) else 0
+                    await run_in_threadpool(
+                        render_candidate_png, deformed, faces, param.weights(vertices, scales),
+                        param.origins[biggest], param.inward[biggest] * (1.0 if scales[biggest] >= 0 else -1.0), png_path,
+                    )
+                    preview_png = "data:image/png;base64," + base64.b64encode(png_path.read_bytes()).decode("ascii")
+                except Exception:
+                    preview_png = None
+                moves = item["moves"]
+                lead = max(moves, key=lambda m: abs(m["scale"])) if moves else None
+                recommendations.append({
+                    "label": f"design-{item['rank']}",
+                    "rank": item["rank"],
+                    "control_id": lead["control_id"] if lead else None,
+                    "position": lead["position"] if lead else None,
+                    "displacement": lead["displacement"] if lead else None,
+                    "moves": moves,
+                    "scales": item["scales"],
+                    "influence_radius": float(param.radius),
+                    "symmetric": bool(symmetric),
+                    "preview_points": [],
+                    "preview_png": preview_png,
+                    "cd": item["cd"],
+                    "cl": item["cl"],
+                    "delta_cd": None if cd0 is None else float(item["cd"] - cd0),
+                    "delta_cl": None if cl0 is None or item["cl"] is None else float(item["cl"] - cl0),
+                    "gp_std": item["gp_std"],
+                })
+
+            _optimize_job_update(job_id, status="succeeded", result={
+                "model": MODEL_PATH.resolve().name,
+                "elapsed_seconds": round(time.perf_counter() - started, 3),
+                "candidate_count": result.evaluated,
+                "failed_count": result.failed,
+                "budget": budget,
+                "delta_fraction": OPTIMIZE_DELTA_FRACTION,
+                "max_points": OPTIMIZE_MAX_POINTS,
+                "control_ids": param.control_ids,
+                "baseline": {"cd": cd0, "cl": cl0},
+                "recommendations": recommendations,
+                "history": [
+                    {"kind": h["kind"], "cd": h["cd"], "cl": h["cl"], "ok": h["ok"], "scales": h["scales"], "error": h["error"]}
+                    for h in result.history
+                ],
+                "limitations": [
+                    f"Bayesian optimisation over {param.size} control points, each moving up to "
+                    f"{OPTIMIZE_DELTA_FRACTION:.0%} of the vehicle length along its surface normal (in or out).",
+                    f"{result.evaluated} surrogate evaluations ({result.failed} failed); ranked by predicted Cd.",
+                    "The GP standard deviation is the optimiser's own uncertainty, not the surrogate's validation error.",
+                    "Screening on the surrogate, not CFD. Validate the chosen shape with G2 before use.",
+                ],
+            })
+    except Exception as exc:
+        _optimize_job_update(job_id, status="failed", error=str(exc))
+
+
+@app.post("/v1/recommend/optimize", status_code=202)
+async def recommend_optimize(
+    stl: UploadFile = File(...),
+    control_points: str = Form(...),
+    top: int = Form(5),
+    symmetric: bool = Form(True),
+    budget: int = Form(OPTIMIZE_BUDGET),
+    u_x: float = Form(30.0),
+    density: float = Form(1.225),
+    ref_length: float = Form(5.0),
+    ref_area: float = Form(1.0),
+    grid_x: int = Form(96),
+    grid_y: int = Form(64),
+    grid_z: int = Form(48),
+    authorization: str | None = Header(default=None),
+):
+    _authorize(authorization)
+    if not MODEL_PATH.is_file():
+        raise HTTPException(status_code=503, detail="G3 checkpoint is unavailable")
+    file_name = (stl.filename or "").lower()
+    if not (file_name.endswith(".stl") or file_name.endswith(".stl.gz")):
+        raise HTTPException(status_code=400, detail="only STL uploads are accepted")
+    if not (8 <= grid_x <= 128 and 8 <= grid_y <= 128 and 8 <= grid_z <= 128):
+        raise HTTPException(status_code=400, detail="grid dimensions must be between 8 and 128")
+    points = _parse_control_points(control_points)
+    top = max(1, min(int(top), 10))
+    budget = max(8, min(int(budget), 80))
+
+    payload = await stl.read(MAX_UPLOAD_BYTES + 1)
+    if file_name.endswith(".gz"):
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(payload)) as compressed:
+                payload = compressed.read(MAX_UPLOAD_BYTES + 1)
+        except (OSError, EOFError) as exc:
+            raise HTTPException(status_code=400, detail="invalid compressed STL") from exc
+    if not payload or len(payload) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="STL is empty or exceeds the upload limit")
+
+    _optimize_jobs_expire()
+    job_id = uuid.uuid4().hex
+    with OPTIMIZE_JOBS_LOCK:
+        OPTIMIZE_JOBS[job_id] = {
+            "job_id": job_id,
+            "status": "queued",
+            "progress": {"done": 0, "total": budget},
+            "created_at": time.time(),
+            "updated_at": time.time(),
+            "result": None,
+            "error": None,
+        }
+    asyncio.create_task(_run_optimize_job(
+        job_id, payload, points, top=top, symmetric=symmetric, budget=budget,
+        infer_kwargs={
+            "u_x": u_x, "density": density, "ref_length": ref_length, "ref_area": ref_area,
+            "grid_x": grid_x, "grid_y": grid_y, "grid_z": grid_z,
+        },
+    ))
+    return {"job_id": job_id, "status": "queued", "progress": {"done": 0, "total": budget}}
+
+
+@app.get("/v1/recommend/optimize/{job_id}")
+def recommend_optimize_status(job_id: str, authorization: str | None = Header(default=None)):
+    _authorize(authorization)
+    job = _optimize_job_get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="unknown optimisation job")
+    return job
