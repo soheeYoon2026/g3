@@ -65,6 +65,21 @@ if not loops:
     raise SystemExit("floor.stl 에 경계 고리가 없습니다")
 ring = floor_mesh.vertices[max(loops, key=len)]
 z = float(np.median(ring[:, 2]))
+
+if args.no_mirror:
+    # Half model stays half: clip the floor to the body's side of y=0 so the
+    # CAD engineer mirrors body and floor together. The full file doubled the
+    # surface data (68 MB) and was slow to open; the half is the original's size.
+    from shapely.geometry import Polygon, box
+    side_negative = report.bbox[1] + report.bbox[4] < 0
+    y_lo, y_hi = (min(ring[:, 1].min(), -1e6), 0.0) if side_negative else (0.0, max(ring[:, 1].max(), 1e6))
+    clipped = Polygon(ring[:, :2]).intersection(
+        box(ring[:, 0].min() - 1, y_lo, ring[:, 0].max() + 1, y_hi))
+    if clipped.geom_type == "MultiPolygon":
+        clipped = max(clipped.geoms, key=lambda g: g.area)
+    ring = np.asarray(clipped.exterior.coords)[:-1]
+    ring = np.column_stack([ring, np.full(len(ring), z)])
+    print(f"바닥을 y {'≤' if side_negative else '≥'} 0 으로 잘라 반쪽만 ({len(ring)}점)")
 polygon = BRepBuilderAPI_MakePolygon()
 for p in ring:
     polygon.Add(gp_Pnt(float(p[0]), float(p[1]), z))
