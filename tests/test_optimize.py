@@ -130,3 +130,33 @@ def test_optimise_records_failures_and_keeps_going():
     assert all(h["error"] for h in result.history if not h["ok"])
     assert all(h["ok"] for h in result.history if h["cd"] is not None and h["error"] is None)
     assert len(result.best) == 2 and all(b["cd"] is not None for b in result.best)
+
+
+def test_optimise_returns_designs_that_differ_from_each_other():
+    """BO 는 한 점에 수렴한다 — 상위 카드가 전부 같은 설계면 고를 수가 없다."""
+    vertices, normals = _grid_surface()
+    points = np.array([[200.0, 200.0, 0.0], [500.0, -200.0, 0.0], [800.0, 200.0, 0.0]])
+    param = parametrise(vertices, normals, points, symmetric=False)
+    target = np.array([0.6, -0.4, 0.2])
+
+    def evaluate(deformed):
+        scales = _scales_of(param, deformed)
+        return {"cd": 0.30 + 0.05 * float(np.sum((scales - target) ** 2)), "cl": -0.02, "ok": True}
+
+    result = optimise(evaluate, param, vertices, budget=30, top=5, seed=3)
+    picks = np.array([b["scales"] for b in result.best])
+    assert len(picks) == 5
+    gaps = [
+        float(np.linalg.norm(picks[i] - picks[j])) for i in range(len(picks)) for j in range(i + 1, len(picks))
+    ]
+    assert min(gaps) > 0.2
+
+
+def test_influence_radius_grows_with_delta_so_bumps_stay_smooth():
+    vertices, normals = _grid_surface()
+    points = np.array([[500.0, 0.0, 0.0]])
+    narrow = parametrise(vertices, normals, points, delta_fraction=0.02, symmetric=False)
+    wide = parametrise(vertices, normals, points, delta_fraction=0.10, symmetric=False)
+    assert narrow.radius < wide.radius
+    # 기울기 대리지표: δ / 반경 이 커지면 뿔이 된다.
+    assert wide.delta / wide.radius <= 0.45

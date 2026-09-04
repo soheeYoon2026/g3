@@ -385,9 +385,11 @@ async def recommend(
 # 평가 40번이면 1분 안팎이라 요청 안에서 기다리게 하지 않는다. 잡을 만들고 바로
 # 돌려주고, 상태는 GET 으로 묻는다. 잡 기록은 프로세스 메모리에만 있다(테스트 박스).
 OPTIMIZE_BUDGET = int(os.environ.get("G3_OPTIMIZE_BUDGET", "40"))
-OPTIMIZE_MAX_POINTS = int(os.environ.get("G3_OPTIMIZE_MAX_POINTS", "6"))
-# δ 기본값 5% (2026-09-04 실측). 2% 는 ΔCd −0.5%, 5% 는 −0.8% 로 두 배. 10% 는 5% 와
-# 같은 값에서 멈춰 더 키울 이유가 없다. 요청마다 delta_fraction 으로 덮어쓸 수 있다.
+OPTIMIZE_MAX_POINTS = int(os.environ.get("G3_OPTIMIZE_MAX_POINTS", "12"))
+# δ 기본값 5%, 제어점 12개 (2026-09-04). 카드가 전부 같아 보이던 건 δ 가 좁아서가
+# 아니라 제어점이 6개뿐이고 상위 10개를 그냥 잘랐기 때문이었다 — 제어점을 12개로
+# 늘리고 다양성 선택을 넣어 해결했다. δ 자체는 10%(50 cm)까지 올려 봤지만 차 비율이
+# 무너져(렌더 확인) 5%(25 cm)로 되돌렸다. 요청마다 delta_fraction 으로 덮어쓴다.
 OPTIMIZE_DELTA_FRACTION = float(os.environ.get("G3_OPTIMIZE_DELTA_FRACTION", "0.05"))
 OPTIMIZE_JOBS: dict[str, dict] = {}
 OPTIMIZE_JOBS_LOCK = threading.Lock()
@@ -511,6 +513,7 @@ async def _run_optimize_job(
                     await run_in_threadpool(
                         render_candidate_png, deformed, faces, param.weights(vertices, scales),
                         param.origins[biggest], param.inward[biggest] * (1.0 if scales[biggest] >= 0 else -1.0), png_path,
+                        fixed_view=True,
                     )
                     preview_png = "data:image/png;base64," + base64.b64encode(png_path.read_bytes()).decode("ascii")
                 except Exception:
@@ -591,8 +594,8 @@ async def recommend_optimize(
     points = _parse_control_points(control_points)
     top = max(1, min(int(top), 10))
     budget = max(8, min(int(budget), 80))
-    # δ 는 실험 변수다(2026-09-04: 2% 에선 응답이 선형·OOD 0 → 5% 시도). 0.5~10% 로 묶는다.
-    delta_fraction = max(0.005, min(float(delta_fraction), 0.10))
+    # δ 는 실험 변수다(2026-09-04: 2% → 5% → 10%). 0.5~20% 로 묶는다.
+    delta_fraction = max(0.005, min(float(delta_fraction), 0.20))
 
     payload = await stl.read(MAX_UPLOAD_BYTES + 1)
     if file_name.endswith(".gz"):

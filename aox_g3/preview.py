@@ -41,6 +41,7 @@ def render_candidate_png(
     *,
     length_axis: int = 0,
     width_axis: int = 1,
+    fixed_view: bool = False,
 ) -> Path:
     """가중치로 색칠한 차와 밀기 화살표를 out_path 에 PNG 로 쓴다."""
     import pyvista as pv
@@ -86,8 +87,11 @@ def render_candidate_png(
     plotter.add_mesh(arrow, color="#ffd60a", smooth_shading=True)
 
     # 밀린 점이 있는 쪽에서 본다. 반대편이면 차체에 가려 아무것도 안 보인다.
-    side = -1.0 if origin[width_axis] < centre[width_axis] else 1.0
-    front = -1.0 if origin[length_axis] < centre[length_axis] else 1.0
+    # 최적화 카드는 예외 — 점 여러 개를 한꺼번에 움직이므로 "밀린 쪽"이 없고,
+    # 카드끼리 비교하려면 시점이 같아야 한다(2026-09-04: 카드마다 각도가 달라
+    # 무엇이 다른지 안 보였다). 그래서 앞왼쪽 3/4 고정.
+    side = -1.0 if (not fixed_view and origin[width_axis] < centre[width_axis]) else 1.0
+    front = -1.0 if (fixed_view or origin[length_axis] < centre[length_axis]) else 1.0
     view = np.array([front * 0.9, side * 1.0, 0.65])
     view /= np.linalg.norm(view)
     position = centre + view * length * 1.7
@@ -97,6 +101,8 @@ def render_candidate_png(
     # 차체와 화살표 시작점이 모두 들어오게 맞춘다 — 코 끝 후보는 화살표가 프레임 밖으로 나갔다.
     frame_lo = np.minimum(lo, start)
     frame_hi = np.maximum(hi, start)
+    if fixed_view:  # 차체만으로 맞춘다 — 설계마다 화살표 위치가 달라 크기가 흔들린다
+        frame_lo, frame_hi = lo, hi
     plotter.reset_camera(bounds=tuple(np.column_stack([frame_lo, frame_hi]).ravel()))
     plotter.camera.zoom(1.25)
 

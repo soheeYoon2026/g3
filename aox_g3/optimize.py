@@ -15,9 +15,12 @@ GP·획득함수·실현가능성 GP 는 LES 솔버 BO(BO_자료: wing_opt.py / 
 넣어서 정점에 대한 미분이 거기서 끊긴다. 평가 한 번이 0.5~1초라 40번이면
 1분 — 비동기 잡으로 돌린다.
 
-δ = 전장의 5% (2026-09-04 실측으로 2% 에서 상향). rs6(전장 4.97 m)에서 2% 는
-ΔCd −0.5%, 5% 는 −0.8%, 10% 는 5% 와 같은 값에서 멈췄다. 어느 δ 에서도 개선은
-서로게이트 오차(±0.008) 안이라 순위 매기기용이지 Cd 감소 주장이 아니다. 제어점은 최대 6개 — 이 GP 는 저차원
+δ = 전장의 5%, 제어점 최대 12개 (2026-09-04).
+rs6(전장 4.97 m) 실측: δ 2% → ΔCd −0.5%, 5% → −1.0%, 10% → −1.6%. 10% 는
+50 cm 변형이라 반경을 같이 키워도 차 비율이 무너져 5% 에서 멈췄다. 카드 10장이
+전부 같아 보이던 건 제어점이 6개뿐이고 상위 10개를 그냥 자른 탓이라, 제어점을
+12개로 늘리고 다양성 선택(_diverse)으로 고쳤다. 어느 δ 에서도 개선은 서로게이트 오차(±0.008) 안이라
+순위 매기기용이지 Cd 감소 주장이 아니다. 제어점은 최대 6개 — 이 GP 는 저차원
 (자료 기준 5~7) 전제다.
 
 여기 함수들은 평가 함수를 주입받는다 — 추론을 직접 부르지 않아 가짜 목적함수로
@@ -41,7 +44,12 @@ from .recommend import (
 )
 
 DELTA_FRACTION = 0.05
-MAX_POINTS = 6
+MAX_POINTS = 12
+# 봉우리가 가파르면 차가 아니라 뿔이 된다. 가우시안 봉우리(σ = 반경/2)의 최대
+# 기울기는 대략 0.6·h/σ 라, 높이 h = δ 를 키우면 반경도 같이 키워야 매끈하다.
+# δ 10% 에 반경 8%(고정) 로 돌렸더니 지붕과 펜더에 뿔이 솟았다(2026-09-04).
+# 반경 ≥ 2.5·δ 로 묶으면 기울기가 0.5 아래로 떨어져 차체 형상이 유지된다.
+RADIUS_PER_DELTA = 2.5
 BUDGET = 40
 TOP = 5
 # 서로게이트는 결정적이다 — 같은 입력이면 같은 출력. 잡음항은 수치 안정용.
@@ -155,7 +163,7 @@ def parametrise(
         origins=np.asarray(origins, dtype=float),
         inward=np.asarray(inward, dtype=float),
         delta=delta_fraction * length,
-        radius=RADIUS_FRACTION * length,
+        radius=max(RADIUS_FRACTION, RADIUS_PER_DELTA * delta_fraction) * length,
         symmetric=symmetric,
         width_centre=width_centre,
     )
@@ -278,6 +286,34 @@ class Result:
         return next((h for h in self.history if h["kind"] == "baseline"), None)
 
 
+def _diverse(order: np.ndarray, points: list[np.ndarray], top: int) -> list[int]:
+    """cd 순서에서 서로 떨어진 설계를 고른다 — 카드가 전부 같아 보이면 못 고른다.
+
+    BO 는 한 점에 수렴한다. 그래서 상위 10개를 그냥 자르면 사실상 같은 설계 10장이
+    나온다(2026-09-04 사용자 확인). 최선은 항상 넣고, 그 다음부터는 이미 고른
+    설계와 u-공간 거리가 임계 이상인 것만 넣는다. 임계를 못 채우면 남는 자리는
+    cd 순으로 채운다 — 후보가 적을 때 빈 카드를 만들지 않는다.
+    """
+    if top <= 0:
+        return []
+    dim = len(points[0]) if points else 1
+    # 임계는 차원에 비례한다. [0,1]^K 에서 무작위 두 점의 평균 거리 ≈ 0.4·sqrt(K).
+    threshold = 0.25 * np.sqrt(dim)
+    picked: list[int] = []
+    for i in order:
+        if len(picked) >= top:
+            break
+        if picked and min(float(np.linalg.norm(points[i] - points[j])) for j in picked) < threshold:
+            continue
+        picked.append(int(i))
+    for i in order:  # 임계로 못 채운 자리
+        if len(picked) >= top:
+            break
+        if int(i) not in picked:
+            picked.append(int(i))
+    return picked
+
+
 def optimise(
     evaluate,
     param: Parametrisation,
@@ -349,7 +385,8 @@ def optimise(
             gp = NoisyGP().fit(np.array(X), np.array(Y), np.array(S))
             _, sd = gp.predict(np.array([_to_unit(h["scales"]) for h in valid]))
         order = np.argsort([h["cd"] for h in valid])
-        for rank_, i in enumerate(order[: max(int(top), 0)]):
+        chosen = _diverse(order, [_to_unit(h["scales"]) for h in valid], max(int(top), 0))
+        for rank_, i in enumerate(chosen):
             h = valid[i]
             result.best.append({
                 "rank": rank_ + 1,
