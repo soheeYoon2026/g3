@@ -2241,3 +2241,36 @@ What the proposal does not decide it lists as questions: whether the rims should
 be closed, what to do with openings above the sealing size, whether the symmetry
 plane is right. Those are the same questions as before; they just arrive with
 the numbers attached.
+
+## First watertight CAS-A — under a declared assumption
+
+Rule set by the user: the floor is flat. `scripts/flat_floor_wrap.py` finds the
+floor height by scanning horizontal sections from the bottom up and taking the
+first height at which the outline closes into the full footprint and stays
+closed — the rocker line. On CAS-A that is **z = 150**, 460 mm above the tyre
+contact (an SUV sill). A rule that chased the *largest* outline picked 410 first,
+a floor at door height: the outline closes at 70-190, opens again at 250-370
+where the wheel arches lead into the open wheelhouses, and closes once more on
+the door skins at 430. The largest boundary loop was no guide either — on the
+mirrored mesh it is not a simple cycle and the biggest simple one is the cabin
+band at roof height.
+
+The footprint outline at floor height (81 → 77% of the plan box, 6.84 m²) is
+capped with a planar polygon, placed beside the mirrored body, and alpha-wrapped.
+
+| alpha | watertight | triangles | volume | frontal area |
+|---|---|---|---|---|
+| **29 mm** (diagonal/180, default) | **yes** | 142,440 | 7.38 m³ (49% of box) | **2.529 m²** |
+| 44 mm | yes | 59,286 | 7.53 m³ | 2.535 |
+| 58 mm | yes | 29,526 | 7.70 m³ | 2.547 |
+
+The wrap resolves at no extra cost what the B-rep stage could not: the glass
+lying on the body, the floating spoke caps, the mirror seam. The default alpha
+keeps the most detail and the frontal area within 0.3% of the reference
+(BAIC 2.52). Volume at 49% of the box is what a closed car measures (carA_base:
+55.8%).
+
+What this is and is not: a CFD-ready closed surface for trend work, with two
+declared assumptions (flat floor at the sill, symmetry at y=0) that move the
+absolute Cd. Not a CAD model, and not to be compared with a reference that
+modelled the real underbody without saying so. Output names carry `assumed`.
