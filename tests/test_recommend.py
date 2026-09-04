@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from aox_g3.recommend import (
     gaussian_bump,
@@ -110,3 +111,39 @@ def test_preview_points_are_local_and_within_the_unit_ball():
     assert len(pts) > 0
     assert np.all(np.linalg.norm(pts, axis=1) <= 1.0 + 1e-9)
     assert np.allclose(pts.mean(axis=0), 0, atol=0.25)  # 눌린 점 주변에 모여 있다
+
+
+def test_bump_weights_are_one_at_the_centre_and_vanish_far_away():
+    from aox_g3.recommend import bump_weights
+    vertices, _ = _grid_surface()
+    w = bump_weights(vertices, np.array([500.0, 0.0, 0.0]), 200.0)
+    assert np.isclose(w.max(), 1.0)
+    assert w[np.argmin(((vertices - [0.0, -500.0, 0.0]) ** 2).sum(axis=1))] < 1e-6
+
+
+def test_highlight_weights_include_the_mirror_when_symmetric():
+    from aox_g3.recommend import highlight_weights
+    vertices, _ = _grid_surface()
+    point = np.array([500.0, 300.0, 0.0])
+    w = highlight_weights(vertices, point, 200.0, symmetric=True, width_centre=0.0)
+    mirror_idx = np.argmin(((vertices - [500.0, -300.0, 0.0]) ** 2).sum(axis=1))
+    assert np.isclose(w[mirror_idx], 1.0)
+    w_one = highlight_weights(vertices, point, 200.0, symmetric=False, width_centre=0.0)
+    assert w_one[mirror_idx] < 1e-6
+
+
+def test_render_candidate_png_writes_an_image(tmp_path):
+    pv = pytest.importorskip("pyvista")
+    from aox_g3.preview import render_candidate_png
+    # 작은 닫힌 상자 하나면 충분하다 — 그림이 예쁜지가 아니라 파이프라인이 도는지를 본다.
+    box = pv.Box(bounds=(0, 4, -1, 1, 0, 1)).triangulate()
+    vertices = np.asarray(box.points, float)
+    faces = np.asarray(box.faces).reshape(-1, 4)[:, 1:]
+    weights = np.zeros(len(vertices)); weights[0] = 1.0
+    out = tmp_path / "candidate.png"
+    try:
+        render_candidate_png(vertices, faces, weights, vertices[0], np.array([0.0, 0.0, -1.0]), out)
+    except RuntimeError as exc:  # 헤드리스 CI 에 OpenGL 이 없을 수 있다
+        pytest.skip(f"offscreen rendering unavailable: {exc}")
+    data = out.read_bytes()
+    assert data.startswith(bytes([0x89]) + b"PNG") and len(data) > 1000

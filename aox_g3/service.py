@@ -236,6 +236,7 @@ async def recommend(
     import trimesh
 
     from . import recommend as rec
+    from .preview import render_candidate_png
 
     _authorize(authorization)
     if not MODEL_PATH.is_file():
@@ -320,6 +321,18 @@ async def recommend(
             else:
                 failure = None
             origin = vertices[vertex_index]
+            preview_png = None
+            try:
+                weights = rec.highlight_weights(
+                    vertices, origin, radius, symmetric=symmetric, width_centre=width_centre,
+                )
+                png_path = temp / f"candidate-{order:02d}.png"
+                await run_in_threadpool(
+                    render_candidate_png, vertices, faces, weights, origin, displacement, png_path,
+                )
+                preview_png = "data:image/png;base64," + base64.b64encode(png_path.read_bytes()).decode("ascii")
+            except Exception:  # 그림이 없어도 추천은 돌려준다 — 렌더 실패가 기능을 막으면 안 된다
+                preview_png = None
             results.append({
                 # STL 단위를 모른다(m 도 mm 도 온다). 전장 비율로만 말한다.
                 # 프론트가 label 을 SVG id 와 React key 로 쓴다 — 공백·% 없이.
@@ -330,6 +343,7 @@ async def recommend(
                 "influence_radius": float(radius),
                 "symmetric": bool(symmetric),
                 "preview_points": rec.preview_points(pushed, origin, radius),
+                "preview_png": preview_png,
                 "cd": cd,
                 "cl": cl,
                 "delta_cd": None if cd is None or cd0 is None else float(cd - cd0),

@@ -60,10 +60,33 @@ def gaussian_bump(
     radius: float,
 ) -> np.ndarray:
     """centre 에서 magnitude 만큼, radius 밖에서는 사실상 0 으로 감쇠하는 밀기."""
+    weight = bump_weights(vertices, centre, radius)
+    return vertices + weight[:, None] * (magnitude * direction)[None, :]
+
+
+def bump_weights(vertices: np.ndarray, centre: np.ndarray, radius: float) -> np.ndarray:
+    """밀기의 가우시안 가중치(0..1). 미리보기 색칠도 같은 값을 쓴다 — 그림과 계산이 같은 영역."""
     d2 = ((vertices - centre) ** 2).sum(axis=1)
     sigma = max(radius, 1e-9) / 2.0
-    weight = np.exp(-d2 / (2.0 * sigma * sigma))
-    return vertices + weight[:, None] * (magnitude * direction)[None, :]
+    return np.exp(-d2 / (2.0 * sigma * sigma))
+
+
+def highlight_weights(
+    vertices: np.ndarray,
+    origin: np.ndarray,
+    radius: float,
+    *,
+    symmetric: bool,
+    width_centre: float,
+) -> np.ndarray:
+    """push_inward 가 실제로 미는 영역의 가중치. 대칭이면 거울 자리도 같이."""
+    origin = np.asarray(origin, dtype=float)
+    weight = bump_weights(vertices, origin, radius)
+    if symmetric and abs(float(origin[WIDTH_AXIS]) - width_centre) > radius / 4.0:
+        mirror = origin.copy()
+        mirror[WIDTH_AXIS] = 2.0 * width_centre - mirror[WIDTH_AXIS]
+        weight = np.maximum(weight, bump_weights(vertices, mirror, radius))
+    return weight
 
 
 def push_inward(
