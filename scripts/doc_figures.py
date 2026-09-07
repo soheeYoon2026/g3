@@ -212,8 +212,11 @@ box2(880, 80, 330, 200, "사람  (엔지니어 / BAIC)", ["intent.md 의 항목�
 box2(1250, 80, 320, 200, "파이프라인 실행", ["B-rep → 메쉬 → 랩", "가정이 아니라 결정으로 기록",
                                           "→ STEP · STL · summary"], (245, 247, 250))
 arrow2(360, 180, 430, 180)
-arrow2(810, 180, 880, 180, "questions")
-arrow2(1210, 180, 1250, 180, "플래그")
+arrow2(810, 180, 880, 180)
+arrow2(1210, 180, 1250, 180)
+# labels for the horizontal arrows go above the row; the gaps are too narrow
+d.text((800, 58), "questions", fill=(90, 95, 105), font=font(14))
+d.text((1205, 58), "플래그", fill=(90, 95, 105), font=font(14))
 # planned layers
 box2(430, 330, 380, 190, "조언자 (LLM)  — 계획", ["산출물·렌더를 읽고", "항목의 정체를 분류", "  휠 / 유리 / 그릴 / 틈",
                                                "질문 문안 작성", "판단은 사람이"], (250, 250, 250))
