@@ -174,3 +174,57 @@ d.text((46, 42), "자동 제안기 (autotune) — 단위 · 절반 모델 · 꿰
        fill=INK, font=font(16))
 img.save(args.out / "fig_architecture.png")
 print("   fig_architecture.png")
+
+# 6. AI helper diagram ----------------------------------------------------------
+W2, H2 = 1600, 560
+img = Image.new("RGB", (W2, H2), "white")
+d = ImageDraw.Draw(img)
+
+
+def box2(x, y, w, h, title, lines, tint):
+    d.rectangle([x, y, x + w, y + h], fill=tint, outline=(150, 155, 165), width=2)
+    d.text((x + 16, y + 12), title, fill=INK, font=font(20, True))
+    for k, line in enumerate(lines):
+        d.text((x + 16, y + 48 + k * 25), line, fill=INK, font=font(15))
+
+
+def arrow2(x1, y1, x2, y2, label=""):
+    d.line([(x1, y1), (x2, y2)], fill=(90, 95, 105), width=3)
+    dx, dy = x2 - x1, y2 - y1
+    L = max((dx * dx + dy * dy) ** 0.5, 1)
+    ux, uy = dx / L, dy / L
+    px, py = -uy, ux
+    d.polygon([(x2, y2), (x2 - 14 * ux + 7 * px, y2 - 14 * uy + 7 * py),
+               (x2 - 14 * ux - 7 * px, y2 - 14 * uy - 7 * py)], fill=(90, 95, 105))
+    if label:
+        d.text(((x1 + x2) / 2 + 8, (y1 + y2) / 2 - 24), label, fill=(90, 95, 105), font=font(14))
+
+
+d.text((30, 20), "AI helper — 무엇이 숫자를 정하고, 무엇이 뜻을 정하는가", fill=INK, font=font(22, True))
+box2(30, 80, 330, 200, "모델 (STEP)", ["측정 대상", "대각선 · 정점 분포", "꿰맴 쓸기 반응", "구멍 크기 분포", "고리 원형도·위치"],
+     (245, 247, 250))
+box2(430, 80, 380, 200, "측정 기반 제안기  (지금)", ["단위 · 절반 모델 · 사다리", "봉합 크기 · 닫힌 림 후보",
+                                                "→ params.json (값 + 근거)", "→ questions (뜻이 필요한 것)",
+                                                "숫자는 여기서 끝난다"], (240, 246, 252))
+box2(880, 80, 330, 200, "사람  (엔지니어 / BAIC)", ["intent.md 의 항목에 답", "언더바디 · 휠 · 통로 · 대칭",
+                                                 "→ 명시 플래그", "  (--seal-below, --close-near, --floor-z)"],
+     (255, 250, 240))
+box2(1250, 80, 320, 200, "파이프라인 실행", ["B-rep → 메쉬 → 랩", "가정이 아니라 결정으로 기록",
+                                          "→ STEP · STL · summary"], (245, 247, 250))
+arrow2(360, 180, 430, 180)
+arrow2(810, 180, 880, 180, "questions")
+arrow2(1210, 180, 1250, 180, "플래그")
+# planned layers
+box2(430, 330, 380, 190, "조언자 (LLM)  — 계획", ["산출물·렌더를 읽고", "항목의 정체를 분류", "  휠 / 유리 / 그릴 / 틈",
+                                               "질문 문안 작성", "판단은 사람이"], (250, 250, 250))
+box2(880, 330, 330, 190, "의도 프로파일  — 계획", ["프로그램별 결정 저장", "같은 프로그램의", "  2·3번째 변형은 무개입"],
+     (250, 250, 250))
+box2(1250, 330, 320, 190, "학습 분류기  — 계획", ["사례에서 결정을 학습", "원본 + 트림본 + 결정 + Cd",
+                                              "형상은 짓지 않는다"], (250, 250, 250))
+arrow2(620, 280, 620, 330, "params · intent")
+arrow2(1045, 280, 1045, 330, "답변")
+arrow2(1410, 280, 1410, 330, "사례 축적")
+d.text((30, 340), "AI가 하는 일: 뜻을 읽고 분류하고 묻는다\n", fill=INK, font=font(16, True))
+d.text((30, 370), "AI가 하지 않는 일: 형상을 지어내지 않는다\n(오차 한계 없음 · STEP 불가 ·\n정보가 이미 경계에 있음)", fill=GREY, font=font(14))
+img.save(args.out / "fig_ai_helper.png")
+print("   fig_ai_helper.png")
