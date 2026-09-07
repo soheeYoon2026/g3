@@ -66,6 +66,41 @@ than the sealing size (underbody, cabin band), overlapping styling panels (glass
 sitting on the body, which needs the supplier's trimmed surfaces), and the
 occasional tool failure. Those are the questions for the supplier.
 
+## Runbook
+
+Environment: Python 3.9, `pip install cadquery-ocp==7.7.0 trimesh scipy numpy shapely
+networkx pillow rtree cgal`. Geometry lives under `var/` (ignored) and nothing
+that contains geometry goes anywhere else while the repository is public.
+
+Three standard runs:
+
+```
+# A. everything: STEP -> healed.stp + intent.md + mesh.stl + frontal area + renders (+ wrap)
+prepare_geometry.py --in X.stp --out var/runs/x --seal-below 900 --close-near=X,Y,Z,R --wrap
+# B. let the model propose its parameters
+propose_parameters.py --in X.stp --out params.json        # look only
+prepare_geometry.py --in X.stp --out var/runs/x --auto   # or --params params.json
+# C. watertight under a declared flat-floor assumption
+flat_floor_wrap.py --in var/runs/x/mesh_full.stl --out var/runs/x-assumed --alpha-div 360
+add_floor_step.py --in var/runs/x/healed.stp --floor var/runs/x-assumed/floor.stl \
+                  --out var/runs/x-assumed/healed_half_floor.stp --no-mirror
+```
+
+Read `summary.json` for stage status and numbers (`free_boundaries_measured` is
+measured; `holes_left` is bookkeeping), `heal.json` for every hole's verdict and
+reason, `intent.md` for the questions, `params.json` for proposals with reasons.
+A bounding box that differs from the input means a patch escaped.
+
+Common failures: a `--close-near` value starting with `-` must be joined with
+`=`; a wrap that comes back `hollow` means the large openings are still open
+(intent, or run C); a skipped wrap tier means `cgal` is not installed; slow STEP
+opening means the mirror was written as a copy — write the half with
+`--no-mirror` and mirror in CAD.
+
+Regression after any change: `heal_step.py --in var/cad/visibility_test.stp`
+must report 0 holes, closed, 0.204 m³; the clean `Cv10.STEP` must pass through
+with 1,083 faces unchanged.
+
 ## Individual tools
 
 Every stage is also a standalone script under `scripts/`:
