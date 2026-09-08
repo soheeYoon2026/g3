@@ -2421,3 +2421,42 @@ Orchestrator: `--keep-openings-above MM --local-wrap` (coarse alpha from
 `--wrap-alpha-div`, fine = MM/2); stages `wrap → local → smooth`, `local.txt`,
 `local_wrap.json`. End-to-end on car5: wrap 59 s, local 104 s, smooth 78 s →
 596,960 triangles. Deliverable ~/다운로드/car5_outer-wrapped-local-smoothed.stl.
+
+### Library review for a per-part pipeline: PMP, geogram, OpenVDB, MeshLib (2026-09-08, car5)
+
+Question: can the cleanup be split by part so that openings are never closed, and
+which library does each part best? Installed and measured on the welded car5 mesh.
+
+| library | usable here | what it gives us | measured on car5 |
+|---|---|---|---|
+| pmp-library | no Python bindings | — | — |
+| CGAL PMP (already in use) | pip `cgal` | isotropic remeshing, fairing, corefinement booleans, hole triangulation, self-intersection test, `clip`, `stitch_borders` | seam remesh in use |
+| geogram | pip `geogram` 0.0.7 is a 4-name binding (load/save/tetrahedralize, Voronoi, cube/quad) | repair/remesh/booleans are C++/CLI only | not usable without building the CLI |
+| OpenVDB | not on pip; conda-forge `openvdb` gives `pyopenvdb` (python 3.11, separate env; no `vdb_tool`, no LevelSetFilter) | level set ↔ polygons, iso offsets; closing = mesh at +r, level set again, mesh at −r (**negative is inside: +r dilates**) | iso 0 at voxel 2 mm: 685k tris, watertight, 4 bodies + 4 dust specks, every gap ≥ 4 mm kept (added area 0.7 %), tube bores filled (1.6 mm wall is sub-voxel), plates 4.9 mm intact, volume 0.3752; closing ±8: 605k, 1 body, closes ≤ 11 mm, volume +0.6 % |
+| MeshLib | pip `meshlib` 3.1.3 (py3.9 ok) | `fixMeshDegeneracies`, `detectBasisTunnels`/`eliminateTunnels`, `fillHoles`, `fixSelfIntersections`, `remesh`, `offsetMesh`/`doubleOffsetMesh` (voxel), `boolean`, `decimateMesh`, `relaxKeepVolume`, `findInnerShellVerts` | degeneracies 865 → 103 but leaves 1 non-manifold edge (Decimate and Remesh modes); `eliminateTunnels(maxTunnelLength=200)` closed a 111 mm floor opening and split the mesh into 9 bodies — bores are blind pockets, not tunnels; `remesh(8 mm)` gives 1.1M tris; `doubleOffsetMesh(+8,−8)` at 2 mm voxels = 7.4M tris in 12 s, `decimateMesh(0.5 mm)` → 765k, 1 body, closes ≤ 12.5 mm, tubes filled, faithful p90 9.7°, webbed p90 16.4° (the G2 VDB recipe in one library) |
+
+What the measurements say about the per-part idea:
+- Resurfacing without closing (OpenVDB iso 0, or MeshLib `offsetMesh(0)`) keeps every
+  opening wider than about two voxels and still fills walls thinner than a voxel. That is
+  the "do not close holes" tool. Its cost is the voxel staircase: after `decimateMesh`
+  (323k tris) the faithful-zone dihedral p90 is 20° against 4–10° for an alpha wrap, and
+  a global Taubin (capped 2 mm) does not remove it; the level-set Gaussian filter that
+  did in G2 (`vdb_tool -gauss`) is not in the Python binding.
+- Closing must stay local: a global closing radius follows the same rule as alpha
+  (closes gaps under 2r). Applied per part it needs a splice, and the level-set splice
+  (write the closed piece's voxel block into the global grid with copyFromArray, then
+  extract one isosurface) avoids the boolean slivers that cost a day on `local_wrap.py`.
+  Not built yet.
+- Tunnel elimination is not a bore filler: the bores are pockets. Degeneracy fixing in
+  MeshLib is not clean on this mesh; CGAL's isotropic remeshing of the seams remains
+  the needle fix.
+- Overlap resolution (`fixSelfIntersections`) is the MeshLib tool worth trying on the
+  CAS-A glass overlay; car5 has no self-intersections to test it on.
+- **MeshLib `offsetMesh(0)` at 2 mm voxels + `decimateMesh(0.5 mm)`: 13 s, 733,536 tris,
+  watertight, the 4 delivered bodies, no dust, added area 15 cm² (0.0 % — nothing
+  closed), tube bores filled (sub-voxel walls), wrap→orig p90 0.06 / max 1.8 mm, faithful
+  dihedral p90 11.1°.** This is the resurfacing-without-closing tool; pyopenvdb's iso-0
+  surface came out rougher (p90 16.8°, 20° after decimation) because of its adaptive
+  extraction, and neither Taubin at voxel resolution nor after decimation fixed that.
+- Deliverable ~/다운로드/car5_outer-resurfaced-noclose.stl.
+- Scripts: `scripts/meshlib_probe.py`, `scripts/vdb_probe.py` (runs in the conda env).

@@ -84,7 +84,7 @@ occasional tool failure. Those are the questions for the supplier.
 ## Runbook
 
 Environment: Python 3.9, `pip install cadquery-ocp==7.7.0 trimesh scipy numpy shapely
-networkx pillow rtree cgal manifold3d`. Geometry lives under `var/` (ignored) and nothing
+networkx pillow rtree cgal manifold3d meshlib`. Geometry lives under `var/` (ignored) and nothing
 that contains geometry goes anywhere else while the repository is public.
 
 Three standard runs:
@@ -117,6 +117,21 @@ Regression after any change: `heal_step.py --in var/cad/visibility_test.stp`
 must report 0 holes, closed, 0.204 m³; the clean `Cv10.STEP` must pass through
 with 1,083 faces unchanged.
 
+## Resurfacing without closing anything
+
+When the openings must all stay (or before deciding which to close), MeshLib's
+voxel offset at zero distance re-surfaces the mesh without closing gaps wider
+than about two voxels, and walls thinner than a voxel come out solid. The call
+is `offsetMesh(mesh, 0, voxelSize=2)` followed by `decimateMesh(maxError=0.5)`;
+`meshlib_probe.py` runs it together with the degeneracy, tunnel and remesh trials.
+
+On the formula car: 13 s, 734k triangles, watertight, the delivered 4 bodies,
+nothing closed, hollow tubes solid, deviation p90 0.06 mm. It carries a voxel
+staircase (dihedral p90 11° against 4–10° for a wrap). Closing, where wanted, is
+then a local step (`--local-wrap`). geogram has no usable Python binding and
+OpenVDB's needs a conda environment and lacks the level-set filters; the review
+with measurements is in `VERSION2_PLAN.md`.
+
 ## Individual tools
 
 Every stage is also a standalone script under `scripts/`:
@@ -131,6 +146,7 @@ Every stage is also a standalone script under `scripts/`:
 - `list_closed_openings.py` — what a wrap closed (patch centre, size, bridged gap);
   `overlay_sections.py` — reference vs candidate section overlays to look at them
 - `local_wrap.py` — coarse wrap + fine local re-wrap + boolean splice (manifold3d)
+- `meshlib_probe.py`, `vdb_probe.py` — MeshLib and OpenVDB trials (resurfacing, closing, tunnels)
 - `smooth_wrap.py` — seam smoothing after a wrap (`--remesh T --smooth taubin`);
   `measure_wrap_roughness.py` reports the dihedral angles of the seams vs the rest
 - `audit_*.py`, `measure_*.py`, `sweep_*.py` — the measurements the design
