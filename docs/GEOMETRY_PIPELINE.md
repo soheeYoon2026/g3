@@ -155,6 +155,11 @@ Every stage is also a standalone script under `scripts/`:
   `overlay_sections.py` — reference vs candidate section overlays to look at them
 - `local_wrap.py` — coarse wrap + fine local re-wrap + boolean splice (manifold3d)
 - `resurface_noclose.py` — resurfacing without closing (the `resurface` stage)
+- `close_with_wrap.py` — close the free boundaries the heal left, inside the STEP: cap
+  boundary on the hole's own edges, cap interior on the wrap, sewn at 0.5 mm; loops split
+  at the symmetry plane, folded caps (>10 % dihedrals over 120°) left for intent,
+  `--floor-z` extrudes an underbody rim to the flat floor. CAS-A: 14 loops → symmetry
+  plane + 5 wheel loops left, 41.8 MB. This is the STEP deliverable route.
 - `stl_to_step_patches.py` — put the mesh tier's changes back into the STEP: added
   material as one planar face per plane plus faceted shells, faces the mesh no longer
   has listed and optionally removed (`--remove-missing`, `--face-tol` about 0.8 × alpha)

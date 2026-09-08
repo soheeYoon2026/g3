@@ -2510,3 +2510,23 @@ above the recess depth. STEP costs ~7 KB per planar triangle, so planar regions 
 loop faces, not triangles. MeshLib decimation cannot thin boundary-bound strips
 (2,657 -> 2,605 faces from 2 to 5 mm error). Deliverables ~/다운로드/CAS-A-v18-wrap-patches
 {,-visible}.stp with report JSONs.
+
+### Closing the remaining openings inside the STEP with wrap-shaped caps (2026-09-08, v19)
+
+`scripts/close_with_wrap.py`. Free boundaries from ShapeAnalysis (the tessellation has
+2,931 seam loops), edges sampled on their curves at 0.3 mm, half-model loops split at
+y=0 (the underbody rim came fused with the symmetry cut into a 15.7 m loop), CDT in the
+PCA/z/x/y planes with boundary points fixed, then 3D minimum-weight triangulation on an
+80-point simplification with the boundary re-inserted, then ear clipping. Interior
+vertices go to the wrap's closest point with umbrella smoothing and re-projection (rays
+along one normal hit the wheel-house closures and turned a 4 m² cap into 20 m² of
+zig-zag). Caps with more than 10 % dihedrals over 120° are left out. `--floor-z`: a rim
+under the floor plane with a footprint over 1 m² is extruded to the plane (skirt) and
+closed with one planar face; no skirt on the symmetry chord (it would be a fin).
+Everything sewn at 0.5 mm: the chords are cut into the original edges.
+
+CAS-A v17 + 15 mm flat-floor wrap: 10 caps written (5,276 faces incl. the planar
+floor), 4 loops left for intent (wheel rims/tyres, folded 16–39 %), result
+8,171 faces, free loops ≥ 30 mm: 6 (symmetry plane + 5 wheel-area loops),
+41.8 MB, 39 s. Unlike v18 there is no gap ring around the caps. Deliverable
+~/다운로드/CAS-A-v19-wrapcaps.stp; v18 files withdrawn.
