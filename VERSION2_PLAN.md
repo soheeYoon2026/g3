@@ -2459,4 +2459,7 @@ What the measurements say about the per-part idea:
   surface came out rougher (p90 16.8°, 20° after decimation) because of its adaptive
   extraction, and neither Taubin at voxel resolution nor after decimation fixed that.
 - Deliverable ~/다운로드/car5_outer-resurfaced-noclose.stl.
+- Made permanent as `scripts/resurface_noclose.py` and the orchestrator stage `--resurface
+  [VOXEL]` (standard run D in the runbook). Sections: wing slots untouched, floor plate
+  5 → 6.5 mm (half a voxel per side), hoop tubes solid; 387 needle triangles → 0.
 - Scripts: `scripts/meshlib_probe.py`, `scripts/vdb_probe.py` (runs in the conda env).

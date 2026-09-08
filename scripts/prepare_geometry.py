@@ -47,6 +47,10 @@ ap.add_argument("--auto", action="store_true",
 ap.add_argument("--params", type=Path,
                 help="a proposal JSON from propose_parameters.py to use instead of --auto")
 ap.add_argument("--wrap", action="store_true", help="also run the CGAL wrap tier")
+ap.add_argument("--resurface", nargs="?", const=2.0, type=float, metavar="VOXEL_MM",
+                help="re-surface the mesh with a MeshLib voxel offset at zero distance: nothing "
+                     "wider than about two voxels is closed, walls thinner than a voxel come out "
+                     "solid, needle triangles disappear (default voxel 2 mm) -> resurfaced.stl")
 ap.add_argument("--wrap-alpha-div", type=float, default=180.0,
                 help="wrap alpha as diagonal/N (180 → 29 mm on a car; 330 keeps 5 mm plates)")
 ap.add_argument("--keep-openings-above", type=float, metavar="MM",
@@ -285,6 +289,17 @@ if not args.no_render:
             "--step", str(mesh_stl), "--out", str(args.out / "render_mesh.png"),
             "--label-top", "4", "--title", f"{args.src.name} · 메쉬 봉합"]
             + (["--mirror"] if mirror else []))
+
+# ------------------------------------------------------------------- resurface
+if args.resurface:
+    with stage("resurface"):
+        text = run_script("resurface_noclose.py", [
+            "--in", str(mesh_full_stl if mirror else mesh_stl),
+            "--out", str(args.out / "resurfaced.stl"), "--voxel", str(args.resurface)],
+            args.out / "resurface.txt")
+        m = re.search(r"결과: 삼각형 ([\d,]+)", text)
+        summary["numbers"]["resurfaced_triangles"] = int(m.group(1).replace(",", "")) if m else None
+        log("   " + "\n   ".join(text.splitlines()[-2:]))
 
 # ------------------------------------------------------------------------ wrap
 if args.wrap:

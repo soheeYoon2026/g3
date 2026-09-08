@@ -28,6 +28,7 @@ otherwise read as an option.
 | `render` | four-view pictures with the open boundaries drawn on | `render_step.png`, `render_mesh.png` |
 | `wrap` | (`--wrap`) CGAL alpha wrap of the mesh; hollow until the large openings are closed; a watertight input is left alone unless `--force-wrap` | `wrap.stl`, `wrap.json`, `wrap.txt` |
 | `local` | (`--local-wrap`, with `--keep-openings-above`) re-wrap only the closed openings at half the keep size and splice them into the coarse wrap; the coarse decisions stand elsewhere | `wrap_local.stl`, `local.txt`, `local_wrap.json` |
+| `resurface` | (`--resurface [VOXEL]`) MeshLib voxel offset at zero: closes nothing wider than two voxels, fills sub-voxel walls, removes needles | `resurfaced.stl`, `resurface.txt` |
 | `smooth` | (`--smooth-seams`) remesh and smooth only the seams the wrap added (plate edges, tube junctions); everything else pinned | `wrap_smooth.stl`, `smooth.txt` |
 
 `summary.json` records which stages ran, how long, and the key numbers. A stage
@@ -121,9 +122,12 @@ with 1,083 faces unchanged.
 
 When the openings must all stay (or before deciding which to close), MeshLib's
 voxel offset at zero distance re-surfaces the mesh without closing gaps wider
-than about two voxels, and walls thinner than a voxel come out solid. The call
-is `offsetMesh(mesh, 0, voxelSize=2)` followed by `decimateMesh(maxError=0.5)`;
-`meshlib_probe.py` runs it together with the degeneracy, tunnel and remesh trials.
+than about two voxels, and walls thinner than a voxel come out solid:
+
+```
+prepare_geometry.py --in X.stl --out var/runs/x --no-mirror --resurface      # voxel 2 mm -> resurfaced.stl
+resurface_noclose.py --in mesh.stl --out resurfaced.stl --voxel 2           # standalone
+```
 
 On the formula car: 13 s, 734k triangles, watertight, the delivered 4 bodies,
 nothing closed, hollow tubes solid, deviation p90 0.06 mm. It carries a voxel
@@ -146,7 +150,8 @@ Every stage is also a standalone script under `scripts/`:
 - `list_closed_openings.py` — what a wrap closed (patch centre, size, bridged gap);
   `overlay_sections.py` — reference vs candidate section overlays to look at them
 - `local_wrap.py` — coarse wrap + fine local re-wrap + boolean splice (manifold3d)
-- `meshlib_probe.py`, `vdb_probe.py` — MeshLib and OpenVDB trials (resurfacing, closing, tunnels)
+- `resurface_noclose.py` — resurfacing without closing (the `resurface` stage)
+- `meshlib_probe.py`, `vdb_probe.py` — MeshLib and OpenVDB trials (closing, tunnels, degeneracies)
 - `smooth_wrap.py` — seam smoothing after a wrap (`--remesh T --smooth taubin`);
   `measure_wrap_roughness.py` reports the dihedral angles of the seams vs the rest
 - `audit_*.py`, `measure_*.py`, `sweep_*.py` — the measurements the design
