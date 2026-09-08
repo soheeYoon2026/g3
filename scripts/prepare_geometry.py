@@ -53,6 +53,10 @@ ap.add_argument("--keep-openings-above", type=float, metavar="MM",
                 help="smallest opening the flow must pass through (wing slot, duct); sets the "
                      "wrap alpha to half of it and overrides --wrap-alpha-div. The wrap closes "
                      "every gap narrower than about twice its alpha")
+ap.add_argument("--local-wrap", action="store_true",
+                help="with --keep-openings-above: wrap everything at --wrap-alpha-div (coarse) and "
+                     "re-wrap only the closed openings at half the keep size, splicing them in "
+                     "(contact prevention); far fewer triangles than one fine alpha everywhere")
 ap.add_argument("--force-wrap", action="store_true",
                 help="wrap even when the mesh is already watertight (a closed multi-body "
                      "STL, hollow tubes, thin plates); otherwise the seal tier leaves it as is")
@@ -292,9 +296,12 @@ if args.wrap:
         wrap_input = mesh_full_stl if mirror else mesh_stl
         diag = float(np.linalg.norm(trimesh.load(wrap_input, force="mesh").extents))
         alpha_div = args.wrap_alpha_div
-        if args.keep_openings_above:
+        if args.keep_openings_above and not args.local_wrap:
             alpha_div = diag / (args.keep_openings_above / 2.0)
             log(f"   지킬 최소 틈 {args.keep_openings_above:.0f} mm → 알파 {diag / alpha_div:.1f} mm (대각선/{alpha_div:.0f})")
+        elif args.keep_openings_above:
+            log(f"   거친 알파 {diag / alpha_div:.1f} mm 로 감싼 뒤, 틈 ≥ {args.keep_openings_above:.0f} mm 인 자리만 "
+                f"{args.keep_openings_above / 2:.1f} mm 로 다시 감쌈 (--local-wrap)")
         args.wrap_alpha_div = alpha_div
         arguments += ["--alpha-div", str(alpha_div)]
         if args.force_wrap:
@@ -319,14 +326,29 @@ if args.wrap:
                 "--top", "10"], args.out / "wrap_closed.txt")
             log("   랩이 닫은 자리 (wrap_closed.txt):\n   " + "\n   ".join(text.splitlines()[-6:]))
 
+    wrap_result = args.out / "wrap.stl"
+    if args.local_wrap and args.keep_openings_above and summary["stages"]["wrap"]["status"] == "ok":
+        with stage("local"):
+            text = run_script("local_wrap.py", [
+                "--reference", str(wrap_input), "--wrap", str(args.out / "wrap.stl"),
+                "--out", str(args.out / "wrap_local.stl"), "--keep-above", str(args.keep_openings_above),
+                "--report", str(args.out / "local_wrap.json")], args.out / "local.txt")
+            wrap_result = args.out / "wrap_local.stl"
+            m = re.search(r"결과: 삼각형 ([\d,]+)", text)
+            summary["numbers"]["wrap_local_triangles"] = int(m.group(1).replace(",", "")) if m else None
+            log("   " + "\n   ".join(text.splitlines()[-4:]))
+
     if args.smooth_seams is not None and summary["stages"]["wrap"]["status"] == "ok":
         with stage("smooth"):
             import trimesh
-            wrapped = trimesh.load(args.out / "wrap.stl", force="mesh")
+            wrapped = trimesh.load(wrap_result, force="mesh")
             diag = float(np.linalg.norm(wrapped.extents))
-            edge = args.smooth_seams if args.smooth_seams > 0 else 0.6 * diag / args.wrap_alpha_div
+            # local mode: the seams are mostly the coarse wrap's, and the triangle budget
+            # is the point, so size the remesh from the coarse alpha (car5: 599k vs 1.01M)
+            alpha_for_edge = diag / args.wrap_alpha_div
+            edge = args.smooth_seams if args.smooth_seams > 0 else 0.6 * alpha_for_edge
             text = run_script("smooth_wrap.py", [
-                "--in", str(args.out / "wrap.stl"),
+                "--in", str(wrap_result),
                 "--reference", str(mesh_full_stl if mirror else mesh_stl),
                 "--out", str(args.out / "wrap_smooth.stl"),
                 "--remesh", f"{edge:.2f}", "--smooth", "taubin", "--iterations", "20"],

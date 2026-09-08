@@ -37,6 +37,9 @@ ap.add_argument("--remesh-iterations", type=int, default=3)
 ap.add_argument("--smooth", choices=["none", "fair", "taubin"], default="fair")
 ap.add_argument("--iterations", type=int, default=20, help="taubin passes")
 ap.add_argument("--max-shift", type=float, help="cap on the normal move per vertex (fair)")
+ap.add_argument("--max-move", type=float,
+                help="cap on the total move per vertex (taubin); default = the remesh edge length. "
+                     "Sliver vertices at boolean seams otherwise drift tens of mm")
 args = ap.parse_args()
 
 t0 = time.time()
@@ -87,9 +90,23 @@ if args.remesh > 0:
     sel_f = sel_v[mesh.faces].any(axis=1)
     flist = [facets[i] for i in np.flatnonzero(sel_f)]
     P.isotropic_remeshing(flist, float(args.remesh), poly, int(args.remesh_iterations))
-    poly.write_to_file(tmp)
-    mesh = trimesh.load(tmp, force="mesh")
     os.unlink(tmp)
+    # Read the polyhedron back through vertex ids, not write_to_file: CGAL writes OFF
+    # with 6 significant digits, which welds vertices closer than a micron (the
+    # boolean seams of a local wrap have such edges) into non-manifold pinches.
+    verts, faces = [], []
+    for i, v in enumerate(poly.vertices()):
+        pt = v.point()
+        verts.append((pt.x(), pt.y(), pt.z()))
+        v.set_id(i)
+    for f in poly.facets():
+        hh = f.halfedge()
+        tri = []
+        for _ in range(3):
+            tri.append(hh.vertex().id())
+            hh = hh.next()
+        faces.append(tri)
+    mesh = trimesh.Trimesh(np.array(verts), np.array(faces), process=False)
     mesh.merge_vertices()
     print(f"재메쉬(웹 {sel_f.sum():,}면 → 목표 변 {args.remesh} mm): 삼각형 {len(mesh.faces):,}  수밀 {mesh.is_watertight}  {time.time()-t0:.0f}s")
     web = webbed_faces(mesh)
@@ -121,6 +138,15 @@ elif args.smooth == "taubin" and free.any():
     for _ in range(args.iterations):
         v = v + 0.5 * (L @ v) * fmask
         v = v - 0.53 * (L @ v) * fmask
+    cap = args.max_move if args.max_move is not None else (args.remesh if args.remesh > 0 else None)
+    if cap:
+        move = v - mesh.vertices
+        norm = np.linalg.norm(move, axis=1)
+        over = norm > cap
+        if over.any():
+            move[over] *= (cap / norm[over])[:, None]
+            v = mesh.vertices + move
+            print(f"이동 상한 {cap:.1f} mm 적용: 정점 {int(over.sum()):,}개 (최대 {norm.max():.1f} mm)")
     mesh = trimesh.Trimesh(v, mesh.faces, process=False)
 
 moved = np.linalg.norm(mesh.vertices - before, axis=1)

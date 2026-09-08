@@ -265,41 +265,50 @@ def _try_vdb(mesh, report: SealReport):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def alpha_wrap(mesh, alpha: float, offset: Optional[float] = None):
+    """CGAL alpha wrap of any triangle soup; returns a closed trimesh.
+
+    alpha is the carving-ball size in model units: every gap narrower than about
+    twice alpha is closed. offset defaults to alpha/30 (AW_OFFSET_FRAC). Raw
+    output — orientation is not fixed here.
+    """
+    from CGAL import CGAL_Alpha_wrap_3 as AW
+    from CGAL.CGAL_Kernel import Point_3
+    from CGAL.CGAL_Polyhedron_3 import Polyhedron_3
+
+    if offset is None:
+        offset = alpha * AW_OFFSET_FRAC
+    points = AW.Point_3_Vector()
+    points.reserve(len(mesh.vertices))
+    for v in np.asarray(mesh.vertices, dtype=float):
+        points.append(Point_3(float(v[0]), float(v[1]), float(v[2])))
+    polygons = AW.Polygon_Vector()
+    polygons.reserve(len(mesh.faces))
+    for f in np.asarray(mesh.faces):
+        indices = AW.Int_Vector()
+        indices.reserve(3)
+        for k in f:
+            indices.append(int(k))
+        polygons.append(indices)
+    wrapped = Polyhedron_3()
+    AW.alpha_wrap_3(points, polygons, float(alpha), float(offset), wrapped)
+    handle, tmp = tempfile.mkstemp(suffix=".off")
+    os.close(handle)
+    wrapped.write_to_file(tmp)
+    out = trimesh.load(tmp, force="mesh")
+    os.unlink(tmp)
+    return out
+
+
 def _try_alpha_wrap(mesh, report: SealReport, alpha_div=AW_ALPHA_DIV):
     report.tiers_attempted.append("alpha_wrap")
     if not report.tools_available.get("cgal_alpha_wrap"):
         report.warnings.append("CGAL alpha_wrap not installed — tier 2 skipped")
         return None
     try:
-        from CGAL import CGAL_Alpha_wrap_3 as AW
-        from CGAL.CGAL_Kernel import Point_3
-        from CGAL.CGAL_Polyhedron_3 import Polyhedron_3
-
         diag = float(np.linalg.norm(np.asarray(mesh.extents, dtype=float)))
         alpha = diag / float(alpha_div)
-        offset = alpha * AW_OFFSET_FRAC
-
-        points = AW.Point_3_Vector()
-        points.reserve(len(mesh.vertices))
-        for v in np.asarray(mesh.vertices, dtype=float):
-            points.append(Point_3(float(v[0]), float(v[1]), float(v[2])))
-        polygons = AW.Polygon_Vector()
-        polygons.reserve(len(mesh.faces))
-        for f in np.asarray(mesh.faces):
-            indices = AW.Int_Vector()
-            indices.reserve(3)
-            for k in f:
-                indices.append(int(k))
-            polygons.append(indices)
-
-        wrapped = Polyhedron_3()
-        AW.alpha_wrap_3(points, polygons, alpha, offset, wrapped)
-        handle, tmp = tempfile.mkstemp(suffix=".off")
-        os.close(handle)
-        wrapped.write_to_file(tmp)
-        out = trimesh.load(tmp, force="mesh")
-        os.unlink(tmp)
-        return _fix_orientation(out, report)
+        return _fix_orientation(alpha_wrap(mesh, alpha), report)
     except Exception as exc:
         report.warnings.append(f"alpha_wrap raised {type(exc).__name__}: {exc}")
         return None

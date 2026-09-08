@@ -2369,3 +2369,55 @@ centroid distance in the patch). On car5:
   ~/다운로드/car5_outer-wrapped-6mm-smoothed.stl.
 - Overlay figures: `overlay_sections.py` (reference black, candidate red) —
   var/runs/car5/closed_openings_10mm_zoom.png, openings_6mm_zoom.png, wing_slot_{10,6}mm.png.
+
+### Local re-wrap: contact prevention with open tools (2026-09-08, car5)
+
+`scripts/local_wrap.py`: wrap everything at a coarse alpha, then for every closed
+opening at least `--keep-above` wide (minus 1.5 mm slack, the gap estimate is ±1 mm)
+cut a closed piece of the reference around it (`reference ∩ box`, manifold3d), wrap
+the piece at alpha = keep/2, and splice it in with booleans: `(W − P) ∪ (fine ∩ P)`
+where P is the patch box (bbox + 2 × alpha + 10 mm). Only the patch box takes the fine
+wrap; everywhere else the coarse decisions stand (hollow tubes filled, sub-threshold
+gaps closed). Overlapping patch boxes share one cut piece.
+
+car5, coarse 10 mm, keep 13 mm (fine 6.5 mm): 29 patch boxes in 4 wrap boxes, 103 s,
+**406,830 triangles** (coarse alone 337,804; one fine alpha everywhere 853,834),
+watertight, 1 body, 0 closed openings ≥ 13 mm left, tube bores still filled, no step
+visible at the box boundaries in section.
+
+Pitfalls measured on the way (all on the front-wing box):
+- First version spliced whole merged boxes, so the fine wrap's other decisions came
+  along: cutting a hollow tube opens its ends and the 6.5 mm ball carved the bore
+  (2 hollow sections). Splicing only inside patch boxes fixed it.
+- Threshold edge: a 13.3 mm cockpit-floor gap measured 12.9 on the coarse wrap and was
+  skipped; hence the 1.5 mm slack.
+- The boolean seams carry slivers and micron edges (min edge 0.3 µm). Clipping the fine
+  wrap to the coarse one, matching the offsets, or merging with a manifold tolerance
+  (0.05 / 0.2 mm) all produced self-touching sheets: 2–30 non-manifold edges after
+  welding. Plain `fine ∩ P` with the fine offset (alpha/30) below the coarse one is the
+  only clean variant; `Manifold.simplify(0.01 mm)` then removes the slivers and the
+  coplanar splits (574k → 407k triangles) and keeps the mesh watertight.
+- CGAL's `Polyhedron_3.write_to_file` writes OFF with 6 significant digits, which welds
+  the micron edges into non-manifold pinches (87–103 of them). `smooth_wrap.py` now reads
+  the remeshed polyhedron back through vertex ids (exact, 0.04 s per 5k faces).
+- Not usable as is: OpenVDB python bindings (not on pip), CGAL's alpha-wrap visitor
+  (C++ only). manifold3d (pip) does the booleans; libigl would too.
+
+Seam smoothing on top (remesh + Taubin 20, per-vertex move capped at the remesh edge —
+sliver vertices at the boolean seams otherwise slide 47 mm along the surface):
+
+| after local wrap | triangles | webbed dihedral p50/p90 | >60° | wrap→orig p90/max | volume |
+|---|---|---|---|---|---|
+| no smoothing | 406,830 | 34.4 / 67.6 | 15.5 % | 0.34 / 6.3 | 0.3808 |
+| remesh 3.9 mm (0.6 × fine alpha) | 1,012,242 | 6.7 / 17.9 | 0.1 % | 0.35 / 7.0 | 0.3807 |
+| **remesh 6 mm (0.6 × coarse alpha)** | **598,984** | 8.9 / 24.7 | 0.9 % | 0.38 / 7.7 | 0.3806 |
+| (one fine alpha everywhere + remesh 3.6 mm) | 1,116,772 | 7.8 / 18.6 | 0.1 % | 0.22 / 5.4 | 0.3793 |
+
+Local mode sizes the remesh from the coarse alpha by default: the seams are mostly the
+coarse wrap's and the triangle budget is the point. All variants watertight, 1 body,
+hollow tubes filled, 0 closed openings ≥ 13 mm.
+
+Orchestrator: `--keep-openings-above MM --local-wrap` (coarse alpha from
+`--wrap-alpha-div`, fine = MM/2); stages `wrap → local → smooth`, `local.txt`,
+`local_wrap.json`. End-to-end on car5: wrap 59 s, local 104 s, smooth 78 s →
+596,960 triangles. Deliverable ~/다운로드/car5_outer-wrapped-local-smoothed.stl.

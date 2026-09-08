@@ -10,7 +10,6 @@ tubes came out filled, by counting nested loops in x-sections.
 import argparse
 from pathlib import Path
 
-import networkx as nx
 import numpy as np
 import trimesh
 from shapely.geometry import Polygon
@@ -41,17 +40,14 @@ def hollow_tubes(mesh, x0, x1):
     return n
 
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from aox_g3.openings import closed_patches  # noqa: E402
+
 for path in args.candidates:
     m = trimesh.load(path, force="mesh")
     m.merge_vertices()
-    c = m.triangles_center
-    _, d, _ = trimesh.proximity.closest_point(ref, c)
-    web = d > args.web_distance
-    adj = m.face_adjacency
-    g = nx.Graph()
-    g.add_nodes_from(np.flatnonzero(web))
-    g.add_edges_from(adj[web[adj].all(axis=1)])
-    comps = sorted(nx.connected_components(g), key=lambda s: -m.area_faces[list(s)].sum())
+    patches, web = closed_patches(ref, m, args.web_distance, args.min_area)
     total = m.area_faces[web].sum()
     print(f"\n{path.name}: 삼각형 {len(m.faces):,}  수밀 {m.is_watertight}  몸체 {m.body_count}  "
           f"체적 {abs(m.volume)/1e9:.4f} m³  덧댄 면적 {total/100:.0f} cm² ({total/m.area*100:.1f}%)")
@@ -59,14 +55,7 @@ for path in args.candidates:
         a, b = (float(v) for v in args.tube_x.split(","))
         print(f"  속 빈 관 단면(중첩 고리) x {a:.0f}~{b:.0f}: {hollow_tubes(m, a, b)}  (원본 {hollow_tubes(ref, a, b)})")
     print("  덧댄 자리 — 면적, 중심, 크기, 건너뛴 틈 ≈ 2×최대거리")
-    shown = 0
-    for comp in comps:
-        idx = np.fromiter(comp, int)
-        a = m.area_faces[idx].sum()
-        if a < args.min_area or shown >= args.top:
-            break
-        cc = c[idx]
-        ext = cc.max(0) - cc.min(0)
-        print(f"    {a/100:6.0f} cm²  ({cc.mean(0)[0]:6.0f},{cc.mean(0)[1]:5.0f},{cc.mean(0)[2]:4.0f})  "
-              f"{ext[0]:4.0f}×{ext[1]:4.0f}×{ext[2]:3.0f} mm  틈 ≈ {2*d[idx].max():4.1f} mm")
-        shown += 1
+    for p in patches[:args.top]:
+        e = p.extent
+        print(f"    {p.area/100:6.0f} cm²  ({p.center[0]:6.0f},{p.center[1]:5.0f},{p.center[2]:4.0f})  "
+              f"{e[0]:4.0f}×{e[1]:4.0f}×{e[2]:3.0f} mm  틈 ≈ {p.gap:4.1f} mm")

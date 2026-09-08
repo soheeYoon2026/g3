@@ -27,6 +27,7 @@ otherwise read as an option.
 | `area` | projected frontal area of the full car, rasterised union | `frontal_area.txt` |
 | `render` | four-view pictures with the open boundaries drawn on | `render_step.png`, `render_mesh.png` |
 | `wrap` | (`--wrap`) CGAL alpha wrap of the mesh; hollow until the large openings are closed; a watertight input is left alone unless `--force-wrap` | `wrap.stl`, `wrap.json`, `wrap.txt` |
+| `local` | (`--local-wrap`, with `--keep-openings-above`) re-wrap only the closed openings at half the keep size and splice them into the coarse wrap; the coarse decisions stand elsewhere | `wrap_local.stl`, `local.txt`, `local_wrap.json` |
 | `smooth` | (`--smooth-seams`) remesh and smooth only the seams the wrap added (plate edges, tube junctions); everything else pinned | `wrap_smooth.stl`, `smooth.txt` |
 
 `summary.json` records which stages ran, how long, and the key numbers. A stage
@@ -67,6 +68,13 @@ listed under `questions`.
   the wrap closed anyway, with the gap each patch bridged. On the formula car,
   13 mm kept all four wing slots and the floor wedge open (alpha 6 mm, 854k
   triangles) while 10 mm alpha had glued the slot lips and the wing mounts.
+- **`--local-wrap`** — with the option above: keep the coarse alpha everywhere and
+  re-wrap only the closed openings at half the keep size (contact prevention).
+  On the formula car: 407k triangles instead of 854k, same openings kept, hollow
+  tubes still filled. Needed when the openings to keep are small (grille slots)
+  and one fine alpha everywhere would cost tens of millions of triangles. With
+  `--smooth-seams` the remesh is sized from the coarse alpha in this mode (599k
+  triangles on the formula car; 1.01M if sized from the fine one).
 
 What the pipeline refuses to decide is written to `intent.md`: openings larger
 than the sealing size (underbody, cabin band), overlapping styling panels (glass
@@ -76,7 +84,7 @@ occasional tool failure. Those are the questions for the supplier.
 ## Runbook
 
 Environment: Python 3.9, `pip install cadquery-ocp==7.7.0 trimesh scipy numpy shapely
-networkx pillow rtree cgal`. Geometry lives under `var/` (ignored) and nothing
+networkx pillow rtree cgal manifold3d`. Geometry lives under `var/` (ignored) and nothing
 that contains geometry goes anywhere else while the repository is public.
 
 Three standard runs:
@@ -122,6 +130,7 @@ Every stage is also a standalone script under `scripts/`:
 - `seal_geometry.py` — the wrap tier; `wrap_once.py --alpha-div --offset` for one wrap
 - `list_closed_openings.py` — what a wrap closed (patch centre, size, bridged gap);
   `overlay_sections.py` — reference vs candidate section overlays to look at them
+- `local_wrap.py` — coarse wrap + fine local re-wrap + boolean splice (manifold3d)
 - `smooth_wrap.py` — seam smoothing after a wrap (`--remesh T --smooth taubin`);
   `measure_wrap_roughness.py` reports the dihedral angles of the seams vs the rest
 - `audit_*.py`, `measure_*.py`, `sweep_*.py` — the measurements the design
