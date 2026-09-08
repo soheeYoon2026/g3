@@ -45,8 +45,12 @@ src = trimesh.load(args.src, force="mesh")
 src.merge_vertices()
 print(f"입력 {args.src.name}: 삼각형 {len(src.faces):,}  수밀 {src.is_watertight}  몸체 {src.body_count}  체적 {abs(src.volume)/1e9:.4f} m³")
 
-cnt_in = collections.Counter(map(tuple, src.edges_sorted))
-open_input = any(v == 1 for v in cnt_in.values())
+# "open" means a real share of boundary edges, not the few left by degenerate slivers
+# in a tessellated STEP (Cv10: 0.01 % of edges, still a closed model)
+_, counts_in = np.unique(src.edges_sorted, axis=0, return_counts=True)
+open_share = float((counts_in == 1).sum()) / max(1, len(counts_in))
+open_input = open_share > 1e-3
+print(f"입력 경계 모서리 비율 {open_share*100:.3f} %  → {'열림' if open_input else '닫힘'}")
 mesh = MR.loadMesh(str(args.src))
 op = MR.OffsetParameters()
 op.voxelSize = float(args.voxel)

@@ -2469,10 +2469,13 @@ What the measurements say about the per-part idea:
 | model | input | path | resurface (voxel) | result |
 |---|---|---|---|---|
 | Car_m.stl | full car in **metres** → ×1000 to mm; 586k tris, 1 body, watertight | mesh → resurface | 2 mm, 75 s | 1,348,818 tris, watertight, 1 body, volume −0.0 %, added area 1 cm² — a clean pass-through |
-| Cv10.STEP | 30 shells, closed, 3.08 × 1.36 × 1.17 m, thin features down to 1.2 mm | cad → heal (0 holes) → mesh 256k → resurface | 2 mm, 155 s | 1,371,260 tris, watertight, 42 bodies (27 in, thin parts fragment), volume −3.2 % — features under the voxel are lost; needs voxel ≤ 0.6 mm here |
+| Cv10.STEP | 30 shells, closed, 3.08 × 1.36 × 1.17 m, thin features down to 1.2 mm | cad → heal (0 holes) → mesh 256k → resurface | 2 mm, 155 s | 1,371,260 tris, watertight, 42 bodies (27 in, thin parts fragment), volume −3.2 %, input→result p90 0.94 mm |
+| Cv10.STEP, voxel 0.6 | same | same | 0.6 mm, offset 0.6, 254 s (offset 12 s → 138M tris, decimate 202 s) | 6,153,322 tris (lite 511k at 1 mm error), watertight, **9 bodies**, volume −1.0 %, p90 0.61 mm. The 6.8 % of input surface farther than 2 mm from the result is 100 % inside the result solid: enclosed internal faces (hidden geometry) removed, which is what step 8 asks for |
 | CAS-A.stp | half car, open underbody/cabin; after heal + mirror 322k tris, 34 m² of sheets, 1,248 boundary and 479 non-manifold edges | cad → heal → mesh → resurface | 2 mm | **offset 0 loses open sheets**: default sign mode kept 9.7 of 34 m² (323 non-manifold edges, 130 bodies), HoleWindingRule 4.9 m² (looked clean only because the skin was gone), Unsigned nothing. An open sheet is a zero-thickness isosurface at offset 0. **offset +2 mm (one voxel)**: 3.08M tris, 0 boundary, 0 non-manifold, 10 bodies, area 51 m² (both sides of every sheet), 59 s — the whole car as 4 mm shells; underbody and cabin stay open, so still not a closed car (that needs the flat-floor wrap) |
 | GTR35.stl | **inches**, length along y → ×25.4 and rotated; 1.23M tris, 853 bodies, 55,513 boundary edges, no floor | mesh (99 s, patches → 1.48M tris) → resurface | 2.5 mm, offset +2.5 (open input) | offsetMesh 43.3M tris in 5 s, decimate → 5.44M in 63 s, 140 dust bodies dropped → 11 bodies, 0 boundary, 0 non-manifold, added area 0, area 77.5 → 112 m² (shells), bbox +4 mm; lite copy (decimate 1.5 mm) 1.30M tris. Floor still missing: shells, not a closed car |
 
+- Open-input rule: boundary edges over 0.1 % of all edges. Cv10's tessellation carries a
+  few sliver bodies with boundary edges (0.01 %) and is still closed.
 - `resurface_noclose.py`: `--offset` defaults to 0 for a closed input and to one voxel for
   an open one (boundary edges present); `--sign-mode` stays MeshLib's default — the
   HoleWindingRule 'improvement' recorded earlier today was the skin being dropped, caught
