@@ -27,9 +27,17 @@ ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDe
 ap.add_argument("--in", dest="src", type=Path, required=True)
 ap.add_argument("--out", type=Path, required=True)
 ap.add_argument("--voxel", type=float, default=2.0, help="mm; gaps under ~2 voxels close, walls under 1 voxel fill")
+ap.add_argument("--offset", type=float, help="offset distance, mm. Default 0 for a closed input (faithful "
+                     "resurfacing) and one voxel for an open one: at 0 an open sheet is a zero-thickness "
+                     "isosurface and vanishes (CAS-A kept 9.7 of 34 m²); at +voxel it becomes a thin shell")
 ap.add_argument("--max-error", type=float, default=0.5, help="decimation error bound, mm")
 ap.add_argument("--max-edge", type=float, default=15.0, help="decimation edge cap, mm")
 ap.add_argument("--min-body-faces", type=int, default=100, help="drop bodies smaller than this (voxel dust)")
+ap.add_argument("--sign-mode", choices=["auto", "default", "HoleWindingRule", "WindingRule", "ProjectionNormal", "Unsigned"],
+                default="default", help="inside/outside test for the voxel offset. Keep the MeshLib default: "
+                     "on CAS-A HoleWindingRule looked clean (0 non-manifold edges) only because it had "
+                     "dropped the whole body skin (open sheets) and kept the wheels; the default keeps "
+                     "open sheets as thin shells (323 non-manifold edges where sheets touch)")
 args = ap.parse_args()
 
 t0 = time.time()
@@ -37,12 +45,23 @@ src = trimesh.load(args.src, force="mesh")
 src.merge_vertices()
 print(f"입력 {args.src.name}: 삼각형 {len(src.faces):,}  수밀 {src.is_watertight}  몸체 {src.body_count}  체적 {abs(src.volume)/1e9:.4f} m³")
 
+cnt_in = collections.Counter(map(tuple, src.edges_sorted))
+open_input = any(v == 1 for v in cnt_in.values())
 mesh = MR.loadMesh(str(args.src))
 op = MR.OffsetParameters()
 op.voxelSize = float(args.voxel)
+mode = args.sign_mode
+if mode == "auto":
+    mode = "default"
+if mode != "default":
+    op.signDetectionMode = getattr(MR.SignDetectionMode, mode)
+print(f"부호 판정 {mode}  (입력 {'열림' if open_input else '닫힘'})")
+if open_input:
+    print("입력이 열려 있음: 오프셋 +복셀로 열린 판을 얇은 껍질 고체로 만든다(닫힌 몸체는 그만큼 부풂). 닫힌 차가 필요하면 평바닥 랩(C)")
+offset = args.offset if args.offset is not None else (float(args.voxel) if open_input else 0.0)
 t1 = time.time()
-surf = MR.offsetMesh(mesh, 0.0, op)
-print(f"offsetMesh(0, 복셀 {args.voxel} mm): 삼각형 {surf.topology.numValidFaces():,}  {time.time()-t1:.0f}s")
+surf = MR.offsetMesh(mesh, float(offset), op)
+print(f"offsetMesh({offset:g}, 복셀 {args.voxel} mm): 삼각형 {surf.topology.numValidFaces():,}  {time.time()-t1:.0f}s")
 
 t1 = time.time()
 ds = MR.DecimateSettings()
@@ -52,24 +71,36 @@ ds.packMesh = True
 MR.decimateMesh(surf, ds)
 print(f"decimateMesh(오차 {args.max_error} mm, 변 ≤ {args.max_edge:.0f}): 삼각형 {surf.topology.numValidFaces():,}  {time.time()-t1:.0f}s")
 
+# dust bodies: drop them inside MeshLib (a trimesh split of millions of faces takes minutes)
+t1 = time.time()
+comps = MR.getAllComponents(surf)
+dust = MR.FaceBitSet()
+n_dust = 0
+for comp in comps:
+    if comp.count() < args.min_body_faces:
+        dust |= comp
+        n_dust += 1
+if n_dust:
+    surf.deleteFaces(dust)
+    surf.pack()
+    print(f"먼지 몸체 {n_dust}개 제거 (면 < {args.min_body_faces}), 남은 몸체 {len(comps) - n_dust}  {time.time()-t1:.0f}s")
 out = trimesh.Trimesh(np.asarray(MN.getNumpyVerts(surf)), np.asarray(MN.getNumpyFaces(surf.topology)), process=False)
-out.merge_vertices()
-parts = out.split(only_watertight=False)
-kept = [p for p in parts if len(p.faces) >= args.min_body_faces]
-if len(kept) < len(parts):
-    print(f"먼지 몸체 {len(parts) - len(kept)}개 제거 (면 < {args.min_body_faces})")
-out = trimesh.util.concatenate(kept) if len(kept) > 1 else kept[0]
 out.merge_vertices()
 if out.volume < 0:
     out.invert()
 
-cnt = collections.Counter(map(tuple, out.edges_sorted))
-boundary = sum(1 for v in cnt.values() if v == 1)
-nonmanifold = sum(1 for v in cnt.values() if v > 2)
-_, d, _ = trimesh.proximity.closest_point(src, out.triangles_center)
-added = out.area_faces[d > 1.5].sum()
+# edge manifoldness with numpy, not a Python Counter over tens of millions of tuples
+_, counts = np.unique(out.edges_sorted, axis=0, return_counts=True)
+boundary = int((counts == 1).sum())
+nonmanifold = int((counts > 2).sum())
+# added area on a sample of faces: the exact closest-point pass over every face was
+# 7 minutes on the GT-R (5.4M faces) for a number that only needs two digits
+rng = np.random.default_rng(0)
+idx = rng.choice(len(out.faces), size=min(200_000, len(out.faces)), replace=False)
+_, d, _ = trimesh.proximity.closest_point(src, out.triangles_center[idx])
+added = float(out.area_faces[idx][d > 1.5 + offset].sum() / out.area_faces[idx].sum() * out.area)
 out.export(args.out)
-print(f"결과: 삼각형 {len(out.faces):,}  수밀 {out.is_watertight} (경계 {boundary}, 비다양체 {nonmanifold})  몸체 {out.body_count}  "
+print(f"결과: 삼각형 {len(out.faces):,}  수밀 {boundary == 0 and nonmanifold == 0} (경계 {boundary}, 비다양체 {nonmanifold})  몸체 {len(comps) - n_dust}  "
       f"체적 {abs(out.volume)/1e9:.4f} m³ (입력 대비 {abs(out.volume)/abs(src.volume)*100-100:+.1f} %)  "
-      f"덧댄 면적 {added/100:.0f} cm² ({added/out.area*100:.2f} %)  {time.time()-t0:.0f}s")
+      f"덧댄 면적 ≈ {added/100:.0f} cm² ({added/out.area*100:.2f} %, 표본 {len(idx):,}면)  {time.time()-t0:.0f}s")
 print(f"저장 {args.out}")

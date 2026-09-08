@@ -2463,3 +2463,27 @@ What the measurements say about the per-part idea:
   [VOXEL]` (standard run D in the runbook). Sections: wing slots untouched, floor plate
   5 → 6.5 mm (half a voxel per side), hoop tubes solid; 387 needle triangles → 0.
 - Scripts: `scripts/meshlib_probe.py`, `scripts/vdb_probe.py` (runs in the conda env).
+
+### `--resurface` on other models: STL and STEP both go through (2026-09-08)
+
+| model | input | path | resurface (voxel) | result |
+|---|---|---|---|---|
+| Car_m.stl | full car in **metres** → ×1000 to mm; 586k tris, 1 body, watertight | mesh → resurface | 2 mm, 75 s | 1,348,818 tris, watertight, 1 body, volume −0.0 %, added area 1 cm² — a clean pass-through |
+| Cv10.STEP | 30 shells, closed, 3.08 × 1.36 × 1.17 m, thin features down to 1.2 mm | cad → heal (0 holes) → mesh 256k → resurface | 2 mm, 155 s | 1,371,260 tris, watertight, 42 bodies (27 in, thin parts fragment), volume −3.2 % — features under the voxel are lost; needs voxel ≤ 0.6 mm here |
+| CAS-A.stp | half car, open underbody/cabin; after heal + mirror 322k tris, 34 m² of sheets, 1,248 boundary and 479 non-manifold edges | cad → heal → mesh → resurface | 2 mm | **offset 0 loses open sheets**: default sign mode kept 9.7 of 34 m² (323 non-manifold edges, 130 bodies), HoleWindingRule 4.9 m² (looked clean only because the skin was gone), Unsigned nothing. An open sheet is a zero-thickness isosurface at offset 0. **offset +2 mm (one voxel)**: 3.08M tris, 0 boundary, 0 non-manifold, 10 bodies, area 51 m² (both sides of every sheet), 59 s — the whole car as 4 mm shells; underbody and cabin stay open, so still not a closed car (that needs the flat-floor wrap) |
+| GTR35.stl | **inches**, length along y → ×25.4 and rotated; 1.23M tris, 853 bodies, 55,513 boundary edges, no floor | mesh (99 s, patches → 1.48M tris) → resurface | 2.5 mm, offset +2.5 (open input) | offsetMesh 43.3M tris in 5 s, decimate → 5.44M in 63 s, 140 dust bodies dropped → 11 bodies, 0 boundary, 0 non-manifold, added area 0, area 77.5 → 112 m² (shells), bbox +4 mm; lite copy (decimate 1.5 mm) 1.30M tris. Floor still missing: shells, not a closed car |
+
+- `resurface_noclose.py`: `--offset` defaults to 0 for a closed input and to one voxel for
+  an open one (boundary edges present); `--sign-mode` stays MeshLib's default — the
+  HoleWindingRule 'improvement' recorded earlier today was the skin being dropped, caught
+  by comparing surface areas. Dust filter (bodies under 100 faces) stays.
+- Units are not detected on STL input: GTR35 is in inches, Car_m in metres. Converted
+  copies live in `var/cad/GTR35_mm.stl`, `var/cad/Car_m_mm.stl`. The area stage assumes
+  x is the length axis; GTR35 had y.
+- The first GT-R resurface took 496 s: 5 s offset + 63 s decimation + ~7 min of my own
+  checks (a Python Counter over 16M edge tuples, a trimesh split of 5.4M faces, an exact
+  closest-point pass for the added area). Now numpy edge counts, MeshLib components for
+  the dust filter and a 200k-face sample for the added area: 108 s, same result.
+- `pkill -f` on a pattern that also appears in the calling command line kills the
+  caller (exit 144) — twice today. Use a `[b]racket` pattern and keep the pattern out
+  of the rest of the line, or stop by pid.

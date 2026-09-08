@@ -132,7 +132,11 @@ resurface_noclose.py --in mesh.stl --out resurfaced.stl --voxel 2           # st
 On the formula car: 13 s, 734k triangles, watertight, the delivered 4 bodies,
 nothing closed, hollow tubes solid, deviation p90 0.06 mm. It carries a voxel
 staircase (dihedral p90 11° against 4–10° for a wrap). Closing, where wanted, is
-then a local step (`--local-wrap`). geogram has no usable Python binding and
+then a local step (`--local-wrap`). STEP input goes through cad/heal/mesh first.
+An open input (boundary edges) gets a one-voxel offset instead of zero (at zero an
+open sheet is a zero-thickness isosurface and vanishes) and comes out as thin
+solid shells, not a closed body (CAS-A: 51 m² of 4 mm shells, 10 bodies). STL units
+are not detected: GTR35.stl is in inches, Car_m.stl in metres — convert to mm. geogram has no usable Python binding and
 OpenVDB's needs a conda environment and lacks the level-set filters; the review
 with measurements is in `VERSION2_PLAN.md`.
 
