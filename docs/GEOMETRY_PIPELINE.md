@@ -155,6 +155,9 @@ Every stage is also a standalone script under `scripts/`:
   `overlay_sections.py` — reference vs candidate section overlays to look at them
 - `local_wrap.py` — coarse wrap + fine local re-wrap + boolean splice (manifold3d)
 - `resurface_noclose.py` — resurfacing without closing (the `resurface` stage)
+- `stl_to_step_patches.py` — put the mesh tier's changes back into the STEP: added
+  material as one planar face per plane plus faceted shells, faces the mesh no longer
+  has listed and optionally removed (`--remove-missing`, `--face-tol` about 0.8 × alpha)
 - `meshlib_probe.py`, `vdb_probe.py` — MeshLib and OpenVDB trials (closing, tunnels, degeneracies)
 - `smooth_wrap.py` — seam smoothing after a wrap (`--remesh T --smooth taubin`);
   `measure_wrap_roughness.py` reports the dihedral angles of the seams vs the rest

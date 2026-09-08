@@ -2490,3 +2490,23 @@ What the measurements say about the per-part idea:
 - `pkill -f` on a pattern that also appears in the calling command line kills the
   caller (exit 144) — twice today. Use a `[b]racket` pattern and keep the pattern out
   of the rest of the line, or stop by pid.
+
+### Mesh changes back into STEP (2026-09-08, CAS-A)
+
+`scripts/stl_to_step_patches.py`: compare the healed STEP (tessellated per face) with
+the modified mesh. Mesh triangles farther than 3 mm from the B-rep are added material:
+grouped into patches, the part on each patch's dominant plane written as one planar
+face from its boundary loops (floor: 40,806 triangles -> 1 face + 2,605 faceted), the
+rest decimated and sewn as faceted shells. B-rep faces whose tessellation sits farther
+than --face-tol from the mesh are reported as missing and dropped with --remove-missing.
+Half STEP -> mesh clipped at y=0.
+
+CAS-A v17 + flat-floor wrap 15 mm: 55 patches (3.96 m², 4,881 faces). All faces kept:
+72.5 MB. Hidden faces removed: face-tol 5 mm dropped 1,020 faces (3.39 m²) including
+1.43 m² of glass — the 15 mm wrap bridges pillar to pillar and sits 8–10 mm above the
+recessed glass — leaving holes in the windows; face-tol 12 mm drops 630 faces (1.57 m²,
+rim internals and inner panels), glass intact, 50.7 MB. Rule: face-tol ≈ 0.8 × alpha,
+above the recess depth. STEP costs ~7 KB per planar triangle, so planar regions must be
+loop faces, not triangles. MeshLib decimation cannot thin boundary-bound strips
+(2,657 -> 2,605 faces from 2 to 5 mm error). Deliverables ~/다운로드/CAS-A-v18-wrap-patches
+{,-visible}.stp with report JSONs.
