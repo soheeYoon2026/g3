@@ -61,6 +61,12 @@ listed under `questions`.
   surface behind them. This is how a closed rim is requested. The report labels
   them as simplifications.
 - **`--no-mirror`** — the model is already a full car.
+- **`--keep-openings-above MM`** — the smallest opening the flow must pass through
+  (wing slot, duct, grille). The wrap closes every gap narrower than about twice
+  its alpha, so this sets alpha to half that size; `wrap_closed.txt` lists what
+  the wrap closed anyway, with the gap each patch bridged. On the formula car,
+  13 mm kept all four wing slots and the floor wedge open (alpha 6 mm, 854k
+  triangles) while 10 mm alpha had glued the slot lips and the wing mounts.
 
 What the pipeline refuses to decide is written to `intent.md`: openings larger
 than the sealing size (underbody, cabin band), overlapping styling panels (glass
@@ -114,6 +120,8 @@ Every stage is also a standalone script under `scripts/`:
 - `check_topology.py` — intersections (slow, `--intersections`), hidden-face
   classification (refuses on a leaking body), orientation, curvature meshing
 - `seal_geometry.py` — the wrap tier; `wrap_once.py --alpha-div --offset` for one wrap
+- `list_closed_openings.py` — what a wrap closed (patch centre, size, bridged gap);
+  `overlay_sections.py` — reference vs candidate section overlays to look at them
 - `smooth_wrap.py` — seam smoothing after a wrap (`--remesh T --smooth taubin`);
   `measure_wrap_roughness.py` reports the dihedral angles of the seams vs the rest
 - `audit_*.py`, `measure_*.py`, `sweep_*.py` — the measurements the design

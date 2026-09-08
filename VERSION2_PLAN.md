@@ -2342,3 +2342,30 @@ measured with `measure_wrap_roughness.py` against the welded original:
   `--force-wrap` (a watertight input is otherwise left alone and now reported as
   `unchanged`), `--smooth-seams [EDGE_MM]` (default 0.6 × alpha).
 - Deliverable: ~/다운로드/car5_outer-wrapped-10mm-smoothed.stl, car5_seam_before_after.png.
+
+### Which openings the wrap closes, and the rule for alpha (2026-09-08, car5)
+
+The wrap closes every gap narrower than about twice its alpha. `list_closed_openings.py`
+lists the patches of added material with the gap each one bridged (≈ 2 × the largest
+centroid distance in the patch). On car5:
+
+| wrap alpha | triangles | bodies | added area | tube bores | largest closures (gap) |
+|---|---|---|---|---|---|
+| 10 mm (diag/330) | 338k | 1 | 7.0 % | filled | front-wing slot lips 15 mm; floor/undertray wedge 16 mm; cockpit floor 13 mm; sidepod floor edge 11 mm; wing mount 19 mm |
+| 6 mm (diag/550) | 854k | 2 (front wing separate, as delivered) | 2.6 % | filled | wing endplate/mount gaps 7–10 mm only |
+| 5 mm (diag/660) | 1.21M | 2 | 1.9 % | filled | the same 7–10 mm gaps |
+
+- Rule: alpha = half the smallest opening the flow must pass through. Orchestrator
+  `--keep-openings-above MM` sets it; `wrap_closed.txt` reports what was closed anyway.
+- 6 mm is the point for this car: all four wing slots open, the floor wedge open, hollow
+  tubes still filled, 2.5× the triangles of 10 mm. 5 mm buys nothing but 1.2 M triangles.
+- The front wing was a separate closed body in the delivered STL (its mounts are 13–19 mm
+  from the nose); at 10 mm the wrap glued it on, at 6 mm it stays separate. Two closed
+  bodies are fine for the mesher; the gluing was the artefact.
+- 6 mm wrap + seam smoothing (remesh 3.6 mm, Taubin 20): 1,116,772 triangles, webbed
+  dihedral p50/p90/p99 36.8/65.2/100 → 7.8/18.6/30.8, over-60° 14.2 % → 0.1 %, wrap→orig
+  p90 0.22 mm unchanged, volume 0.3793 m³ unchanged, free vertices moved p50 0.24 / max
+  3.9 mm. Still closed afterwards: the same 8–12 mm gaps. Deliverable:
+  ~/다운로드/car5_outer-wrapped-6mm-smoothed.stl.
+- Overlay figures: `overlay_sections.py` (reference black, candidate red) —
+  var/runs/car5/closed_openings_10mm_zoom.png, openings_6mm_zoom.png, wing_slot_{10,6}mm.png.

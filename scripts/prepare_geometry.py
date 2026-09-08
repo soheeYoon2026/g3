@@ -49,6 +49,10 @@ ap.add_argument("--params", type=Path,
 ap.add_argument("--wrap", action="store_true", help="also run the CGAL wrap tier")
 ap.add_argument("--wrap-alpha-div", type=float, default=180.0,
                 help="wrap alpha as diagonal/N (180 → 29 mm on a car; 330 keeps 5 mm plates)")
+ap.add_argument("--keep-openings-above", type=float, metavar="MM",
+                help="smallest opening the flow must pass through (wing slot, duct); sets the "
+                     "wrap alpha to half of it and overrides --wrap-alpha-div. The wrap closes "
+                     "every gap narrower than about twice its alpha")
 ap.add_argument("--force-wrap", action="store_true",
                 help="wrap even when the mesh is already watertight (a closed multi-body "
                      "STL, hollow tubes, thin plates); otherwise the seal tier leaves it as is")
@@ -284,7 +288,15 @@ if args.wrap:
         arguments = ["--in", str(mesh_full_stl if mirror else mesh_stl),
                      "--out", str(args.out / "wrap.stl"),
                      "--report", str(args.out / "wrap.json")]
-        arguments += ["--alpha-div", str(args.wrap_alpha_div)]
+        import trimesh
+        wrap_input = mesh_full_stl if mirror else mesh_stl
+        diag = float(np.linalg.norm(trimesh.load(wrap_input, force="mesh").extents))
+        alpha_div = args.wrap_alpha_div
+        if args.keep_openings_above:
+            alpha_div = diag / (args.keep_openings_above / 2.0)
+            log(f"   지킬 최소 틈 {args.keep_openings_above:.0f} mm → 알파 {diag / alpha_div:.1f} mm (대각선/{alpha_div:.0f})")
+        args.wrap_alpha_div = alpha_div
+        arguments += ["--alpha-div", str(alpha_div)]
         if args.force_wrap:
             arguments.append("--force")
         text = run_script("seal_geometry.py", arguments, args.out / "wrap.txt")
@@ -300,6 +312,12 @@ if args.wrap:
         else:
             summary["stages"]["wrap"]["status"] = "ok"
         log("   " + "\n   ".join(text.splitlines()[-3:]))
+        if summary["stages"]["wrap"]["status"] == "ok":
+            # Say what the wrap closed, the way intent.md says what the B-rep left open
+            text = run_script("list_closed_openings.py", [
+                "--reference", str(wrap_input), "--candidates", str(args.out / "wrap.stl"),
+                "--top", "10"], args.out / "wrap_closed.txt")
+            log("   랩이 닫은 자리 (wrap_closed.txt):\n   " + "\n   ".join(text.splitlines()[-6:]))
 
     if args.smooth_seams is not None and summary["stages"]["wrap"]["status"] == "ok":
         with stage("smooth"):
