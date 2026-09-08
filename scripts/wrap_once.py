@@ -12,6 +12,9 @@ ap = argparse.ArgumentParser(description=__doc__)
 ap.add_argument("--mesh", type=Path, required=True)
 ap.add_argument("--out", type=Path, required=True)
 ap.add_argument("--alpha-div", type=float, default=90.0)
+ap.add_argument("--offset", type=float,
+                help="wrap offset in model units (default alpha/30). A larger offset rounds "
+                     "plate edges and junctions at the cost of inflating every surface by it")
 args = ap.parse_args()
 
 from CGAL import CGAL_Alpha_wrap_3 as AW
@@ -21,7 +24,7 @@ from CGAL.CGAL_Polyhedron_3 import Polyhedron_3
 mesh = trimesh.load(args.mesh, force="mesh")
 diag = float(np.linalg.norm(np.asarray(mesh.extents, dtype=float)))
 alpha = diag / args.alpha_div
-offset = alpha / 30.0
+offset = args.offset if args.offset is not None else alpha / 30.0
 
 points = AW.Point_3_Vector()
 points.reserve(len(mesh.vertices))

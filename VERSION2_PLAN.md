@@ -2286,3 +2286,59 @@ one planar face on the footprint outline the wrap stage found. 5,791 faces,
 40.55 m², 70.8 MB, re-reads cleanly; not a sewn solid (the overlapping panels
 still prevent that), but a CAD file that opens, measures and edits. Solver gets
 the STL, the engineer gets the STEP, both carry the same two assumptions.
+
+## car5_outer.stl healing trial (2026-09-08)
+
+Input: the G2 `--clean-stl` output of the car5 test case (formula-student open-wheel
+car, 2.79 m, mm, full car, 144,510 triangles). Run: `prepare_geometry.py --no-mirror
+--wrap` on the STL, then `seal_geometry.py --force` and `wrap_once.py --alpha-div 330`.
+
+- After welding at 1.32 mm: 0 open edges, 0 non-manifold edges, 4 watertight bodies
+  (body 93k faces / front wing 42k, genus 1 / two 4.7k-face pieces). 84 triangles
+  under 0.01 mm², 387 needles with aspect over 1000. Nothing for the hole filler.
+- Frontal area 0.636 m² (bbox W×H 1.548 m², 41 %) — consistent with an open-wheel
+  car without wheels.
+- "Is it a double skin?" — no. 56 x-stations and the z-scan show no nested loops in
+  the body; the only two-line features are 5 mm plates (wings, floor, sidepod lips,
+  endplates: 27 % of surface samples see the far side at 4.9 mm) and the roll-hoop
+  tubes, which are hollow with a 1.6 mm wall and open ends (9 stations × 2 tubes).
+- Wrap at diag/180 = 18.4 mm: 107k triangles, one body, volume +5 %, plates come out
+  6.1 mm, tube bores filled, wrap→original p90 1.7 / max 16 mm, original→wrap p90
+  5.6 / max 28 mm (slot gaps webbed). Wrap at diag/330 = 10 mm: 338k triangles, one
+  body, volume +2 %, tube bores filled, p90 0.4 / max 8 mm and p90 1.6 / max 18 mm.
+- The seal tier returns `already_watertight` for this file and does not wrap unless
+  forced; the pipeline's `--wrap` therefore reported ok in 1 s without changing the
+  mesh. Worth a note in the runbook: a closed multi-body STL needs `--force`.
+- Files: var/runs/car5/ (mesh.stl, sealed_forced.stl, wrap10.stl, sections_*.png);
+  copies in ~/다운로드/car5_outer-{welded,wrapped-18mm,wrapped-10mm}.stl.
+
+### Seam smoothing after the wrap (2026-09-08, car5)
+
+The wrap is faithful to the input except where it bridged something: 5 mm plate
+edges, wing slots, tube junctions. Those "webbed" faces (centroid > 1 mm from the
+original; 4 % of faces, 7 % of area on car5) carry a sawtooth — dihedral p50 32°,
+p90 65°, 13 % over 60° — while the faithful zone sits at p50 0.3°. Candidates
+measured with `measure_wrap_roughness.py` against the welded original:
+
+| candidate | faces | webbed dihedral p50/p90/p99 | >60° | wrap→orig p90/max mm | volume m³ |
+|---|---|---|---|---|---|
+| wrap 10 mm, offset 0.33 | 338k | 32.0 / 65.4 / 101 | 13.3 % | 0.42 / 9.0 | 0.3826 |
+| wrap 10 mm, offset 1.5 | 190k | 34.6 / 69.5 / 107 | 16.9 % | 1.56 / 9.1 | 0.3960 |
+| wrap 10 mm, offset 2.5 | 175k | 36.2 / 72.8 / 110 | 19.4 % | 2.55 / 10.0 | 0.4078 |
+| + bi-Laplacian fair (pipeline `fair`) on webbed + 2 rings | 338k | 9.8 / 49.9 / 153 | 7.8 % | 3.95 / 16.4 | 0.3930 |
+| + masked Taubin 20 | 338k | 10.4 / 29.6 / 71 | 1.6 % | 0.86 / 10.0 | 0.3830 |
+| + CGAL isotropic remesh 6 mm (webbed only) + fair | 506k | 6.2 / 39.4 / 144 | 5.8 % | 1.87 / 16.2 | 0.3865 |
+| **+ remesh 6 mm + Taubin 20** | 506k | **7.6 / 21.1 / 51** | **0.7 %** | 0.50 / 8.1 | 0.3823 |
+
+- A larger wrap offset does not smooth the seams; it inflates everything (+3.5 % / +6.6 % volume).
+- The bi-Laplacian fair moves free vertices up to 39 mm and folds triangles (p99 153°);
+  it is built for a patch inside a loop, not for strips along plate edges. Not for this.
+- Remesh first, then Taubin: the sawtooth is made of needle triangles, so smoothing
+  the original triangulation only rounds the teeth (p90 29.6°); evening the
+  triangles out first gives 21.1°. Free vertices move p50 0.4 / max 7.3 mm, pinned
+  vertices 0.000 mm, volume unchanged.
+- Tools: `scripts/smooth_wrap.py` (--remesh T --smooth taubin|fair --rings R),
+  `scripts/measure_wrap_roughness.py`, `wrap_once.py --offset`. Orchestrator:
+  `--force-wrap` (a watertight input is otherwise left alone and now reported as
+  `unchanged`), `--smooth-seams [EDGE_MM]` (default 0.6 × alpha).
+- Deliverable: ~/다운로드/car5_outer-wrapped-10mm-smoothed.stl, car5_seam_before_after.png.

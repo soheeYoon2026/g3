@@ -26,7 +26,8 @@ otherwise read as an option.
 | `mesh` | tessellate with consistent winding, stitch tessellation seams, patch the rest (flat by default; pocket rims stay flat) | `mesh.stl`, `mesh_full.stl`, `mesh.json`, `mesh.txt` |
 | `area` | projected frontal area of the full car, rasterised union | `frontal_area.txt` |
 | `render` | four-view pictures with the open boundaries drawn on | `render_step.png`, `render_mesh.png` |
-| `wrap` | (`--wrap`) CGAL alpha wrap of the mesh; hollow until the large openings are closed | `wrap.stl`, `wrap.json`, `wrap.txt` |
+| `wrap` | (`--wrap`) CGAL alpha wrap of the mesh; hollow until the large openings are closed; a watertight input is left alone unless `--force-wrap` | `wrap.stl`, `wrap.json`, `wrap.txt` |
+| `smooth` | (`--smooth-seams`) remesh and smooth only the seams the wrap added (plate edges, tube junctions); everything else pinned | `wrap_smooth.stl`, `smooth.txt` |
 
 `summary.json` records which stages ran, how long, and the key numbers. A stage
 that fails is recorded and the rest still run. `log.txt` is the console output.
@@ -92,7 +93,8 @@ reason, `intent.md` for the questions, `params.json` for proposals with reasons.
 A bounding box that differs from the input means a patch escaped.
 
 Common failures: a `--close-near` value starting with `-` must be joined with
-`=`; a wrap that comes back `hollow` means the large openings are still open
+`=`; a wrap stage that says `unchanged` means the input was already watertight
+(closed multi-body STL) — add `--force-wrap` to wrap it anyway; a wrap that comes back `hollow` means the large openings are still open
 (intent, or run C); a skipped wrap tier means `cgal` is not installed; slow STEP
 opening means the mirror was written as a copy — write the half with
 `--no-mirror` and mirror in CAD.
@@ -111,7 +113,9 @@ Every stage is also a standalone script under `scripts/`:
 - `render_geometry.py` — pictures, with `--focus-hole N` / `--focus-point X,Y,Z`
 - `check_topology.py` — intersections (slow, `--intersections`), hidden-face
   classification (refuses on a leaking body), orientation, curvature meshing
-- `seal_geometry.py` — the wrap tier
+- `seal_geometry.py` — the wrap tier; `wrap_once.py --alpha-div --offset` for one wrap
+- `smooth_wrap.py` — seam smoothing after a wrap (`--remesh T --smooth taubin`);
+  `measure_wrap_roughness.py` reports the dihedral angles of the seams vs the rest
 - `audit_*.py`, `measure_*.py`, `sweep_*.py` — the measurements the design
   decisions rest on; `VERSION2_PLAN.md` explains each
 

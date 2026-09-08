@@ -47,6 +47,15 @@ ap.add_argument("--auto", action="store_true",
 ap.add_argument("--params", type=Path,
                 help="a proposal JSON from propose_parameters.py to use instead of --auto")
 ap.add_argument("--wrap", action="store_true", help="also run the CGAL wrap tier")
+ap.add_argument("--wrap-alpha-div", type=float, default=180.0,
+                help="wrap alpha as diagonal/N (180 → 29 mm on a car; 330 keeps 5 mm plates)")
+ap.add_argument("--force-wrap", action="store_true",
+                help="wrap even when the mesh is already watertight (a closed multi-body "
+                     "STL, hollow tubes, thin plates); otherwise the seal tier leaves it as is")
+ap.add_argument("--smooth-seams", nargs="?", const=-1.0, type=float, metavar="EDGE_MM",
+                help="after the wrap, remesh the seams it added (plate edges, tube junctions) "
+                     "to this edge length and smooth them with the rest pinned "
+                     "(default edge: 0.6 × alpha); see smooth_wrap.py")
 ap.add_argument("--no-render", action="store_true")
 ap.add_argument("--curvature-angle", type=float, default=15.0)
 args = ap.parse_args()
@@ -272,14 +281,41 @@ if not args.no_render:
 # ------------------------------------------------------------------------ wrap
 if args.wrap:
     with stage("wrap"):
-        text = run_script("seal_geometry.py", [
-            "--in", str(mesh_full_stl if mirror else mesh_stl),
-            "--out", str(args.out / "wrap.stl"),
-            "--report", str(args.out / "wrap.json")], args.out / "wrap.txt")
+        arguments = ["--in", str(mesh_full_stl if mirror else mesh_stl),
+                     "--out", str(args.out / "wrap.stl"),
+                     "--report", str(args.out / "wrap.json")]
+        arguments += ["--alpha-div", str(args.wrap_alpha_div)]
+        if args.force_wrap:
+            arguments.append("--force")
+        text = run_script("seal_geometry.py", arguments, args.out / "wrap.txt")
         # The wrap "fails" honestly while the large openings are open: it reports
         # a hollow result rather than a solid. Record that as its own status.
-        summary["stages"]["wrap"]["status"] = "hollow" if "0/1 성공" in text else "ok"
+        # A mesh that was already watertight comes back untouched unless forced;
+        # say so rather than reporting a wrap that did not happen.
+        if "0/1 성공" in text:
+            summary["stages"]["wrap"]["status"] = "hollow"
+        elif "already_watertight" in text:
+            summary["stages"]["wrap"]["status"] = "unchanged"
+            log("   이미 수밀이라 랩을 건너뜀 — 그래도 감싸려면 --force-wrap")
+        else:
+            summary["stages"]["wrap"]["status"] = "ok"
         log("   " + "\n   ".join(text.splitlines()[-3:]))
+
+    if args.smooth_seams is not None and summary["stages"]["wrap"]["status"] == "ok":
+        with stage("smooth"):
+            import trimesh
+            wrapped = trimesh.load(args.out / "wrap.stl", force="mesh")
+            diag = float(np.linalg.norm(wrapped.extents))
+            edge = args.smooth_seams if args.smooth_seams > 0 else 0.6 * diag / args.wrap_alpha_div
+            text = run_script("smooth_wrap.py", [
+                "--in", str(args.out / "wrap.stl"),
+                "--reference", str(mesh_full_stl if mirror else mesh_stl),
+                "--out", str(args.out / "wrap_smooth.stl"),
+                "--remesh", f"{edge:.2f}", "--smooth", "taubin", "--iterations", "20"],
+                args.out / "smooth.txt")
+            m = re.search(r"저장 .* 삼각형 ([\d,]+)", text)
+            summary["numbers"]["wrap_smooth_triangles"] = int(m.group(1).replace(",", "")) if m else None
+            log("   " + "\n   ".join(text.splitlines()[-3:]))
 
 # --------------------------------------------------------------------- summary
 (args.out / "summary.json").write_text(

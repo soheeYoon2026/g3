@@ -330,7 +330,8 @@ def _try_voxel_seal(mesh, report: SealReport, pitch=None, close=None):
     return None
 
 
-def seal(mesh, force: bool = False) -> tuple[Optional[trimesh.Trimesh], SealReport]:
+def seal(mesh, force: bool = False,
+         alpha_div: Optional[float] = None) -> tuple[Optional[trimesh.Trimesh], SealReport]:
     """Seal a mesh, returning (mesh or None, report).
 
     Returns None when every tier failed. That is deliberate: an earlier version of
@@ -338,7 +339,8 @@ def seal(mesh, force: bool = False) -> tuple[Optional[trimesh.Trimesh], SealRepo
     flow ran through the inside of the car, and it neither diverged nor looked
     wrong -- it just quietly produced an incorrect Cd for four hours.
 
-    force=True seals even when the mesh is closed enough that a winding number
+    alpha_div overrides the alpha-wrap alpha (diagonal / alpha_div; default
+    AW_ALPHA_DIV). force=True seals even when the mesh is closed enough that a winding number
     would do; sealing inflates volume by a few percent and fills narrow gaps, so
     it is otherwise a last resort.
     """
@@ -377,8 +379,11 @@ def seal(mesh, force: bool = False) -> tuple[Optional[trimesh.Trimesh], SealRepo
             f"openness {report.openness_in:.2f} sits in the unmeasured band "
             f"({threshold}-{OPENNESS_UNVERIFIED_HI}); sealing is untested here")
 
+    import functools
+    alpha_wrap = _try_alpha_wrap if alpha_div is None else \
+        functools.partial(_try_alpha_wrap, alpha_div=float(alpha_div))
     for tier, attempt in (("vdb", _try_vdb),
-                          ("alpha_wrap", _try_alpha_wrap),
+                          ("alpha_wrap", alpha_wrap),
                           ("fix_shell", _try_voxel_seal)):
         result = attempt(mesh, report)
         if result is None or not result.is_watertight:
@@ -402,10 +407,10 @@ def seal(mesh, force: bool = False) -> tuple[Optional[trimesh.Trimesh], SealRepo
     return None, report
 
 
-def seal_file(path, out_path=None, force: bool = False):
+def seal_file(path, out_path=None, force: bool = False, alpha_div: Optional[float] = None):
     """Seal an STL on disk. Returns (report, output path or None)."""
     mesh = trimesh.load(path, force="mesh")
-    sealed, report = seal(mesh, force=force)
+    sealed, report = seal(mesh, force=force, alpha_div=alpha_div)
     if sealed is None:
         return report, None
     if out_path:

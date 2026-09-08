@@ -26,6 +26,8 @@ def main() -> int:
                         help="STL file, or a directory of them")
     parser.add_argument("--out", type=Path, help="output file or directory")
     parser.add_argument("--report", type=Path, help="write the per-file reports as json")
+    parser.add_argument("--alpha-div", type=float,
+                        help="alpha-wrap alpha as diagonal/N (default 180; 330 keeps 5 mm plates and wing slots)")
     parser.add_argument("--force", action="store_true",
                         help="seal even when a winding number would do")
     parser.add_argument("--require-watertight", action="store_true",
@@ -63,7 +65,7 @@ def main() -> int:
     print("-" * 98)
     reports, failed = [], 0
     for source, target in zip(sources, targets):
-        report, written = seal_file(source, target, force=args.force)
+        report, written = seal_file(source, target, force=args.force, alpha_div=args.alpha_div)
         reports.append({"file": str(source), "out": str(written) if written else None,
                         **report.as_dict()})
         # A pass-through is not a failure, but it is not a watertight file either.
