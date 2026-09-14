@@ -27,6 +27,11 @@ ap.add_argument("--port", type=int, default=8765)
 ap.add_argument("--model", default=os.environ.get("PRIME_MODEL", "openai/gpt-5.6-terra"),
                 help="Prime Inference model id; PRIME_MODEL overrides. Measured 2026-09-14: terra 2.5 s, gpt-oss-120b 5.2 s on the same question, both returned a valid answer block")
 ap.add_argument("--no-chat", action="store_true", help="page without the model (no API calls)")
+ap.add_argument("--knowledge", type=Path, action="append",
+                help="reference document put into every system prompt verbatim; repeatable. "
+                     "Default: the tech doc and the pipeline doc when they exist. The model quotes numbers from it "
+                     "instead of guessing. Note that the text leaves this machine with every chat call")
+ap.add_argument("--no-knowledge", action="store_true", help="send the plan only")
 args = ap.parse_args()
 
 HERE = Path(__file__).resolve().parent
@@ -47,6 +52,36 @@ SYSTEM = """당신은 자동차 형상 정리 파이프라인의 AI 통제기입
 붙이세요: ```json {"answers": {"질문id": 값}} ```. 값은 질문의 type 에 맞게(number → 숫자, bool → true/false,
 choice → 선택지 문자열). 한국어로, 짧게, 결론부터."""
 
+DEFAULT_KNOWLEDGE = [Path("var/docs/geometry_cleaning/GEOMETRY_CLEANING.md"), Path("docs/GEOMETRY_PIPELINE.md")]
+
+
+def load_knowledge():
+    """The reference documents, verbatim. No retrieval: the whole text goes in every call."""
+    if args.no_knowledge:
+        return ""
+    root = HERE.parent
+    paths = args.knowledge or [root / p for p in DEFAULT_KNOWLEDGE]
+    parts = []
+    for path in paths:
+        path = Path(path)
+        if not path.exists():
+            print(f"  참고 문서 없음: {path}")
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        parts.append(f"----- 문서: {path.name} -----\n{text}")
+        print(f"  참고 문서 {path.name}: {len(text):,}자")
+    if not parts:
+        return ""
+    body = "\n\n".join(parts)
+    # measured 2026-09-14: the two documents are 35.6 k input tokens on terra, about $0.09 a turn,
+    # and Prime publishes no cache price, so every turn pays for them again
+    print(f"  참고 문서 합계 {len(body):,}자 — 대화 한 번마다 다시 보냅니다 (terra 기준 약 3.6만 토큰, $0.09)")
+    return ("\n\n아래는 이 파이프라인의 정본 문서입니다. 수치·규칙·이전 실측은 여기서 인용하고, "
+            "여기에 없으면 모른다고 하세요. 문서와 plan.json 이 어긋나면 plan.json(이번 실행)이 우선입니다.\n" + body)
+
+
+KNOWLEDGE = load_knowledge()
+
 
 def digest():
     plan = json.loads((DIR / "plan.json").read_text()) if (DIR / "plan.json").exists() else {}
@@ -58,13 +93,15 @@ def digest():
 def chat(history):
     if CFG is None:
         return "모델 연결이 없습니다(--no-chat 이거나 ~/.prime/config.json 없음).", None
-    msgs = [{"role": "system", "content": SYSTEM + "\n\nplan.json:\n" + digest()}] + history[-12:]
+    msgs = [{"role": "system", "content": SYSTEM + KNOWLEDGE + "\n\nplan.json:\n" + digest()}] + history[-12:]
     body = json.dumps({"model": args.model, "messages": msgs, "max_tokens": 1200, "temperature": 0.2}).encode()
     req = urllib.request.Request(CFG["inference_url"].rstrip("/") + "/chat/completions", data=body, headers={
         "Authorization": "Bearer " + CFG["api_key"], "Content-Type": "application/json",
         "Accept": "application/json", "User-Agent": "prime-cli/0.6.33"})
     with urllib.request.urlopen(req, timeout=300) as r:
         d = json.load(r)
+    usage = d.get("usage") or {}
+    print(f"  [대화] {args.model}  입력 {usage.get('prompt_tokens','?')} 출력 {usage.get('completion_tokens','?')} 토큰")
     text = d["choices"][0]["message"]["content"]
     suggested = None
     import re
