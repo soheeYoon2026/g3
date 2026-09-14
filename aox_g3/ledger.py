@@ -64,12 +64,28 @@ def load(run_dir: Path) -> list:
         return []
 
 
-def find(run_dir: Path, ident: str):
-    """The completed step with this identity, if every output it named is still there."""
+def find(run_dir: Path, ident: str, verify: bool = True):
+    """The completed step with this identity, if its outputs are still the same bytes.
+
+    Existence alone is not enough: a file can be replaced between runs, and then the step
+    would be skipped while its result is someone else's (2026-09-14 review).
+    """
+    run_dir = Path(run_dir)
     for step in load(run_dir):
         if step.get("identity") != ident or step.get("status") != "done":
             continue
-        if all((Path(run_dir) / o["path"]).exists() or Path(o["path"]).exists() for o in step.get("outputs", [])):
+        ok = True
+        for o in step.get("outputs", []):
+            path = Path(o["path"])
+            if not path.exists():
+                path = run_dir / o["path"]
+            if not path.exists():
+                ok = False
+                break
+            if verify and o.get("hash") and file_hash(path) != o["hash"]:
+                ok = False
+                break
+        if ok:
             return step
     return None
 

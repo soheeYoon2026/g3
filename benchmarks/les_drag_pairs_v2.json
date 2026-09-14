@@ -1,0 +1,142 @@
+{
+ "name": "les-drag-pairs-v1 (G2 convention)",
+ "created": "2026-09-07",
+ "purpose": "ΔCd labels from 4-level AMR-LBM LES on car geometry the serving model (decoder-30epoch) never trained on. Built because the 400-pair G2 pool holds only 3 drag-increasing pairs on unseen geometry, leaving no instrument to adjudicate a promotion on the product metric.",
+ "solver": "AMR-LBM 4-level precision, 15,000 warmup + 9,000 sampling, free placement, ground clearance 30 mm, cs_l2 0.16, XLA autotune disabled",
+ "protocol_notes": [
+  "Refinement boxes frozen from each car's baseline and reused by its variants (LES_FIX_REFINE_JSON). v8/v9 skipped this and got 4x the scatter.",
+  "Baselines were G2-solved watertight surfaces, verified watertight after STL welding and classified full_car by aox_g3/upload_gate.py.",
+  "cd_std in the result file is time-series scatter, NOT the error on the mean. The mean's standard error is recovered by block-averaging the per-900-sample cumulative means the runner logs (scripts/estimate_les_mean_error.py). For carA the two differ threefold: 0.0070 vs 0.0022.",
+  "carB ran at u_inf 0.08 because its finer base cell (41.1 mm vs carA's 50.0 mm) diverged at the default 0.10. That cost precision: SEM 0.0066 vs carA's 0.0022. ΔCd is only ever compared within one car on one frozen grid, so the differing inflow does not invalidate the deltas.",
+  "Absolute LES Cd carries a known +86% calibration offset in this implementation; only the deltas are used."
+ ],
+ "reference_area_convention": "G2 convention: reference area FIXED at the baseline geometry for every variant (verified 2026-09-07 — DESIGNS_backup/DSN_001..010 all carry REF_AREA=0.093717 while their surface hashes differ). delta_cd = Cd_baseline * (drag force change). The original LES numbers, which recompute bbox area per geometry, are kept as delta_cd_les_convention. G3 learns G2-derived labels, so the benchmark must speak the same convention or a widened car reads backwards.",
+ "cars": [
+  {
+   "id": "carA",
+   "source_run": 65,
+   "job_uid_prefix": "5ry9vpsU",
+   "su2_cd": 0.2479,
+   "extents_m": [
+    4.998,
+    1.967,
+    1.319
+   ],
+   "les_cd": 0.2696,
+   "les_sem": 0.0022,
+   "u_inf": 0.1,
+   "cells_m": 83.7,
+   "minutes": 228.9
+  },
+  {
+   "id": "carB",
+   "source_run": 125,
+   "job_uid_prefix": "c5aafeb6",
+   "su2_cd": 0.4518,
+   "extents_m": [
+    5.002,
+    1.667,
+    1.052
+   ],
+   "les_cd": 0.77,
+   "les_sem": 0.0066,
+   "u_inf": 0.08
+  }
+ ],
+ "pairs": [
+  {
+   "car": "carA",
+   "variant": "blunt_tail",
+   "les_cd": 0.2786,
+   "sem": 0.0031,
+   "delta_cd": 0.008897,
+   "signal_to_noise": 2.87,
+   "frontal_area_change_pct": 0.0,
+   "drag_force_change_pct": 3.3,
+   "verdict": "drag_increase",
+   "usable": true,
+   "delta_cd_les_convention": 0.009,
+   "direction_flipped_vs_les": false
+  },
+  {
+   "car": "carA",
+   "variant": "wide_rear",
+   "les_cd": 0.2628,
+   "sem": 0.0035,
+   "delta_cd": 0.005122,
+   "signal_to_noise": 1.46,
+   "frontal_area_change_pct": 4.5,
+   "drag_force_change_pct": 1.9,
+   "verdict": "inconclusive",
+   "usable": false,
+   "note": "drag force rose but the reference area grew faster, so Cd fell",
+   "delta_cd_les_convention": -0.0068,
+   "direction_flipped_vs_les": true
+  },
+  {
+   "car": "carA",
+   "variant": "raise_roof",
+   "les_cd": 0.2643,
+   "sem": 0.0028,
+   "delta_cd": -0.005122,
+   "signal_to_noise": 1.83,
+   "frontal_area_change_pct": 0.1,
+   "drag_force_change_pct": -1.9,
+   "verdict": "inconclusive",
+   "usable": false,
+   "delta_cd_les_convention": -0.0053,
+   "direction_flipped_vs_les": false
+  },
+  {
+   "car": "carB",
+   "variant": "blunt_tail",
+   "les_cd": 0.7665,
+   "sem": 0.0069,
+   "delta_cd": -0.00385,
+   "signal_to_noise": 0.56,
+   "frontal_area_change_pct": 0.0,
+   "drag_force_change_pct": -0.5,
+   "verdict": "inconclusive",
+   "usable": false,
+   "note": "the deformation that worked on carA does nothing here - the effect is shape dependent",
+   "delta_cd_les_convention": -0.0035,
+   "direction_flipped_vs_les": false
+  },
+  {
+   "car": "carB",
+   "variant": "wide_rear",
+   "les_cd": 0.7342,
+   "sem": 0.0069,
+   "delta_cd": -0.02464,
+   "signal_to_noise": 3.57,
+   "frontal_area_change_pct": 1.5,
+   "drag_force_change_pct": -3.2,
+   "verdict": "drag_decrease",
+   "usable": true,
+   "delta_cd_les_convention": -0.0358,
+   "direction_flipped_vs_les": false
+  },
+  {
+   "car": "carB",
+   "variant": "raise_roof",
+   "les_cd": 0.7321,
+   "sem": 0.0064,
+   "delta_cd": -0.03311,
+   "signal_to_noise": 5.17,
+   "frontal_area_change_pct": 0.7,
+   "drag_force_change_pct": -4.3,
+   "verdict": "drag_decrease",
+   "usable": true,
+   "delta_cd_les_convention": -0.0379,
+   "direction_flipped_vs_les": false
+  }
+ ],
+ "outcome": {
+  "runs": 8,
+  "gpu_hours": 32,
+  "usable_pairs": 3,
+  "drag_increasing": 1,
+  "drag_decreasing": 2,
+  "verdict": "The campaign did not solve the bottleneck. It set out to supply drag-increasing pairs on unseen geometry and produced one. Two more usable pairs came out decreasing, which the G2 pool already has in quantity. What it did establish is the design rule for a second attempt: extend along x only so the frontal box is unchanged, and expect the effect to be shape dependent - blunt_tail gave +3.3% drag on carA and -0.5% on carB."
+ }
+}

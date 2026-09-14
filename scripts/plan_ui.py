@@ -208,7 +208,8 @@ def chat(history):
     msgs = [{"role": "system", "content": SYSTEM + KNOWLEDGE + "\n\nplan.json:\n" + digest()}] + history[-12:]
     tools = None if args.no_tools else geometry_tools.schemas()
     used = []
-    for _ in range(max(1, args.max_tool_calls)):
+    budget = max(1, args.max_tool_calls)   # measurements, not turns: one reply may ask for several
+    while True:
         d = post(msgs, tools)
         msg = d["choices"][0]["message"]
         calls = msg.get("tool_calls") or []
@@ -221,6 +222,11 @@ def chat(history):
             if used:
                 text += "\n\n(직접 잰 것: " + ", ".join(used) + ")"
             return text, extract_answers(text)
+        if budget <= 0:
+            return ("측정 횟수 예산을 다 썼습니다(" + str(args.max_tool_calls) + "회). 질문을 좁혀 주세요."
+                    + ("\n\n(잰 것: " + ", ".join(used) + ")" if used else "")), None
+        calls = calls[:budget]
+        budget -= len(calls)
         msgs.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": calls})
         for c in calls:
             name = c["function"]["name"]
@@ -233,7 +239,7 @@ def chat(history):
             print(f"        → {name} {arguments} : {str(result)[:120]}")
             msgs.append({"role": "tool", "tool_call_id": c["id"], "name": name,
                          "content": json.dumps(result, ensure_ascii=False)[:6000]})
-    return "측정을 너무 여러 번 요청했습니다. 질문을 좁혀 주세요.", None
+
 
 
 def extract_answers(text):

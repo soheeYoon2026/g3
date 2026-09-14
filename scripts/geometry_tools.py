@@ -145,21 +145,38 @@ def section_profile(reference: str, candidate: str, axis: str, value_mm: float, 
             "reference_length_mm": round(float(np.linalg.norm(np.diff(cut(ref), axis=1), axis=2).sum()), 0)}
 
 
-def closed_openings(reference: str, candidate: str, keep_above_mm: float) -> dict:
-    """지키기로 한 크기보다 큰 구멍 중 닫혀 버린 것이 있는지."""
+def closed_openings(reference: str, candidate: str, keep_above_mm: float,
+                    web_distance_mm: float = 1.5, tolerance_mm: float = 1.5) -> dict:
+    """지키기로 한 크기보다 큰 구멍이 닫혔는지. 판정은 덧댄 재료가 건너뛴 틈으로 한다.
+
+    찢어진 경계(열린 고리)만 보면 헛돈다: car5 원본은 열린 고리가 0개이고 윙 슬롯은 판과 판 사이를
+    지나는 통로라, 그것을 다 막은 10 mm 랩도 "보존됨"으로 나왔다(2026-09-14 확인). 랩이 무언가를
+    닫으면 원본에서 떨어진 면(덧댄 재료)이 생기고, 그 패치가 건너뛴 틈이 곧 닫힌 구멍의 크기다.
+    """
+    added = compare_to_reference(candidate, reference, web_distance_mm=web_distance_mm)
+    # the bridged gap is estimated as twice the farthest point of the patch, which is coarse to
+    # about a millimetre, so a patch within tolerance of the threshold is reported but not failed
+    tol = float(tolerance_mm)
+    closed = [p for p in added["added_patches"] if p["bridged_gap_mm"] >= float(keep_above_mm) + tol]
+    borderline = [p for p in added["added_patches"]
+                  if float(keep_above_mm) - tol <= p["bridged_gap_mm"] < float(keep_above_mm) + tol]
+    # torn boundaries, kept as a second signal for meshes that do have them
     before = list_openings(reference, top=200)
     after = list_openings(candidate, top=200)
-    kept = [r for r in after["largest"] if r["size_mm"] >= keep_above_mm]
     wanted = [r for r in before["largest"] if r["size_mm"] >= keep_above_mm]
+    kept = [r for r in after["largest"] if r["size_mm"] >= keep_above_mm]
     lost = []
     for w in wanted:
         c = np.array(w["centre_mm"])
-        near = [k for k in kept if np.linalg.norm(np.array(k["centre_mm"]) - c) < max(200.0, w["size_mm"])]
-        if not near:
+        if not [k for k in kept if np.linalg.norm(np.array(k["centre_mm"]) - c) < max(200.0, w["size_mm"])]:
             lost.append(w)
-    return {"keep_above_mm": keep_above_mm, "openings_in_reference": len(wanted),
-            "still_open_in_candidate": len(kept), "closed_that_should_stay_open": lost[:10],
-            "ok": len(lost) == 0}
+    return {"keep_above_mm": float(keep_above_mm), "tolerance_mm": tol,
+            "closed_by_added_material": closed[:10], "borderline": borderline[:10],
+            "added_area_share": added["added_area_share"],
+            "open_loops_in_reference": len(wanted), "still_open_in_candidate": len(kept),
+            "lost_boundary_loops": lost[:10],
+            "ok": not closed and not lost,
+            "how": "덧댄 패치가 건너뛴 틈이 keep_above_mm 이상이면 닫힌 것으로 본다"}
 
 
 TOOLS = {
@@ -179,7 +196,8 @@ TOOLS = {
         ["reference", "candidate", "axis", "value_mm"]),
     "closed_openings": (closed_openings, {
         "reference": {"type": "string"}, "candidate": {"type": "string"},
-        "keep_above_mm": {"type": "number", "description": "이 크기 이상은 열린 채로 남아야 한다"}},
+        "keep_above_mm": {"type": "number", "description": "이 크기 이상은 열린 채로 남아야 한다"},
+        "web_distance_mm": {"type": "number"}, "tolerance_mm": {"type": "number"}},
         ["reference", "candidate", "keep_above_mm"]),
 }
 

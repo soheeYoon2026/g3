@@ -24,6 +24,7 @@ ap.add_argument("--cases", type=Path, default=HERE.parent / "benchmarks" / "geom
 ap.add_argument("--only")
 ap.add_argument("--update", action="store_true", help="store what this run measured as the expectation")
 ap.add_argument("--out", type=Path, help="write the measured numbers here as JSON")
+ap.add_argument("--allow-missing", action="store_true", help="treat a case whose files are absent as a skip, not a failure")
 args = ap.parse_args()
 
 spec = json.loads(args.cases.read_text())
@@ -36,7 +37,7 @@ for case in spec["cases"]:
     cand = str(Path(case["candidate"]).expanduser())
     missing = [p for p in ([ref] if ref else []) + [cand] if not Path(p).exists()]
     if missing:
-        rows.append((case["name"], "파일 없음", "-", "-", "건너뜀"))
+        rows.append((case["name"], "파일 없음", "-", "-", "건너뜀" if args.allow_missing else "실패 (파일 없음)"))
         print(f"[{case['name']}] 파일이 없어 건너뜁니다: {missing}")
         continue
     cache = {}
@@ -72,10 +73,14 @@ for name, item, want, got, verdict in rows:
     g = f"{got:.4g}" if isinstance(got, float) else str(got)
     print(f"{name:16s} {item:{width}s} {w:>12s} {g:>12s}  {verdict}")
 failed = [r for r in rows if r[4].startswith("실패")]
-print(f"\n{len(rows)}개 중 실패 {len(failed)}개 · {time.time()-t_all:.0f} s")
+skipped = [r for r in rows if r[4].startswith("건너뜀")]
+if not rows:
+    print("\n검사한 것이 없습니다 — 케이스 이름이나 파일 경로를 확인하세요")
+print(f"\n{len(rows)}개 중 실패 {len(failed)}개" + (f", 건너뜀 {len(skipped)}개" if skipped else "") + f" · {time.time()-t_all:.0f} s")
 if args.update:
     args.cases.write_text(json.dumps(spec, ensure_ascii=False, indent=1))
     print(f"기대값을 이번 측정으로 갱신했습니다: {args.cases}")
 if args.out:
     args.out.write_text(json.dumps(results, ensure_ascii=False, indent=1))
-sys.exit(1 if failed else 0)
+# a run that measured nothing must not look like a pass
+sys.exit(1 if (failed or not rows) else 0)

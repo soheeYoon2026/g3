@@ -57,6 +57,22 @@
    ]
   },
   {
+   "name": "car5-wrap-10mm-negative",
+   "what": "시험이 실제로 닫힌 구멍을 잡는지 (10 mm 랩은 13 mm 슬롯을 닫았으므로 ok=false 여야 함)",
+   "reference": "~/2026/SU2_work/SU2/TestCases/optimization_rans/steady_oneram6/car5_outer.stl",
+   "candidate": "~/다운로드/car5_outer-wrapped-10mm.stl",
+   "checks": [
+    {
+     "tool": "closed_openings",
+     "key": "ok",
+     "expect": false,
+     "args": {
+      "keep_above_mm": 13.0
+     }
+    }
+   ]
+  },
+  {
    "name": "gtr-sharpen",
    "what": "29 mm 랩 → 투영 → 6.5 mm 랩이 표면을 원본으로 되돌리는가",
    "reference": "var/runs/plan-gtr6/input_mm.stl",

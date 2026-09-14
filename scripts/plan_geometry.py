@@ -83,23 +83,33 @@ def check(name, ok, detail, on_fail=None):
     return bool(ok)
 
 
+OUTPUT_FLAGS = ("--out", "--output", "--report", "--caps-stl", "--field", "--o")
+
+
 def path_args(arguments):
-    """Arguments that name a file, so the ledger can hash inputs and spot outputs."""
-    out = []
+    """Split the arguments into input files and output files.
+
+    A file that the step is about to write must not be hashed as an input: if it happens to
+    exist from an earlier run the identity changes and the same work looks new (2026-09-14).
+    """
+    inputs, outputs = [], []
+    previous = ""
     for a in arguments:
         text = str(a)
         if any(text.endswith(ext) for ext in (".stl", ".stp", ".step", ".obj", ".json", ".txt", ".png")):
-            out.append(Path(text))
-    return out
+            (outputs if previous in OUTPUT_FLAGS else inputs).append(Path(text))
+        previous = text
+    return inputs, outputs
 
 
 def run(script, arguments, capture_name):
     cmd = [python, str(HERE / script)] + [str(a) for a in arguments]
     t0 = time.time()
-    paths = path_args(arguments)
-    inputs = [p for p in paths if p.exists()]
+    in_paths, out_paths = path_args(arguments)
+    paths = in_paths + out_paths
+    inputs = [p for p in in_paths if p.exists()]
     # a step usually writes into a directory it was given, so watch those too
-    dirs = [Path(str(a)) for a in arguments if str(a).startswith(str(args.out)) and not path_args([a])]
+    dirs = [Path(str(a)) for a in arguments if str(a).startswith(str(args.out)) and not any(path_args([a]))]
     def snapshot():
         seen = {}
         for p in paths:
