@@ -188,8 +188,25 @@ def chat(history):
 
 
 def start_controller(answers=None, assume=False):
+    """Re-run the controller. It rewrites plan.json from scratch, so keep the previous record
+    and never start on an empty answer set: a page with no open questions used to submit {},
+    which wiped the answers of a finished run and restarted it (seen 2026-09-14)."""
     if STATE["proc"] is not None and STATE["proc"].poll() is None:
         return False
+    if answers is not None and not answers:
+        return False
+    plan = DIR / "plan.json"
+    if plan.exists():
+        (DIR / "plan_prev.json").write_text(plan.read_text())
+    if answers:  # keep answers already given for questions the page no longer shows
+        old_file = DIR / "answers.json"
+        if old_file.exists():
+            try:
+                merged = json.loads(old_file.read_text())
+            except Exception:
+                merged = {}
+            merged.update(answers)
+            answers = merged
     cmd = [sys.executable, str(HERE / "plan_geometry.py"), "--in", str(args.src), "--out", str(DIR), "--no-render"]
     if answers is not None:
         (DIR / "answers.json").write_text(json.dumps(answers, ensure_ascii=False, indent=1))
@@ -224,14 +241,16 @@ async function refresh(){const r=await fetch('/api/state');const s=await r.json(
  document.getElementById('input').textContent=p.input||'';
  Q=s.questions||[];const qd=document.getElementById('questions');
  if(!Q.length){qd.innerHTML='<i>지금은 물을 것이 없습니다.</i>'}else{qd.innerHTML=Q.map(q=>{let inp='';
-  if(q.type==='bool')inp=`<select id="q_${q.id}"><option value="true" ${q.proposal?'selected':''}>예</option><option value="false" ${!q.proposal?'selected':''}>아니오</option></select>`;
-  else if(q.type==='choice')inp=`<select id="q_${q.id}">${(q.choices||[]).map(c=>`<option ${c==q.proposal?'selected':''}>${c}</option>`).join('')}</select>`;
-  else inp=`<input id="q_${q.id}" type="number" step="any" value="${q.proposal}"> ${q.unit||''}`;
+  const cur=(q.answer!=null?q.answer:q.proposal);
+  if(q.type==='bool')inp=`<select id="q_${q.id}"><option value="true" ${cur?'selected':''}>예</option><option value="false" ${!cur?'selected':''}>아니오</option></select>`;
+  else if(q.type==='choice')inp=`<select id="q_${q.id}">${(q.choices||[]).map(c=>`<option ${c==cur?'selected':''}>${c}</option>`).join('')}</select>`;
+  else inp=`<input id="q_${q.id}" type="number" step="any" value="${q.answer!=null?q.answer:q.proposal}"> ${q.unit||''}`;
   const ev=(q.evidence||[]).map(e=>e.match(/\\.png$/)?`<div class="ev"><img src="/files/${esc(e)}"></div>`:`<div><a href="/files/${esc(e)}" target="_blank">${esc(e)}</a></div>`).join('');
   const w=q.where||{};const hasWhere=(w.points&&w.points.length)||(w.plane_z!=null);
   const btn=hasWhere?` <button onclick="focusQ('${q.id}')">위치 보기</button>`:'';
   const live=(w.plane_z!=null&&q.type==='number')?` oninput="planeFromInput('${q.id}')"`:'';
-  return `<div class="q" id="card_${q.id}"><b>${esc(q.question)}</b><small>제안 ${esc(q.proposal)} ${esc(q.unit||'')} — ${esc(q.reason)}</small><br>${inp.replace('<input ','<input '+live+' ')}${btn}${ev}</div>`}).join('');
+  const done=q.answer!=null?` <span style="color:#197">· 답함 ${esc(q.answer)}</span>`:(q.assumed?' <span style="color:#a70">· 제안값으로 가정</span>':'');
+  return `<div class="q" id="card_${q.id}"><b>${esc(q.question)}</b>${done}<small>제안 ${esc(q.proposal)} ${esc(q.unit||'')} — ${esc(q.reason)}</small><br>${inp.replace('<input ','<input '+live+' ')}${btn}${ev}</div>`}).join('');
  if(window.updateMarkers)window.updateMarkers(Q);}
  const pd=document.getElementById('plan');const d=p.diagnosis||{};
  pd.innerHTML='<b>진단</b> '+esc(JSON.stringify(d).slice(0,600))+'<br>'+(p.decisions||[]).map(x=>`<div>• ${esc(x.what)} <small>← ${esc(x.because)}</small></div>`).join('')
@@ -241,8 +260,10 @@ async function refresh(){const r=await fetch('/api/state');const s=await r.json(
  document.getElementById('log').textContent=s.log||'';}
 function collect(){const a={};for(const q of Q){const el=document.getElementById('q_'+q.id);if(!el)continue;let v=el.value;
  if(q.type==='bool')v=(v==='true');else if(q.type==='number')v=parseFloat(v);a[q.id]=v}return a}
-async function submitAnswers(){await fetch('/api/answers',{method:'POST',body:JSON.stringify({answers:collect()})});setTimeout(refresh,1500)}
-async function runDefaults(){await fetch('/api/run',{method:'POST',body:'{}'});setTimeout(refresh,1500)}
+async function submitAnswers(){const a=collect();if(!Object.keys(a).length){alert('답할 질문이 없습니다. 다시 돌리려면 "기본값으로 실행"을 쓰세요.');return}
+ const r=await fetch('/api/answers',{method:'POST',body:JSON.stringify({answers:a})});const s=await r.json();if(!s.started)alert(s.why||'시작하지 못했습니다');setTimeout(refresh,1500)}
+async function runDefaults(){if(!confirm('제안값으로 처음부터 다시 돌립니다. 지금 기록(plan.json)은 plan_prev.json 으로 백업됩니다. 계속할까요?'))return;
+ await fetch('/api/run',{method:'POST',body:'{}'});setTimeout(refresh,1500)}
 function add(role,t){const c=document.getElementById('chat');const d=document.createElement('div');d.className='m '+(role==='user'?'u':'a');d.textContent=t;c.appendChild(d);c.scrollTop=c.scrollHeight}
 async function send(){const m=document.getElementById('msg');const t=m.value.trim();if(!t)return;m.value='';add('user',t);hist.push({role:'user',content:t});
  add('assistant','…');const r=await fetch('/api/chat',{method:'POST',body:JSON.stringify({history:hist})});const s=await r.json();
@@ -311,6 +332,10 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/api/state":
             plan = json.loads((DIR / "plan.json").read_text()) if (DIR / "plan.json").exists() else {}
             qs = json.loads((DIR / "questions.json").read_text()) if (DIR / "questions.json").exists() else []
+            # the controller empties questions.json when it finishes; keep showing the ones it
+            # asked (with the answers it used) so the markers and "위치 보기" stay on the page
+            if not qs:
+                qs = plan.get("questions", [])
             if STATE["proc"] is not None and STATE["proc"].poll() is None:
                 plan["status"] = "running"
             log = (DIR / "plan_log.txt").read_text()[-4000:] if (DIR / "plan_log.txt").exists() else ""
@@ -333,7 +358,7 @@ class H(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(n) or b"{}")
         if self.path == "/api/answers":
             ok = start_controller(answers=body.get("answers", {}))
-            return self._send(200, json.dumps({"started": ok}))
+            return self._send(200, json.dumps({"started": ok, "why": "" if ok else "답이 비었거나 이미 실행 중입니다"}))
         if self.path == "/api/run":
             ok = start_controller(assume=True)
             return self._send(200, json.dumps({"started": ok}))
