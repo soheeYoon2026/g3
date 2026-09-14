@@ -27,6 +27,7 @@ ap.add_argument("--port", type=int, default=8765)
 ap.add_argument("--model", default=os.environ.get("PRIME_MODEL", "openai/gpt-5.6-terra"),
                 help="Prime Inference model id; PRIME_MODEL overrides. Measured 2026-09-14: terra 2.5 s, gpt-oss-120b 5.2 s on the same question, both returned a valid answer block")
 ap.add_argument("--no-chat", action="store_true", help="page without the model (no API calls)")
+ap.add_argument("--no-docs", action="store_true", help="never load the reference documents, whatever the provider")
 ap.add_argument("--api", choices=["auto", "openai", "prime", "local"], default="auto",
                 help="who serves the model. auto: LOCAL_LLM_URL, then OPENAI_API_KEY, then ~/.prime/config.json")
 ap.add_argument("--base-url", help="OpenAI-compatible endpoint, e.g. http://127.0.0.1:11500/v1 for a local ollama")
@@ -43,6 +44,35 @@ DIR = args.dir.resolve()
 DIR.mkdir(parents=True, exist_ok=True)
 STATE = {"proc": None}
 CFG = None
+OPENAI_FILE = {}
+
+
+def openai_key():
+    """The key from the environment, or from a file, so it never has to be pasted into a shell.
+    Order: OPENAI_API_KEY, the file named by OPENAI_API_KEY_FILE, ~/.config/openai/key.
+    The file may hold the bare key or NAME=value lines (OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL)."""
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if key:
+        return key
+    for path in [os.environ.get("OPENAI_API_KEY_FILE"), os.path.expanduser("~/.config/openai/key")]:
+        if not path or not os.path.exists(path):
+            continue
+        if os.stat(path).st_mode & 0o077:
+            print(f"  경고: {path} 를 다른 사용자도 읽을 수 있습니다 (chmod 600 을 권합니다)")
+        text = open(path).read()
+        if "=" in text:
+            for line in text.splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    name, _, value = line.partition("=")
+                    OPENAI_FILE[name.strip()] = value.strip().strip('"\'')
+            if OPENAI_FILE.get("OPENAI_API_KEY"):
+                return OPENAI_FILE["OPENAI_API_KEY"]
+        else:
+            return text.strip()
+    return ""
+
+
 API = {"url": None, "key": "", "how": "없음"}
 if not args.no_chat:
     # Provider order: an explicit --base-url, then a local server, then OpenAI, then Prime.
@@ -53,8 +83,12 @@ if not args.no_chat:
         API = {"url": args.base_url.rstrip("/"), "key": os.environ.get("OPENAI_API_KEY", ""), "how": "직접 지정"}
     elif args.api in ("auto", "local") and os.environ.get("LOCAL_LLM_URL"):
         API = {"url": os.environ["LOCAL_LLM_URL"].rstrip("/"), "key": "", "how": "로컬 서버"}
-    elif args.api in ("auto", "openai") and os.environ.get("OPENAI_API_KEY"):
-        API = {"url": "https://api.openai.com/v1", "key": os.environ["OPENAI_API_KEY"], "how": "OpenAI 직접"}
+    elif args.api in ("auto", "openai") and openai_key():
+        API = {"url": os.environ.get("OPENAI_BASE_URL") or OPENAI_FILE.get("OPENAI_BASE_URL") or "https://api.openai.com/v1",
+               "key": openai_key(), "how": "OpenAI 직접"}
+        # Prime addresses models as "vendor/name"; OpenAI itself has no prefix
+        if args.model.startswith("openai/"):
+            args.model = OPENAI_FILE.get("OPENAI_MODEL") or args.model.split("/", 1)[1]
     elif args.api in ("auto", "prime"):
         try:
             cfg = json.load(open(os.path.expanduser("~/.prime/config.json")))
@@ -75,12 +109,23 @@ DEFAULT_KNOWLEDGE = [Path("var/docs/geometry_cleaning/GEOMETRY_CLEANING.md"), Pa
 
 
 def load_knowledge():
-    """The reference documents, verbatim. No retrieval: the whole text goes in every call."""
-    if not args.knowledge:
+    """The reference documents, verbatim. No retrieval: the whole text goes in every call.
+
+    On by default only where the prompt prefix is cached. Measured 2026-09-14 on OpenAI:
+    the first turn billed 35,569 tokens at $0.072, the next 35,531 of 35,554 came back as
+    cached input and cost $0.008. Prime publishes no cache price and charged the full
+    $0.090 every turn, so there the documents stay off unless asked for."""
+    if args.no_docs:
+        return ""
+    wanted = args.knowledge
+    if not wanted and API["how"] == "OpenAI 직접" and not args.no_chat:
+        wanted = ["docs"]
+        print("  참고 문서: 기본으로 켬 (OpenAI 캐시가 있어 두 번째 턴부터 약 $0.008)")
+    if not wanted:
         return ""
     root = HERE.parent
     paths = []
-    for item in args.knowledge:
+    for item in wanted:
         paths += [root / p for p in DEFAULT_KNOWLEDGE] if str(item) == "docs" else [Path(item)]
     parts = []
     for path in paths:
@@ -100,7 +145,8 @@ def load_knowledge():
                 "openai/gpt-5.6-terra": 2.5, "openai/gpt-5.6-terra-pro": 2.5,
                 "openai/gpt-oss-120b": 0.35, "openai/gpt-oss-20b": 0.07}.get(args.model)
     # measured 2026-09-14: 68,050 characters of Korean documents came to 35,646 input tokens
-    cost = f", {args.model} 기준 한 번에 약 ${len(body)/1.9*1e-6*per_turn:.3f}" if per_turn else ""
+    cached = " (첫 턴 기준, 캐시되면 1/9)" if API["how"] == "OpenAI 직접" else ""
+    cost = f", {args.model} 기준 한 번에 약 ${len(body)/1.9*1e-6*per_turn:.3f}{cached}" if per_turn else ""
     print(f"  참고 문서 합계 {len(body):,}자 — 대화 한 번마다 다시 보냅니다{cost}")
     return ("\n\n아래는 이 파이프라인의 정본 문서입니다. 수치·규칙·이전 실측은 여기서 인용하고, "
             "여기에 없으면 모른다고 하세요. 문서와 plan.json 이 어긋나면 plan.json(이번 실행)이 우선입니다.\n" + body)
