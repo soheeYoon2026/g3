@@ -27,11 +27,12 @@ ap.add_argument("--port", type=int, default=8765)
 ap.add_argument("--model", default=os.environ.get("PRIME_MODEL", "openai/gpt-5.6-terra"),
                 help="Prime Inference model id; PRIME_MODEL overrides. Measured 2026-09-14: terra 2.5 s, gpt-oss-120b 5.2 s on the same question, both returned a valid answer block")
 ap.add_argument("--no-chat", action="store_true", help="page without the model (no API calls)")
-ap.add_argument("--knowledge", type=Path, action="append",
-                help="reference document put into every system prompt verbatim; repeatable. "
-                     "Default: the tech doc and the pipeline doc when they exist. The model quotes numbers from it "
-                     "instead of guessing. Note that the text leaves this machine with every chat call")
-ap.add_argument("--no-knowledge", action="store_true", help="send the plan only")
+ap.add_argument("--knowledge", action="append", metavar="PATH|docs",
+                help="reference document put into every system prompt verbatim; repeatable, "
+                     "'docs' loads the tech doc and the pipeline doc. OFF by default because it is not free: "
+                     "the two documents are 35.6 k input tokens, which is $0.09 a turn on terra and $0.013 on "
+                     "gpt-oss-120b, re-sent every turn (Prime publishes no cache price). The text also leaves "
+                     "this machine with every call")
 args = ap.parse_args()
 
 HERE = Path(__file__).resolve().parent
@@ -57,10 +58,12 @@ DEFAULT_KNOWLEDGE = [Path("var/docs/geometry_cleaning/GEOMETRY_CLEANING.md"), Pa
 
 def load_knowledge():
     """The reference documents, verbatim. No retrieval: the whole text goes in every call."""
-    if args.no_knowledge:
+    if not args.knowledge:
         return ""
     root = HERE.parent
-    paths = args.knowledge or [root / p for p in DEFAULT_KNOWLEDGE]
+    paths = []
+    for item in args.knowledge:
+        paths += [root / p for p in DEFAULT_KNOWLEDGE] if str(item) == "docs" else [Path(item)]
     parts = []
     for path in paths:
         path = Path(path)
@@ -75,7 +78,11 @@ def load_knowledge():
     body = "\n\n".join(parts)
     # measured 2026-09-14: the two documents are 35.6 k input tokens on terra, about $0.09 a turn,
     # and Prime publishes no cache price, so every turn pays for them again
-    print(f"  참고 문서 합계 {len(body):,}자 — 대화 한 번마다 다시 보냅니다 (terra 기준 약 3.6만 토큰, $0.09)")
+    per_turn = {"openai/gpt-5.6-terra": 2.5, "openai/gpt-5.6-terra-pro": 2.5,
+                "openai/gpt-oss-120b": 0.35, "openai/gpt-oss-20b": 0.07}.get(args.model)
+    # measured 2026-09-14: 68,050 characters of Korean documents came to 35,646 input tokens
+    cost = f", {args.model} 기준 한 번에 약 ${len(body)/1.9*1e-6*per_turn:.3f}" if per_turn else ""
+    print(f"  참고 문서 합계 {len(body):,}자 — 대화 한 번마다 다시 보냅니다{cost}")
     return ("\n\n아래는 이 파이프라인의 정본 문서입니다. 수치·규칙·이전 실측은 여기서 인용하고, "
             "여기에 없으면 모른다고 하세요. 문서와 plan.json 이 어긋나면 plan.json(이번 실행)이 우선입니다.\n" + body)
 
