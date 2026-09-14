@@ -220,7 +220,8 @@ def start_controller(answers=None, assume=False):
 PAGE = """<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>형상 정리 통제기</title>
 <style>body{font-family:"Noto Sans CJK KR",sans-serif;margin:0;display:grid;grid-template-columns:1fr 420px;height:100vh}
 main{padding:18px 24px;overflow:auto}aside{border-left:1px solid #ddd;display:flex;flex-direction:column;height:100vh}
-h1{font-size:20px;margin:0 0 6px}h2{font-size:15px;margin:18px 0 6px;color:#333}.q{border:1px solid #ccd;border-radius:6px;padding:10px 12px;margin:8px 0;background:#f8f9fb}
+h1{font-size:20px;margin:0 0 6px}h2{font-size:15px;margin:18px 0 6px;color:#333}.lg{display:inline-block;background:#fff;border:1px solid #d9a9a3;color:#b23b2c;border-radius:10px;padding:1px 7px;margin:2px 3px;cursor:pointer;font-size:12px}
+.q{border:1px solid #ccd;border-radius:6px;padding:10px 12px;margin:8px 0;background:#f8f9fb}
 .q b{display:block;margin-bottom:4px}.q small{color:#666}.q input,.q select{margin-top:6px;padding:4px 6px;font-size:14px}
 .ev img{max-width:100%;border:1px solid #ddd;margin-top:6px}.ok{color:#2a7}.bad{color:#c33}#log{font-family:monospace;font-size:12px;white-space:pre-wrap;background:#111;color:#ddd;padding:8px;max-height:220px;overflow:auto}
 #chat{flex:1;overflow:auto;padding:12px}.m{margin:6px 0;padding:8px 10px;border-radius:6px;white-space:pre-wrap;font-size:14px}.u{background:#e8f0fe}.a{background:#f1f3f4}
@@ -228,7 +229,9 @@ h1{font-size:20px;margin:0 0 6px}h2{font-size:15px;margin:18px 0 6px;color:#333}
 button.run{padding:8px 14px;font-size:14px;margin-right:8px}.st{display:inline-block;padding:2px 8px;border-radius:10px;background:#eee;font-size:12px}</style></head>
 <body><main><h1>형상 정리 통제기 <span class="st" id="status"></span></h1><div id="input"></div>
 <div id="viewer" style="width:100%;height:380px;border:1px solid #ccd;border-radius:6px;background:#f4f5f7;position:relative;margin:8px 0">
-<div id="vhint" style="position:absolute;left:8px;top:6px;font-size:12px;color:#555;pointer-events:none">모델을 돌리고(드래그) 확대(휠)하세요. 표식을 누르면 해당 질문으로, 질문의 "위치 보기"를 누르면 그 자리로 갑니다.</div></div>
+<div id="vhint" style="position:absolute;left:8px;top:6px;font-size:12px;color:#555;pointer-events:none">드래그로 돌리고 휠로 확대. 번호를 누르면 그 자리로, 표식을 누르면 해당 질문으로 갑니다.</div>
+<button onclick="togglePins()" style="position:absolute;right:8px;top:6px;font-size:12px">번호 숨기기/보이기</button></div>
+<div id="legend" style="font-size:12px;color:#444;margin:4px 0 8px 0;line-height:1.9"></div>
 <h2>고객이 정할 것</h2><div id="questions"></div>
 <div><button class="run" onclick="submitAnswers()">답 저장 후 이어서 실행</button><button class="run" onclick="runDefaults()">제안값으로 실행</button></div>
 <h2>진단·결정·검증</h2><div id="plan"></div><h2>실행 로그</h2><div id="log"></div></main>
@@ -251,7 +254,7 @@ async function refresh(){const r=await fetch('/api/state');const s=await r.json(
   const live=(w.plane_z!=null&&q.type==='number')?` oninput="planeFromInput('${q.id}')"`:'';
   const done=q.answer!=null?` <span style="color:#197">· 답함 ${esc(q.answer)}</span>`:(q.assumed?' <span style="color:#a70">· 제안값으로 가정</span>':'');
   return `<div class="q" id="card_${q.id}"><b>${esc(q.question)}</b>${done}<small>제안 ${esc(q.proposal)} ${esc(q.unit||'')} — ${esc(q.reason)}</small><br>${inp.replace('<input ','<input '+live+' ')}${btn}${ev}</div>`}).join('');
- if(window.updateMarkers)window.updateMarkers(Q);}
+ window.Qcache=Q;if(window.updateMarkers)window.updateMarkers(Q);}
  const pd=document.getElementById('plan');const d=p.diagnosis||{};
  pd.innerHTML='<b>진단</b> '+esc(JSON.stringify(d).slice(0,600))+'<br>'+(p.decisions||[]).map(x=>`<div>• ${esc(x.what)} <small>← ${esc(x.because)}</small></div>`).join('')
   +(p.checks||[]).map(c=>`<div class="${c.ok?'ok':'bad'}">${c.ok?'✓':'✗'} ${esc(c.name)}: ${esc(c.detail)}</div>`).join('')
@@ -286,17 +289,42 @@ let meshObj=null,bbox=null;const markers=new THREE.Group();scene.add(markers);le
 const loader=new STLLoader();
 function loadMesh(){loader.load('/files/viewer.stl',g=>{if(meshObj)scene.remove(meshObj);g.computeVertexNormals();
  meshObj=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0x8a97a8,metalness:0.1,roughness:0.75,side:THREE.DoubleSide}));scene.add(meshObj);
- g.computeBoundingBox();bbox=g.boundingBox;fit(bbox.getCenter(new THREE.Vector3()),bbox.getSize(new THREE.Vector3()).length()*0.6)},undefined,()=>{});}
+ g.computeBoundingBox();bbox=g.boundingBox;fit(bbox.getCenter(new THREE.Vector3()),bbox.getSize(new THREE.Vector3()).length()*1.15)},undefined,()=>{});}
 function fit(center,dist){controls.target.copy(center);camera.position.set(center.x-dist*0.9,center.y-dist*1.1,center.z+dist*0.7);camera.lookAt(center);controls.update();}
-function label(text,pos,r){const c=document.createElement('canvas');c.width=256;c.height=64;const x=c.getContext('2d');x.fillStyle='rgba(255,255,255,0.85)';x.fillRect(0,0,256,64);x.fillStyle='#c33';x.font='28px sans-serif';x.fillText(text,8,42);
- const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));sp.position.copy(pos).add(new THREE.Vector3(0,0,r*1.3+40));sp.scale.set(r*2+240,(r*2+240)/4,1);return sp;}
+function pin(n,pos,r){const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');
+ x.beginPath();x.arc(64,64,58,0,7);x.fillStyle='rgba(255,255,255,0.92)';x.fill();x.lineWidth=8;x.strokeStyle='#d23b2c';x.stroke();
+ x.fillStyle='#c0392b';x.font='bold 68px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(String(n),64,68);
+ const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,sizeAttenuation:true}));
+ const d=bbox?bbox.getSize(new THREE.Vector3()).length():4000;const w=d*0.035;
+ sp.position.copy(pos).add(new THREE.Vector3(0,0,r+w*0.7));sp.scale.set(w,w,1);sp.userData.pin=true;return sp;}
 const qOf=new Map();
-window.updateMarkers=function(Q){markers.clear();qOf.clear();let pz=null;
- for(const q of Q){const w=q.where||{};for(const p of (w.points||[])){const r=Math.max(20,p[3]||60);
-  const m=new THREE.Mesh(new THREE.SphereGeometry(r,24,16),new THREE.MeshStandardMaterial({color:0xe04a3f,transparent:true,opacity:0.45}));m.position.set(p[0],p[1],p[2]);markers.add(m);qOf.set(m.uuid,q.id);
-  markers.add(label((p[4]||q.id)+'',m.position,r));}
+window.updateMarkers=function(Q){markers.clear();qOf.clear();let pz=null;let n=0;window.markerList=[];
+ for(const q of Q){const w=q.where||{};const lines=w.lines||[];
+  for(let i=0;i<(w.points||[]).length;i++){const p=w.points[i];n++;
+  const d=bbox?bbox.getSize(new THREE.Vector3()).length():4000;
+  const pos=new THREE.Vector3(p[0],p[1],p[2]);
+  if(lines[i]&&lines[i].length>2){
+   // the opening's own outline, drawn as a thin tube so it reads at any zoom
+   const pts=lines[i].map(a=>new THREE.Vector3(a[0],a[1],a[2]));
+   const curve=new THREE.CatmullRomCurve3(pts,true,'catmullrom',0.0);
+   const tube=new THREE.Mesh(new THREE.TubeGeometry(curve,Math.min(pts.length*2,400),d*0.0022,6,true),
+     new THREE.MeshBasicMaterial({color:0xe03327}));
+   tube.userData.n=n;markers.add(tube);qOf.set(tube.uuid,q.id);
+   const box=new THREE.Box3().setFromPoints(pts);pos.copy(box.getCenter(new THREE.Vector3()));
+   if(window.showPins!==false)markers.add(pin(n,pos,box.getSize(new THREE.Vector3()).length()*0.5));
+  }else{
+   const r=Math.min(Math.max(p[3]||60,d*0.012),d*0.05);
+   const m=new THREE.Mesh(new THREE.SphereGeometry(r,20,14),new THREE.MeshStandardMaterial({color:0xe04a3f,transparent:true,opacity:0.38,depthWrite:false}));
+   m.position.copy(pos);m.userData.n=n;markers.add(m);qOf.set(m.uuid,q.id);
+   if(window.showPins!==false)markers.add(pin(n,pos,r));}
+  window.markerList.push({n:n,qid:q.id,text:p[4]||q.id,pos:[pos.x,pos.y,pos.z]});}
   if(w.plane_z!=null&&pz==null)pz=w.plane_z;}
- setPlane(pz);}
+ setPlane(pz);const leg=document.getElementById('legend');
+ if(leg)leg.innerHTML=window.markerList.length?window.markerList.map(x=>`<span class="lg" onclick="focusN(${x.n})">${x.n}. ${x.text}</span>`).join(' '):'';}
+window.focusN=function(n){const m=markers.children.find(o=>o.isMesh&&o.userData.n===n);if(!m)return;
+ const b=new THREE.Box3().setFromObject(m);const c=b.getCenter(new THREE.Vector3());
+ fit(c,Math.max(b.getSize(new THREE.Vector3()).length()*2.2,300));}
+window.togglePins=function(){window.showPins=(window.showPins===false);if(window.Qcache)window.updateMarkers(window.Qcache);}
 function setPlane(z){if(plane){scene.remove(plane);plane=null}if(z==null||!bbox)return;const s=bbox.getSize(new THREE.Vector3());
  plane=new THREE.Mesh(new THREE.PlaneGeometry(s.x*1.1,s.y*1.1),new THREE.MeshBasicMaterial({color:0x2b6cff,transparent:true,opacity:0.35,side:THREE.DoubleSide}));
  const c=bbox.getCenter(new THREE.Vector3());plane.position.set(c.x,c.y,z);scene.add(plane);}

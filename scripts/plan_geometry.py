@@ -341,16 +341,19 @@ if not is_step:
             diag["open_loops"] = len(loops)
             diag["open_loop_sizes_mm"] = [round(s) for s in sizes[:12]]
             keep_prop = 13.0
-            loop_pts = []
+            loop_pts, loop_lines = [], []
             for lp in sorted(loops, key=lambda l: -np.ptp(mesh.vertices[l], axis=0).max())[:12]:
                 P = mesh.vertices[lp]
                 size = float(np.ptp(P, axis=0).max())
                 # cap the marker: a scan's seams form loops metres across, and a sphere that big
                 # swallows the car in the viewer (2026-09-14)
                 loop_pts.append([*P.mean(0).round(1).tolist(), float(min(size / 2, 200.0)), f"열린 고리 {size:.0f} mm"])
+                # the loop itself, thinned, so the page can draw the opening instead of a blob
+                idx = np.round(np.linspace(0, len(P) - 1, min(len(P), 160))).astype(int)
+                loop_lines.append(P[idx].round(1).tolist())
             keep = ask("keep_openings_mm", f"유동이 지나야 하는 가장 작은 구멍 크기 (제안 {keep_prop} mm). 이보다 좁은 틈은 랩이 닫습니다.", keep_prop,
                        "윙 슬롯·덕트·그릴 중 가장 작은 것; 랩 알파는 이 값의 절반", unit="mm",
-                       evidence=[str(args.out / "run" / "render_mesh.png")], where={"points": loop_pts})
+                       evidence=[str(args.out / "run" / "render_mesh.png")], where={"points": loop_pts, "lines": loop_lines})
             if keep is None:
                 pause()
             est = mesh.area / ((keep / 2) ** 2) * 0.7
