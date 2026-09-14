@@ -225,6 +225,12 @@ if not is_step:
         pause()
     scale = {"mm": 1.0, "m": 1000.0, "inch": 25.4}[unit]
     work = args.out / "input_mm.stl"
+    if src.resolve() == work.resolve():
+        # Pointed at our own converted copy (a page restarted with --in <out>/input_mm.stl).
+        # Converting again would apply the units and the axis swap twice: on 2026-09-14 that
+        # turned a 4.6 m GT-R into a 117 m one and put the question markers 56 m wide.
+        decide("이미 변환된 입력이라 단위·축 변환 생략", f"입력이 출력 폴더의 input_mm.stl 과 같은 파일: {src}")
+        scale, axis_ans = 1.0, "x"
     v = mesh.vertices * scale
     if axis_ans == "y":
         v = np.column_stack([v[:, 1], -v[:, 0], v[:, 2]])
@@ -338,7 +344,10 @@ if not is_step:
             loop_pts = []
             for lp in sorted(loops, key=lambda l: -np.ptp(mesh.vertices[l], axis=0).max())[:12]:
                 P = mesh.vertices[lp]
-                loop_pts.append([*P.mean(0).round(1).tolist(), float(np.ptp(P, axis=0).max() / 2), f"열린 고리 {np.ptp(P, axis=0).max():.0f} mm"])
+                size = float(np.ptp(P, axis=0).max())
+                # cap the marker: a scan's seams form loops metres across, and a sphere that big
+                # swallows the car in the viewer (2026-09-14)
+                loop_pts.append([*P.mean(0).round(1).tolist(), float(min(size / 2, 200.0)), f"열린 고리 {size:.0f} mm"])
             keep = ask("keep_openings_mm", f"유동이 지나야 하는 가장 작은 구멍 크기 (제안 {keep_prop} mm). 이보다 좁은 틈은 랩이 닫습니다.", keep_prop,
                        "윙 슬롯·덕트·그릴 중 가장 작은 것; 랩 알파는 이 값의 절반", unit="mm",
                        evidence=[str(args.out / "run" / "render_mesh.png")], where={"points": loop_pts})
