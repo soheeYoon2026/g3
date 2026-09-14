@@ -289,14 +289,14 @@ let meshObj=null,bbox=null;const markers=new THREE.Group();scene.add(markers);le
 const loader=new STLLoader();
 function loadMesh(){loader.load('/files/viewer.stl',g=>{if(meshObj)scene.remove(meshObj);g.computeVertexNormals();
  meshObj=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0x8a97a8,metalness:0.1,roughness:0.75,side:THREE.DoubleSide}));scene.add(meshObj);
- g.computeBoundingBox();bbox=g.boundingBox;fit(bbox.getCenter(new THREE.Vector3()),bbox.getSize(new THREE.Vector3()).length()*1.15)},undefined,()=>{});}
+ g.computeBoundingBox();bbox=g.boundingBox;fit(bbox.getCenter(new THREE.Vector3()),bbox.getSize(new THREE.Vector3()).length()*0.95)},undefined,()=>{});}
 function fit(center,dist){controls.target.copy(center);camera.position.set(center.x-dist*0.9,center.y-dist*1.1,center.z+dist*0.7);camera.lookAt(center);controls.update();}
 function pin(n,pos,r){const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');
  x.beginPath();x.arc(64,64,58,0,7);x.fillStyle='rgba(255,255,255,0.92)';x.fill();x.lineWidth=8;x.strokeStyle='#d23b2c';x.stroke();
  x.fillStyle='#c0392b';x.font='bold 68px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(String(n),64,68);
  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,sizeAttenuation:true}));
- const d=bbox?bbox.getSize(new THREE.Vector3()).length():4000;const w=d*0.035;
- sp.position.copy(pos).add(new THREE.Vector3(0,0,r+w*0.7));sp.scale.set(w,w,1);sp.userData.pin=true;return sp;}
+ const d=bbox?bbox.getSize(new THREE.Vector3()).length():4000;const w=d*0.028;
+ sp.position.copy(pos).add(new THREE.Vector3(0,0,Math.min(r,w)*0.6+w*0.6));sp.scale.set(w,w,1);sp.userData.pin=true;return sp;}
 const qOf=new Map();
 window.updateMarkers=function(Q){markers.clear();qOf.clear();let pz=null;let n=0;window.markerList=[];
  for(const q of Q){const w=q.where||{};const lines=w.lines||[];
@@ -311,7 +311,7 @@ window.updateMarkers=function(Q){markers.clear();qOf.clear();let pz=null;let n=0
      new THREE.MeshBasicMaterial({color:0xe03327}));
    tube.userData.n=n;markers.add(tube);qOf.set(tube.uuid,q.id);
    const box=new THREE.Box3().setFromPoints(pts);pos.copy(box.getCenter(new THREE.Vector3()));
-   if(window.showPins!==false)markers.add(pin(n,pos,box.getSize(new THREE.Vector3()).length()*0.5));
+   if(window.showPins!==false)markers.add(pin(n,pos,0));
   }else{
    const r=Math.min(Math.max(p[3]||60,d*0.012),d*0.05);
    const m=new THREE.Mesh(new THREE.SphereGeometry(r,20,14),new THREE.MeshStandardMaterial({color:0xe04a3f,transparent:true,opacity:0.38,depthWrite:false}));
