@@ -27,6 +27,9 @@ ap.add_argument("--port", type=int, default=8765)
 ap.add_argument("--model", default=os.environ.get("PRIME_MODEL", "openai/gpt-5.6-terra"),
                 help="Prime Inference model id; PRIME_MODEL overrides. Measured 2026-09-14: terra 2.5 s, gpt-oss-120b 5.2 s on the same question, both returned a valid answer block")
 ap.add_argument("--no-chat", action="store_true", help="page without the model (no API calls)")
+ap.add_argument("--api", choices=["auto", "openai", "prime", "local"], default="auto",
+                help="who serves the model. auto: LOCAL_LLM_URL, then OPENAI_API_KEY, then ~/.prime/config.json")
+ap.add_argument("--base-url", help="OpenAI-compatible endpoint, e.g. http://127.0.0.1:11500/v1 for a local ollama")
 ap.add_argument("--knowledge", action="append", metavar="PATH|docs",
                 help="reference document put into every system prompt verbatim; repeatable, "
                      "'docs' loads the tech doc and the pipeline doc. OFF by default because it is not free: "
@@ -40,11 +43,26 @@ DIR = args.dir.resolve()
 DIR.mkdir(parents=True, exist_ok=True)
 STATE = {"proc": None}
 CFG = None
+API = {"url": None, "key": "", "how": "없음"}
 if not args.no_chat:
-    try:
-        CFG = json.load(open(os.path.expanduser("~/.prime/config.json")))
-    except Exception:
-        CFG = None
+    # Provider order: an explicit --base-url, then a local server, then OpenAI, then Prime.
+    # Prices per 1M tokens measured 2026-09-14: OpenAI terra $2 in / $12 out with $0.2 cached
+    # input; Prime relays the same model at $2.5 / $15 and publishes no cache price, so the
+    # documents cost ten times more per turn there. A local server costs nothing.
+    if args.base_url:
+        API = {"url": args.base_url.rstrip("/"), "key": os.environ.get("OPENAI_API_KEY", ""), "how": "직접 지정"}
+    elif args.api in ("auto", "local") and os.environ.get("LOCAL_LLM_URL"):
+        API = {"url": os.environ["LOCAL_LLM_URL"].rstrip("/"), "key": "", "how": "로컬 서버"}
+    elif args.api in ("auto", "openai") and os.environ.get("OPENAI_API_KEY"):
+        API = {"url": "https://api.openai.com/v1", "key": os.environ["OPENAI_API_KEY"], "how": "OpenAI 직접"}
+    elif args.api in ("auto", "prime"):
+        try:
+            cfg = json.load(open(os.path.expanduser("~/.prime/config.json")))
+            API = {"url": cfg["inference_url"].rstrip("/"), "key": cfg["api_key"], "how": "Prime 경유(비쌈: 캐시 없음)"}
+        except Exception:
+            pass
+    print(f"  모델 연결: {API['how']}  ({API['url'] or '없음'})")
+CFG = API if API["url"] else None
 
 SYSTEM = """당신은 자동차 형상 정리 파이프라인의 AI 통제기입니다. 규칙 통제기(plan_geometry.py)가 측정하고 실행한 내용이
 아래 plan.json 에 있습니다. 당신의 역할은 (1) 고객이 답해야 할 질문을 측정값을 근거로 쉬운 말로 설명하고,
@@ -78,7 +96,8 @@ def load_knowledge():
     body = "\n\n".join(parts)
     # measured 2026-09-14: the two documents are 35.6 k input tokens on terra, about $0.09 a turn,
     # and Prime publishes no cache price, so every turn pays for them again
-    per_turn = {"openai/gpt-5.6-terra": 2.5, "openai/gpt-5.6-terra-pro": 2.5,
+    per_turn = {"gpt-5.6-terra": 2.0, "gpt-5.6-luna": 0.2, "gpt-5.6-sol": 4.0,
+                "openai/gpt-5.6-terra": 2.5, "openai/gpt-5.6-terra-pro": 2.5,
                 "openai/gpt-oss-120b": 0.35, "openai/gpt-oss-20b": 0.07}.get(args.model)
     # measured 2026-09-14: 68,050 characters of Korean documents came to 35,646 input tokens
     cost = f", {args.model} 기준 한 번에 약 ${len(body)/1.9*1e-6*per_turn:.3f}" if per_turn else ""
@@ -102,9 +121,10 @@ def chat(history):
         return "모델 연결이 없습니다(--no-chat 이거나 ~/.prime/config.json 없음).", None
     msgs = [{"role": "system", "content": SYSTEM + KNOWLEDGE + "\n\nplan.json:\n" + digest()}] + history[-12:]
     body = json.dumps({"model": args.model, "messages": msgs, "max_tokens": 1200, "temperature": 0.2}).encode()
-    req = urllib.request.Request(CFG["inference_url"].rstrip("/") + "/chat/completions", data=body, headers={
-        "Authorization": "Bearer " + CFG["api_key"], "Content-Type": "application/json",
-        "Accept": "application/json", "User-Agent": "prime-cli/0.6.33"})
+    headers = {"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "prime-cli/0.6.33"}
+    if CFG["key"]:
+        headers["Authorization"] = "Bearer " + CFG["key"]
+    req = urllib.request.Request(CFG["url"] + "/chat/completions", data=body, headers=headers)
     with urllib.request.urlopen(req, timeout=300) as r:
         d = json.load(r)
     usage = d.get("usage") or {}
