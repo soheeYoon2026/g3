@@ -2566,3 +2566,27 @@ coarse-alpha rule for open meshes over 30 m²; the 15 mm wrap leaked through the
 came back hollow → the controller reads the wrap stage status and falls back to the flat
 floor; the flat-floor footprint comes from a concave hull of the vertices near the floor
 when no section closes; deliverables are recorded only when the file exists.
+
+### GT-R sharpening, and what the literature does about seams wider than alpha (2026-09-14)
+
+`scripts/wrap_project_rewrap.py` scripts the August GT-R recipe: coarse wrap (29 mm,
+flat floor) → CGAL isotropic remesh 10 mm → move every vertex to the closest point of the
+original when within 13 mm → wrap again at 6.5 mm. Measured: 120,944 → 959,758 → 2,187,208
+faces, watertight, one body, 6.623 m³ (fill 0.54), distance to the original p50 0.22 mm /
+p90 11.3 mm (the seams and the assumed floor stay on the wrap), 355 s. The controller runs
+it after the "accept the 29 mm closure" question. The in-process CGAL alpha wrap raised a
+SWIG TypeError on the projected mesh (not caused by the PMP import; cause unknown), so the
+fine wrap runs in a `wrap_once.py` child process.
+
+Literature review for the same problem (tech doc §6.9): STAR-CCM+ separates the surface
+size from a gap-closure size and only builds gap-closure faces (wall-distance rule, seed
+points, contact prevention, leak detection); ANSA wraps an octree skin and projects it
+back; iconHexMesh (ECCOMAS 2016) separates the wrap level from the refinement level, keeps
+an explicit list of gap faces through refinement and snaps everything else to the
+original — the same structure as our coarse-wrap → project → fine-wrap. What we lack is
+the explicit gap-face list (we split implicitly by the 13 mm move cap; `list_closed_openings.py`
+gives the list after the fact). Open-code candidates: generalized winding number isosurface
+(libigl, MPL 2, installed) worth one trial on the flat-floor GT-R; ManifoldPlus is
+non-commercial only; PolyMender/fTetWild are single-scale octree/envelope tools. Licence
+note for the product: CGAL Alpha_wrap_3 and PMP are GPL, MeshLib is paid for commercial use.
+

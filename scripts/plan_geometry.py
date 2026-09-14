@@ -179,7 +179,7 @@ def pause():
 
 
 def finish(status="done"):
-    if status == "done" and any(not c["ok"] for c in plan["checks"][-3:]):
+    if status == "done" and any(not c["ok"] and not c.get("resolved") for c in plan["checks"]):
         status = "done_with_failed_checks"
     if plan.get("status") == "needs_customer":
         status = "needs_customer"
@@ -408,9 +408,24 @@ if not is_step:
                             w = trimesh.load(out29, force="mesh"); w.merge_vertices()
                             fill29 = abs(w.volume) / float(np.prod(w.extents))
                         if check("평바닥 랩 29 mm 채움률 0.3~0.6", 0.3 <= fill29 <= 0.6, f"{fill29:.2f}"):
+                            for c in plan["checks"]:
+                                if "채움률" in c["name"] and not c["ok"]:
+                                    c["resolved"] = "29 mm 재시도로 해결"
                             out_stl = out29
-                            ask("accept_coarse_29mm", "이음새가 넓어 29 mm 알파로만 속이 찹니다. 29 mm 결과(작은 틈·덕트는 닫힘)를 쓸까요, 정리된 모델을 주시겠습니까?",
-                                "accept", "29 mm 미만 틈은 전부 닫힌 상태", kind="choice", choices=["accept", "provide_clean_model"])
+                            acc = ask("accept_coarse_29mm", "이음새가 넓어 29 mm 알파로만 속이 찹니다. 그 결과를 원본에 다시 붙여 날카롭게 만든 판(재메쉬→투영→6.5 mm 재랩)을 쓸까요, 정리된 모델을 주시겠습니까?",
+                                      "accept", "29 mm 미만 틈은 닫힌 채, 표면은 원본으로 되돌림 (8월 GT-R 처방)", kind="choice", choices=["accept", "provide_clean_model"])
+                            if acc == "accept":
+                                # the August recipe: the coarse wrap is closed, so remesh it, pull it back onto
+                                # the original where that is within reach, and wrap finely - no seam to leak
+                                decide("거친 랩을 원본에 투영 후 6.5 mm 재랩", "닫힌 거친 랩은 가는 알파로 다시 감쌀 수 있고 투영이 형상을 되돌림")
+                                ok, text = run("wrap_project_rewrap.py", ["--wrap", out29, "--reference", work, "--out", args.out / "sharp.stl",
+                                                                          "--report", args.out / "sharp.json", "--edge", 10, "--max-move", 13, "--fine-alpha", 6.5], "sharpen")
+                                sharp = args.out / "sharp.stl"
+                                if ok and sharp.exists():
+                                    rep_s = json.loads((args.out / "sharp.json").read_text())
+                                    if check("투영·재랩 결과 속 찬 차 (채움률 0.3~0.6)", 0.3 <= rep_s.get("fill", 0) <= 0.6,
+                                             f"채움률 {rep_s.get('fill')}, 원본과 p50 {rep_s.get('dev_p50_mm')} mm, 삼각형 {rep_s.get('fine_faces'):,}"):
+                                        out_stl = sharp
                         else:
                             ask("seams_too_wide", "평바닥과 29 mm 알파로도 속이 찹니다. 이음새가 그보다 넓습니다. 정리된 모델(이음새 봉합)을 주시거나, 닫을 자리를 지정해 주세요.",
                                 "provide_clean_model", f"채움률 15 mm {fill:.2f}, 29 mm {fill29:.2f}", kind="choice", choices=["provide_clean_model", "specify_closures"])
