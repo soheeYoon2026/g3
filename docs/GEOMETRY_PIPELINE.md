@@ -153,6 +153,9 @@ treatment) becomes an entry in `questions.json` with a proposal, a reason and
 evidence; the run pauses there unless `--assume-defaults`. `plan_ui.py` serves a
 local page with the questions, the plan, the log and a chat with a model that
 explains the measurements and fills the answers in; the rules keep the tools.
+Questions carry locations: the page shows the model in a three.js viewer with
+markers per question, close-up renders as evidence, and a live plane for the
+floor height.
 CAS-A end to end with defaults: 4 minutes, the same route a person took.
 
 ## Individual tools

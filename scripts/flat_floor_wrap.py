@@ -117,8 +117,23 @@ print(f"바닥 높이 z = {floor_z:.0f}  (차체 최저 z {lo[2]:.0f}, 바닥이
 
 # -------------------------------------------------------------- 2. footprint
 footprint, to_3d = outline_at(floor_z)
-if footprint is None:
-    raise SystemExit("바닥 높이에서 단면이 닫힌 윤곽을 만들지 못했습니다")
+if footprint is None or footprint.area < 0.3 * box_area:
+    # Open panel seams keep any section from closing (GT-R: 55k open edges). Take the
+    # footprint from the points themselves instead: the concave hull, in plan view, of
+    # every vertex within 150 mm above the floor height. It is the shadow of the sills.
+    import shapely
+    from shapely.geometry import MultiPoint
+    band = mesh.vertices[(mesh.vertices[:, 2] >= lo[2] - 1.0) & (mesh.vertices[:, 2] <= floor_z + 150.0)]
+    if len(band) < 100:
+        raise SystemExit("바닥 높이에서 단면이 닫힌 윤곽을 만들지 못했고 근처 정점도 없습니다")
+    pts2 = MultiPoint(band[:: max(1, len(band) // 20000), :2])
+    hull = shapely.concave_hull(pts2, ratio=0.25) if hasattr(shapely, "concave_hull") else pts2.convex_hull
+    if hull.geom_type != "Polygon" or hull.area < 0.3 * box_area:
+        hull = pts2.convex_hull
+    footprint = hull.buffer(0)
+    to_3d = np.eye(4)
+    to_3d[2, 3] = floor_z
+    print(f"단면이 닫히지 않아 바닥 근처 정점 {len(band):,}개의 오목 껍질로 발자국을 잡음")
 outline = footprint.exterior
 print(f"바닥 윤곽 면적 {footprint.area / 1e6:.3f} m²  (평면 경계상자 {box_area / 1e6:.3f} m²의 "
       f"{100 * footprint.area / box_area:.0f}%)   둘레 {outline.length / 1000:.1f} m")

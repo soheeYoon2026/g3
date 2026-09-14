@@ -2553,3 +2553,16 @@ covered from below and takes the keep-openings route. Two rules were wrong on th
 try and fixed: downward-facing face area as an underside measure (173 % on GT-R: inner
 skins and underbody parts), and a question whose answer could mean two things (the
 model answered "x" to "rotate to x?").
+
+### Controller: locations on the model, viewer, GT-R lessons (2026-09-14)
+
+Questions carry `where` (points with radius and label, or a plane height); the
+controller writes a decimated `viewer.stl` and close-up renders (`focus_*.png`) for the
+rims, the floor height and the wheel loops it could not cap. `plan_ui.py` shows the model
+in a three.js viewer with markers; "위치 보기" flies to the question, clicking a marker
+selects it, and the floor-height field moves a translucent plane live. GT-R: the fine
+global wrap (6.5 mm) ran past the 60 min limit → per-run time budget (1500 s) and a
+coarse-alpha rule for open meshes over 30 m²; the 15 mm wrap leaked through the seams and
+came back hollow → the controller reads the wrap stage status and falls back to the flat
+floor; the flat-floor footprint comes from a concave hull of the vertices near the floor
+when no section closes; deliverables are recorded only when the file exists.
