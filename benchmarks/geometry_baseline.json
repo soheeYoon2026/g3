@@ -1,0 +1,27 @@
+{
+ "car5-resurface": {
+  "measure_mesh.watertight": true,
+  "measure_mesh.triangles": 733536,
+  "compare_to_reference.distance_p50_mm": 0.0,
+  "compare_to_reference.added_area_share": 0.0001
+ },
+ "car5-wrap-6mm": {
+  "measure_mesh.watertight": true,
+  "closed_openings.ok": true
+ },
+ "gtr-sharpen": {
+  "measure_mesh.watertight": true,
+  "measure_mesh.fill_of_bbox": 0.537,
+  "compare_to_reference.distance_p50_mm": 0.22,
+  "compare_to_reference.added_area_share": 0.2239
+ },
+ "gtr-winding": {
+  "measure_mesh.watertight": true,
+  "compare_to_reference.distance_p50_mm": 0.22,
+  "compare_to_reference.added_area_share": 0.1712
+ },
+ "casa-wrapcaps": {
+  "measure_mesh.triangles": 525224,
+  "list_openings.open_loops": 38
+ }
+}

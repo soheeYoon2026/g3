@@ -16,9 +16,13 @@ import os
 import subprocess
 import sys
 import threading
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import geometry_tools
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("--in", dest="src", type=Path, required=True)
@@ -27,6 +31,8 @@ ap.add_argument("--port", type=int, default=8765)
 ap.add_argument("--model", default=os.environ.get("PRIME_MODEL", "openai/gpt-5.6-terra"),
                 help="Prime Inference model id; PRIME_MODEL overrides. Measured 2026-09-14: terra 2.5 s, gpt-oss-120b 5.2 s on the same question, both returned a valid answer block")
 ap.add_argument("--no-chat", action="store_true", help="page without the model (no API calls)")
+ap.add_argument("--no-tools", action="store_true", help="do not let the model call the read-only measurements")
+ap.add_argument("--max-tool-calls", type=int, default=6, help="measurements the model may run for one message")
 ap.add_argument("--no-docs", action="store_true", help="never load the reference documents, whatever the provider")
 ap.add_argument("--api", choices=["auto", "openai", "prime", "local"], default="auto",
                 help="who serves the model. auto: LOCAL_LLM_URL, then OPENAI_API_KEY, then ~/.prime/config.json")
@@ -103,7 +109,11 @@ SYSTEM = """당신은 자동차 형상 정리 파이프라인의 AI 통제기입
 (2) 고객의 선택을 도와 답을 정리하는 것입니다. 도구를 실행하거나 실행했다고 말하지 마세요. plan.json 에 없는
 수치를 지어내지 마세요. 모르면 모른다고 하세요. 고객이 답을 정하면 마지막에 반드시 다음 형식의 JSON 블록을
 붙이세요: ```json {"answers": {"질문id": 값}} ```. 값은 질문의 type 에 맞게(number → 숫자, bool → true/false,
-choice → 선택지 문자열). 한국어로, 짧게, 결론부터."""
+choice → 선택지 문자열). 한국어로, 짧게, 결론부터.
+
+필요하면 아래 측정 기능을 직접 불러 확인한 뒤 답하세요. 전부 읽기만 하는 기능이라 형상을 바꾸지 않습니다.
+파일 경로는 plan.json 의 산출물·작업 폴더에 있는 것을 쓰고, 지어내지 마세요. 측정 결과를 인용할 때는
+어느 기능으로 무엇을 쟀는지 한 줄로 밝히세요."""
 
 DEFAULT_KNOWLEDGE = [Path("var/docs/geometry_cleaning/GEOMETRY_CLEANING.md"), Path("docs/GEOMETRY_PIPELINE.md")]
 
@@ -162,29 +172,81 @@ def digest():
     return json.dumps(keep, ensure_ascii=False)[:120000]
 
 
-def chat(history):
-    if CFG is None:
-        return "모델 연결이 없습니다(--no-chat 이거나 ~/.prime/config.json 없음).", None
-    msgs = [{"role": "system", "content": SYSTEM + KNOWLEDGE + "\n\nplan.json:\n" + digest()}] + history[-12:]
-    body = json.dumps({"model": args.model, "messages": msgs, "max_tokens": 1200, "temperature": 0.2}).encode()
+def post(msgs, tools=None):
+    # OpenAI's newer models reject max_tokens and want max_completion_tokens; Prime and a local
+    # ollama still take the old name, so send whichever the endpoint accepts (measured 2026-09-14)
+    limit_key = "max_tokens" if API["how"].startswith(("Prime", "로컬")) else "max_completion_tokens"
+    body = {"model": args.model, "messages": msgs, limit_key: 1600, "temperature": 0.2}
+    if tools:
+        body["tools"] = tools
+        body["tool_choice"] = "auto"
+        # gpt-5.6 refuses function tools on /v1/chat/completions while it is reasoning:
+        # "use /v1/responses or set reasoning_effort to 'none'" (measured 2026-09-14).
+        # Turning reasoning off for the measuring turns is the small change; moving to the
+        # responses API is the other way and would keep it.
+        if API["how"] == "OpenAI 직접":
+            body["reasoning_effort"] = "none"
+    data = json.dumps(body).encode()
     headers = {"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "prime-cli/0.6.33"}
     if CFG["key"]:
         headers["Authorization"] = "Bearer " + CFG["key"]
-    req = urllib.request.Request(CFG["url"] + "/chat/completions", data=body, headers=headers)
-    with urllib.request.urlopen(req, timeout=300) as r:
-        d = json.load(r)
-    usage = d.get("usage") or {}
-    print(f"  [대화] {args.model}  입력 {usage.get('prompt_tokens','?')} 출력 {usage.get('completion_tokens','?')} 토큰")
-    text = d["choices"][0]["message"]["content"]
-    suggested = None
+    req = urllib.request.Request(CFG["url"] + "/chat/completions", data=data, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=600) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:500]
+        raise RuntimeError(f"모델 호출 실패 HTTP {exc.code}: {detail}") from None
+
+
+def chat(history):
+    """One turn. The model may call the read-only measurements first; every call is executed
+    here, its result is fed back, and the loop ends when the model answers in words. Writing
+    steps are not exposed: the rules in plan_geometry.py keep those."""
+    if CFG is None:
+        return "모델 연결이 없습니다(--no-chat 이거나 키가 없습니다).", None
+    msgs = [{"role": "system", "content": SYSTEM + KNOWLEDGE + "\n\nplan.json:\n" + digest()}] + history[-12:]
+    tools = None if args.no_tools else geometry_tools.schemas()
+    used = []
+    for _ in range(max(1, args.max_tool_calls)):
+        d = post(msgs, tools)
+        msg = d["choices"][0]["message"]
+        calls = msg.get("tool_calls") or []
+        usage = d.get("usage") or {}
+        cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+        print(f"  [대화] {args.model} 입력 {usage.get('prompt_tokens','?')} (캐시 {cached}) 출력 {usage.get('completion_tokens','?')}"
+              + (f" · 도구 {[c['function']['name'] for c in calls]}" if calls else ""))
+        if not calls:
+            text = msg.get("content") or ""
+            if used:
+                text += "\n\n(직접 잰 것: " + ", ".join(used) + ")"
+            return text, extract_answers(text)
+        msgs.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": calls})
+        for c in calls:
+            name = c["function"]["name"]
+            try:
+                arguments = json.loads(c["function"].get("arguments") or "{}")
+            except Exception:
+                arguments = {}
+            result = geometry_tools.call(name, arguments)
+            used.append(f"{name}({', '.join(f'{k}={v}' for k, v in arguments.items() if k != 'samples')})")
+            print(f"        → {name} {arguments} : {str(result)[:120]}")
+            msgs.append({"role": "tool", "tool_call_id": c["id"], "name": name,
+                         "content": json.dumps(result, ensure_ascii=False)[:6000]})
+    return "측정을 너무 여러 번 요청했습니다. 질문을 좁혀 주세요.", None
+
+
+def extract_answers(text):
     import re
     m = re.search(r"```json\s*(\{.*?\})\s*```", text, re.S)
-    if m:
-        try:
-            suggested = json.loads(m.group(1)).get("answers")
-        except Exception:
-            suggested = None
-    return text, suggested
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(1)).get("answers")
+    except Exception:
+        return None
+
+
 
 
 def start_controller(answers=None, assume=False):

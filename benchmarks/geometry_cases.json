@@ -1,0 +1,140 @@
+{
+ "note": "형상 정리 회귀 시험. 각 항목은 읽기 전용 측정만 한다(geometry_tools). tol 은 허용 오차.",
+ "cases": [
+  {
+   "name": "car5-resurface",
+   "what": "닫지 않는 재표면화가 구멍을 그대로 두는가",
+   "reference": "~/2026/SU2_work/SU2/TestCases/optimization_rans/steady_oneram6/car5_outer.stl",
+   "candidate": "~/다운로드/car5_outer-resurfaced-noclose.stl",
+   "checks": [
+    {
+     "tool": "measure_mesh",
+     "on": "candidate",
+     "key": "watertight",
+     "expect": true
+    },
+    {
+     "tool": "measure_mesh",
+     "on": "candidate",
+     "key": "triangles",
+     "expect": 733536,
+     "tol_frac": 0.1
+    },
+    {
+     "tool": "compare_to_reference",
+     "key": "distance_p50_mm",
+     "expect": 0.0,
+     "tol": 0.1
+    },
+    {
+     "tool": "compare_to_reference",
+     "key": "added_area_share",
+     "expect": 0.0001,
+     "tol": 0.03
+    }
+   ]
+  },
+  {
+   "name": "car5-wrap-6mm",
+   "what": "알파 6 mm 랩이 13 mm 이상 구멍을 지키는가",
+   "reference": "~/2026/SU2_work/SU2/TestCases/optimization_rans/steady_oneram6/car5_outer.stl",
+   "candidate": "~/다운로드/car5_outer-wrapped-local-smoothed.stl",
+   "checks": [
+    {
+     "tool": "measure_mesh",
+     "on": "candidate",
+     "key": "watertight",
+     "expect": true
+    },
+    {
+     "tool": "closed_openings",
+     "key": "ok",
+     "expect": true,
+     "args": {
+      "keep_above_mm": 13.0
+     }
+    }
+   ]
+  },
+  {
+   "name": "gtr-sharpen",
+   "what": "29 mm 랩 → 투영 → 6.5 mm 랩이 표면을 원본으로 되돌리는가",
+   "reference": "var/runs/plan-gtr6/input_mm.stl",
+   "candidate": "var/runs/plan-gtr6/sharp.stl",
+   "checks": [
+    {
+     "tool": "measure_mesh",
+     "on": "candidate",
+     "key": "watertight",
+     "expect": true
+    },
+    {
+     "tool": "measure_mesh",
+     "on": "candidate",
+     "key": "fill_of_bbox",
+     "expect": 0.537,
+     "tol": 0.03
+    },
+    {
+     "tool": "compare_to_reference",
+     "key": "distance_p50_mm",
+     "expect": 0.22,
+     "tol": 0.1
+    },
+    {
+     "tool": "compare_to_reference",
+     "key": "added_area_share",
+     "expect": 0.2239,
+     "tol": 0.03
+    }
+   ]
+  },
+  {
+   "name": "gtr-winding",
+   "what": "와인딩 수 등위면 경로가 29 mm 랩보다 덜 덧대는가",
+   "reference": "var/runs/plan-gtr6/input_mm.stl",
+   "candidate": "var/runs/plan-gtr6/gwn/gwn8_sharp.stl",
+   "checks": [
+    {
+     "tool": "measure_mesh",
+     "on": "candidate",
+     "key": "watertight",
+     "expect": true
+    },
+    {
+     "tool": "compare_to_reference",
+     "key": "distance_p50_mm",
+     "expect": 0.22,
+     "tol": 0.1
+    },
+    {
+     "tool": "compare_to_reference",
+     "key": "added_area_share",
+     "expect": 0.1712,
+     "tol": 0.03
+    }
+   ]
+  },
+  {
+   "name": "casa-wrapcaps",
+   "what": "랩 형상 캡 STEP 이 대칭면과 바퀴 4곳만 남기는가",
+   "candidate": "var/runs/plan-casa2/wrapcaps_mesh.stl",
+   "checks": [
+    {
+     "tool": "measure_mesh",
+     "on": "candidate",
+     "key": "triangles",
+     "expect": 525224,
+     "tol_frac": 0.1
+    },
+    {
+     "tool": "list_openings",
+     "on": "candidate",
+     "key": "open_loops",
+     "expect": 38,
+     "tol": 6
+    }
+   ]
+  }
+ ]
+}

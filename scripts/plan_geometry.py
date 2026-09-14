@@ -28,6 +28,8 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
+from aox_g3 import ledger
+
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("--in", dest="src", type=Path, required=True)
 ap.add_argument("--out", type=Path, required=True)
@@ -36,6 +38,7 @@ ap.add_argument("--assume-defaults", action="store_true", help="use every propos
 ap.add_argument("--max-retries", type=int, default=2)
 ap.add_argument("--time-budget", type=int, default=1500, help="seconds per script run; a run over budget is stopped and the plan falls back to a coarser route")
 ap.add_argument("--no-render", action="store_true")
+ap.add_argument("--force", action="store_true", help="ignore the ledger and run every step again")
 args = ap.parse_args()
 
 import trimesh  # noqa: E402
@@ -80,9 +83,44 @@ def check(name, ok, detail, on_fail=None):
     return bool(ok)
 
 
+def path_args(arguments):
+    """Arguments that name a file, so the ledger can hash inputs and spot outputs."""
+    out = []
+    for a in arguments:
+        text = str(a)
+        if any(text.endswith(ext) for ext in (".stl", ".stp", ".step", ".obj", ".json", ".txt", ".png")):
+            out.append(Path(text))
+    return out
+
+
 def run(script, arguments, capture_name):
     cmd = [python, str(HERE / script)] + [str(a) for a in arguments]
     t0 = time.time()
+    paths = path_args(arguments)
+    inputs = [p for p in paths if p.exists()]
+    # a step usually writes into a directory it was given, so watch those too
+    dirs = [Path(str(a)) for a in arguments if str(a).startswith(str(args.out)) and not path_args([a])]
+    def snapshot():
+        seen = {}
+        for p in paths:
+            if p.exists():
+                seen[p] = (p.stat().st_mtime_ns, p.stat().st_size)
+        for d in dirs:
+            if d.is_dir():
+                for f in d.rglob("*"):
+                    if f.is_file():
+                        seen[f] = (f.stat().st_mtime_ns, f.stat().st_size)
+        return seen
+    before = snapshot()
+    ident = ledger.identity(script, arguments, inputs, args.out)
+    hit = ledger.find(args.out, ident)
+    if hit and not args.force:
+        log(f"[건너뜀] {script} — 같은 입력·인자로 {hit['at']} 에 끝난 단계 (산출물 {len(hit['outputs'])}개, {hit['seconds']} s)")
+        plan["runs"].append({"script": script, "args": [str(a) for a in arguments], "skipped": True,
+                             "from": hit["at"], "log": f"{capture_name}.txt"})
+        save()
+        prior = args.out / f"{capture_name}.txt"
+        return True, prior.read_text(encoding="utf-8", errors="replace") if prior.exists() else ""
     log(f"[실행] {script} {' '.join(str(a) for a in arguments)}")
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=args.time_budget)
@@ -101,6 +139,10 @@ def run(script, arguments, capture_name):
     plan["runs"].append({"script": script, "args": [str(a) for a in arguments], "seconds": round(time.time() - t0, 1),
                          "returncode": proc.returncode, "log": f"{capture_name}.txt"})
     save()
+    after = snapshot()
+    produced = [p for p, v in after.items() if before.get(p) != v]
+    ledger.record(args.out, script, arguments, inputs, produced + [args.out / f"{capture_name}.txt"], ident,
+                  time.time() - t0, status="done" if proc.returncode == 0 else "failed")
     if proc.returncode != 0:
         log(f"   실패 (코드 {proc.returncode}): {text.strip().splitlines()[-1] if text.strip() else ''}")
         if script != "flat_floor_wrap.py" or "--no-wrap" not in [str(a) for a in arguments]:
@@ -283,7 +325,8 @@ if not is_step:
                 nv = max(0.6, round(voxel / 2, 1))
                 decide(f"복셀 {voxel} → {nv} mm 로 재실행", f"체적 변화 {dv*100:+.1f} % 가 3 % 를 넘음")
                 ok, text = run("prepare_geometry.py", ["--in", work, "--out", args.out / "run", "--no-mirror", "--resurface", nv, "--no-render"], "run_resurface2")
-            plan["deliverables"].append(str(res))
+            if str(res) not in plan["deliverables"]:
+                plan["deliverables"].append(str(res))
             finish()
         else:
             finish("failed")
