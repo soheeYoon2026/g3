@@ -2530,3 +2530,26 @@ floor), 4 loops left for intent (wheel rims/tyres, folded 16–39 %), result
 8,171 faces, free loops ≥ 30 mm: 6 (symmetry plane + 5 wheel-area loops),
 41.8 MB, 39 s. Unlike v18 there is no gap ring around the caps. Deliverable
 ~/다운로드/CAS-A-v19-wrapcaps.stp; v18 files withdrawn.
+
+### Rule-based controller and the question page (2026-09-14)
+
+`scripts/plan_geometry.py` encodes the decisions made by hand this week: diagnosis
+(format, units guess from the longest extent, boundary-edge share, thin-wall probe,
+underside seen from below by rays), route (STEP → propose → heal → if openings over
+1 m remain → flat floor → wrap-shaped caps; closed mesh → resurface; open mesh without
+a floor → flat floor; open mesh with a floor → keep-openings wrap, local if the
+triangle estimate passes 2 M, flat floor if the wrap comes out hollow), checks and
+retries. Customer decisions are questions.json entries with proposals and evidence;
+answers.json resumes; --assume-defaults records assumptions. `scripts/plan_ui.py`
+(stdlib http.server) shows questions, plan and log and chats through the Prime
+inference API with plan.json in the system prompt; the model proposes answers as a
+JSON block the page loads, and never runs tools.
+
+Measured: car5 (closed STL) → resurface at 1.9 mm, checks pass, 1.5 min. CAS-A.stp with
+defaults → heal 40/46 → floor 150.2 → wrap (fill 0.48) → wrap caps STEP (symmetry plane
++ 4 wheel loops left) → wheel-treatment question, 4 min, the route a person took. GT-R
+pauses at units (inch) and length axis (y); answered, it measures 93 % of the footprint
+covered from below and takes the keep-openings route. Two rules were wrong on the first
+try and fixed: downward-facing face area as an underside measure (173 % on GT-R: inner
+skins and underbody parts), and a question whose answer could mean two things (the
+model answered "x" to "rotate to x?").

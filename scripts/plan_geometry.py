@@ -1,0 +1,406 @@
+"""Rule-based controller: diagnose -> route -> run -> verify -> retry, and stop
+where only the customer can decide.
+
+    plan_geometry.py --in X.stp|X.stl --out var/runs/x [--answers answers.json] [--assume-defaults]
+
+The controller never invents a tool. It calls the same scripts a person would
+(prepare_geometry, flat_floor_wrap, close_with_wrap, resurface_noclose, ...),
+reads their reports, and applies the rules in ROUTES below. Every decision is
+written to plan.json with the measurement that triggered it. Decisions that
+are the customer's (units, floor height, closed rims, which openings to keep)
+become entries in questions.json with a proposal, a reason and evidence files;
+the run pauses there (status "waiting_for_answers") unless --assume-defaults,
+in which case the proposals are used and marked as assumptions.
+
+Answers are a JSON object {question_id: value}; a value of null keeps the proposal.
+"""
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+
+ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+ap.add_argument("--in", dest="src", type=Path, required=True)
+ap.add_argument("--out", type=Path, required=True)
+ap.add_argument("--answers", type=Path, help="answers.json from the UI or the customer")
+ap.add_argument("--assume-defaults", action="store_true", help="use every proposal instead of pausing")
+ap.add_argument("--max-retries", type=int, default=2)
+ap.add_argument("--no-render", action="store_true")
+args = ap.parse_args()
+
+import trimesh  # noqa: E402
+
+args.out.mkdir(parents=True, exist_ok=True)
+PLAN = args.out / "plan.json"
+QUESTIONS = args.out / "questions.json"
+LOG = open(args.out / "plan_log.txt", "a", encoding="utf-8")
+python = sys.executable
+
+plan = json.loads(PLAN.read_text()) if PLAN.exists() else {
+    "input": str(args.src), "out": str(args.out), "status": "running", "diagnosis": {}, "route": None,
+    "decisions": [], "runs": [], "checks": [], "questions": [], "answers": {}, "assumptions": [],
+    "deliverables": [], "warnings": []}
+answers = dict(plan.get("answers", {}))
+if args.answers and args.answers.exists():
+    answers.update({k: v for k, v in json.loads(args.answers.read_text()).items() if v is not None})
+plan["answers"] = answers
+plan["status"] = "running"
+
+
+def log(msg):
+    print(msg)
+    LOG.write(msg + "\n")
+    LOG.flush()
+
+
+def save():
+    PLAN.write_text(json.dumps(plan, ensure_ascii=False, indent=1))
+
+
+def decide(what, because, evidence=None):
+    plan["decisions"].append({"what": what, "because": because, "evidence": evidence or {}})
+    log(f"[결정] {what}  ← {because}")
+    save()
+
+
+def check(name, ok, detail, on_fail=None):
+    plan["checks"].append({"name": name, "ok": bool(ok), "detail": detail, "on_fail": on_fail})
+    log(f"[검증] {'통과' if ok else '실패'} {name}: {detail}" + (f"  → {on_fail}" if (not ok and on_fail) else ""))
+    save()
+    return bool(ok)
+
+
+def run(script, arguments, capture_name):
+    cmd = [python, str(HERE / script)] + [str(a) for a in arguments]
+    t0 = time.time()
+    log(f"[실행] {script} {' '.join(str(a) for a in arguments)}")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    text = "\n".join(line for line in (proc.stdout + proc.stderr).splitlines() if "swig/python detected" not in line)
+    (args.out / f"{capture_name}.txt").write_text(text, encoding="utf-8")
+    plan["runs"].append({"script": script, "args": [str(a) for a in arguments], "seconds": round(time.time() - t0, 1),
+                         "returncode": proc.returncode, "log": f"{capture_name}.txt"})
+    save()
+    if proc.returncode != 0:
+        log(f"   실패 (코드 {proc.returncode}): {text.strip().splitlines()[-1] if text.strip() else ''}")
+        if script != "flat_floor_wrap.py" or "--no-wrap" not in [str(a) for a in arguments]:
+            plan["status"] = "failed"
+            plan["warnings"].append(f"{script} 실패: {text.strip().splitlines()[-1] if text.strip() else ''}")
+            save()
+            sys.exit(2)
+    return proc.returncode == 0, text
+
+
+def ask(qid, question, proposal, reason, kind="number", unit="", evidence=None, choices=None):
+    """Register a customer question. Returns the answer if known, else the proposal (assumed) or None (pause)."""
+    entry = {"id": qid, "question": question, "type": kind, "unit": unit, "proposal": proposal, "reason": reason,
+             "evidence": evidence or [], "choices": choices}
+    plan["questions"] = [q for q in plan["questions"] if q["id"] != qid] + [entry]
+    if qid in answers:
+        entry["answer"] = answers[qid]
+        save()
+        return answers[qid]
+    if args.assume_defaults:
+        plan["assumptions"].append({"id": qid, "value": proposal, "reason": reason})
+        entry["assumed"] = True
+        save()
+        log(f"[가정] {qid} = {proposal}  ({reason})")
+        return proposal
+    save()
+    return None
+
+
+def pause():
+    pending = [q for q in plan["questions"] if "answer" not in q and not q.get("assumed")]
+    QUESTIONS.write_text(json.dumps(pending, ensure_ascii=False, indent=1))
+    plan["status"] = "waiting_for_answers"
+    save()
+    log(f"[정지] 고객 답이 필요한 질문 {len(pending)}개 → {QUESTIONS}")
+    log("      답을 answers.json 에 {id: value} 로 적고 --answers 로 다시 실행하거나, plan_ui.py 로 답하세요.")
+    sys.exit(3)
+
+
+def finish(status="done"):
+    plan["status"] = status
+    QUESTIONS.write_text("[]")
+    save()
+    log(f"[끝] {status}  산출물: " + ", ".join(plan["deliverables"]))
+
+
+# ----------------------------------------------------------------- diagnosis
+src = args.src
+is_step = src.suffix.lower() in (".stp", ".step")
+diag = plan["diagnosis"]
+diag["format"] = "STEP" if is_step else "mesh"
+
+if not is_step:
+    mesh = trimesh.load(src, force="mesh")
+    mesh.merge_vertices()
+    ext = mesh.extents
+    _, counts = np.unique(mesh.edges_sorted, axis=0, return_counts=True)
+    open_share = float((counts == 1).sum() / max(1, len(counts)))
+    parts = mesh.split(only_watertight=False)
+    diag.update({"triangles": int(len(mesh.faces)), "extents": ext.round(2).tolist(), "bbox_min": mesh.bounds[0].round(2).tolist(),
+                 "bodies": int(len(parts)), "boundary_edge_share": round(open_share, 5), "watertight": bool(mesh.is_watertight)})
+    log(f"[진단] 메쉬 삼각형 {len(mesh.faces):,}  치수 {ext.round(1).tolist()}  몸체 {len(parts)}  경계 모서리 비율 {open_share*100:.3f} %")
+
+    # units: a car is 3-6 m long
+    longest = float(ext.max())
+    if longest < 20:
+        unit_guess, scale = "m", 1000.0
+    elif longest < 400:
+        unit_guess, scale = "inch", 25.4
+    else:
+        unit_guess, scale = "mm", 1.0
+    diag["unit_guess"] = unit_guess
+    unit = ask("units", f"이 STL의 단위가 {unit_guess}로 보입니다(가장 긴 치수 {longest:.1f}). 맞습니까? (mm / m / inch)", unit_guess,
+               f"가장 긴 치수 {longest:.1f}: 20 미만이면 m, 400 미만이면 inch, 그 이상이면 mm 로 봅니다", kind="choice",
+               choices=["mm", "m", "inch"])
+    length_axis = int(np.argmax(ext))
+    axis_ans = ask("length_axis_now", f"지금 파일에서 차의 길이 방향은 어느 축입니까? ({'xyz'[length_axis]}축으로 보입니다. x 면 그대로 두고, y/z 면 x 로 돌립니다)",
+                   "xyz"[length_axis], "파이프라인은 x 를 길이·유동 방향으로 가정합니다; 답은 현재 파일의 길이축", kind="choice", choices=["x", "y", "z"])
+    if unit is None or axis_ans is None:
+        pause()
+    scale = {"mm": 1.0, "m": 1000.0, "inch": 25.4}[unit]
+    work = args.out / "input_mm.stl"
+    v = mesh.vertices * scale
+    if axis_ans == "y":
+        v = np.column_stack([v[:, 1], -v[:, 0], v[:, 2]])
+    elif axis_ans == "z":
+        v = np.column_stack([v[:, 2], v[:, 1], -v[:, 0]])
+    mesh = trimesh.Trimesh(v, mesh.faces, process=False)
+    mesh.export(work)
+    if scale != 1.0 or axis_ans != "x":
+        decide(f"입력을 mm·x길이축으로 변환 ({unit}, 길이축 {axis_ans})", "단위와 축은 자동 감지가 안 되므로 질문 뒤 변환", {"file": str(work)})
+    ext = mesh.extents
+    diag["extents_mm"] = ext.round(1).tolist()
+
+    # thin walls: inward first hit
+    big = max(mesh.split(only_watertight=False), key=lambda p: len(p.faces))
+    pts, fid = trimesh.sample.sample_surface(big, 3000, seed=0)
+    n = big.face_normals[fid]
+    loc, ray, _ = big.ray.intersects_location(pts - n * 0.05, -n, multiple_hits=False)
+    thick = np.linalg.norm(loc - (pts - n * 0.05)[ray], axis=1) if len(ray) else np.array([50.0])
+    t5 = float(np.percentile(thick, 5))
+    diag["thickness_p5_mm"] = round(t5, 2)
+    diag["surface_area_m2"] = round(float(mesh.area) / 1e6, 2)
+
+    if open_share < 1e-3:
+        # ------------------------------------------------ closed mesh: resurface
+        decide("경로 D: 닫지 않는 재표면화", f"경계 모서리 비율 {open_share*100:.3f} % < 0.1 % (닫힌 입력)")
+        voxel_prop = float(np.clip(round(t5 / 2.5, 1), 0.6, 3.0))
+        est = mesh.area / (voxel_prop ** 2) * 0.7
+        if est > 1.5e8:
+            voxel_prop = float(np.ceil(np.sqrt(mesh.area * 0.7 / 1.5e8) * 10) / 10)
+            plan["warnings"].append(f"삼각형 추정 {est/1e6:.0f} M → 복셀을 {voxel_prop} mm 로 올림")
+        voxel = ask("voxel_mm", f"재표면화 복셀 크기 (제안 {voxel_prop} mm). 판 두께 5 % 분위 {t5:.1f} mm 의 절반 이하가 규칙입니다.", voxel_prop,
+                    f"가장 얇은 부위(5 % 분위) {t5:.1f} mm; 복셀은 그 절반 이하, 0.6~3 mm", unit="mm")
+        if voxel is None:
+            pause()
+        plan["route"] = "D-resurface"
+        ok, text = run("prepare_geometry.py", ["--in", work, "--out", args.out / "run", "--no-mirror", "--resurface", voxel]
+                       + (["--no-render"] if args.no_render else []), "run_resurface")
+        res = args.out / "run" / "resurfaced.stl"
+        if ok and res.exists():
+            r = trimesh.load(res, force="mesh"); r.merge_vertices()
+            _, c2 = np.unique(r.edges_sorted, axis=0, return_counts=True)
+            wt = bool((c2 == 1).sum() == 0 and (c2 > 2).sum() == 0)
+            dv = abs(r.volume) / max(1e-9, abs(mesh.volume)) - 1
+            check("수밀", wt, f"경계 {(c2==1).sum()} 비다양체 {(c2>2).sum()}")
+            check("체적 변화 < 3 %", abs(dv) < 0.03, f"{dv*100:+.1f} %", "복셀을 줄여 재실행")
+            check("경계상자 유지", np.allclose(r.extents, mesh.extents, atol=2 * voxel + 1), f"{r.extents.round(0).tolist()} vs {mesh.extents.round(0).tolist()}")
+            if abs(dv) >= 0.03 and voxel > 0.6 and plan.get("retries", 0) < args.max_retries:
+                plan["retries"] = plan.get("retries", 0) + 1
+                nv = max(0.6, round(voxel / 2, 1))
+                decide(f"복셀 {voxel} → {nv} mm 로 재실행", f"체적 변화 {dv*100:+.1f} % 가 3 % 를 넘음")
+                ok, text = run("prepare_geometry.py", ["--in", work, "--out", args.out / "run", "--no-mirror", "--resurface", nv, "--no-render"], "run_resurface2")
+            plan["deliverables"].append(str(res))
+            finish()
+        else:
+            finish("failed")
+    else:
+        # ------------------------------------------------ open mesh
+        decide("열린 메쉬", f"경계 모서리 비율 {open_share*100:.2f} % ≥ 0.1 %")
+        # Is the underside there? Area of downward-facing surface in the lower third,
+        # against the footprint. GT-R (no floor at all) has almost none; a car with
+        # open panel seams still has its floor. The section scan alone cannot tell
+        # the two apart: open seams keep any outline from closing.
+        # Seen from below: cast rays up through a grid over the footprint; with a floor
+        # the first hit is low (under 30 % of the height), with the floor missing the
+        # rays go on to the cabin ceiling and engine parts. Face-area counts do not
+        # work here: inner skins and underbody parts gave GT-R 173 % "coverage".
+        lo, hi = mesh.bounds
+        H = hi[2] - lo[2]
+        gx = np.linspace(lo[0] + 0.05 * (hi[0] - lo[0]), hi[0] - 0.05 * (hi[0] - lo[0]), 60)
+        gy = np.linspace(lo[1] + 0.1 * (hi[1] - lo[1]), hi[1] - 0.1 * (hi[1] - lo[1]), 24)
+        origins = np.array([[x, y, lo[2] - 10.0] for x in gx for y in gy])
+        dirs = np.tile([0, 0, 1.0], (len(origins), 1))
+        hit, ray, _ = mesh.ray.intersects_location(origins, dirs, multiple_hits=False)
+        first = np.full(len(origins), np.nan)
+        if len(ray):
+            first[ray] = hit[:, 2]
+        seen = np.isfinite(first)
+        low = seen & (first < lo[2] + 0.3 * H)
+        coverage = float(low.sum() / max(1, seen.sum()))
+        diag["underside_coverage"] = round(coverage, 3)
+        diag["underside_first_hit_median_frac"] = round(float(np.nanmedian((first - lo[2]) / H)), 3) if seen.any() else None
+        ok, text = run("flat_floor_wrap.py", ["--in", work, "--out", args.out / "floorscan", "--no-wrap"], "floorscan")
+        floor_summary = args.out / "floorscan" / "summary.json"
+        floor_prop = json.loads(floor_summary.read_text()).get("floor_z") if floor_summary.exists() else None
+        if floor_prop is None and coverage < 0.3:
+            # no floor: propose the first height where sections cover 30 % of the box, else 15 % of the height
+            best = None
+            for z in np.arange(lo[2] + 20.0, lo[2] + 0.45 * H, 20.0):
+                sec = mesh.section(plane_origin=[0, 0, float(z)], plane_normal=[0, 0, 1])
+                if sec is None:
+                    continue
+                try:
+                    planar, _ = sec.to_2D()
+                    area = sum(pg.area for pg in planar.polygons_full)
+                except Exception:
+                    area = 0.0
+                if area >= 0.3 * (hi[0] - lo[0]) * (hi[1] - lo[1]):
+                    best = float(z) + 20.0
+                    break
+            floor_prop = round(best if best is not None else float(lo[2] + 0.15 * H), 1)
+            decide("바닥이 없는 껍질", f"아래에서 쏜 광선의 첫 충돌이 높이 30 % 아래인 비율 {coverage*100:.0f} % (30 % 미만); 단면 닫힘 없음")
+        if floor_prop is None:
+            decide("경로 3: 구멍을 지키는 랩", f"언더사이드 덮임률 {coverage*100:.0f} % (바닥 있음) 인데 단면이 안 닫힘 → 부품 사이 틈이 문제")
+            from aox_g3 import fair
+            loops, _ = fair.boundary_loops(mesh)
+            sizes = sorted((float(np.ptp(mesh.vertices[lp], axis=0).max()) for lp in loops), reverse=True)
+            diag["open_loops"] = len(loops)
+            diag["open_loop_sizes_mm"] = [round(s) for s in sizes[:12]]
+            keep_prop = 13.0
+            keep = ask("keep_openings_mm", f"유동이 지나야 하는 가장 작은 구멍 크기 (제안 {keep_prop} mm). 이보다 좁은 틈은 랩이 닫습니다.", keep_prop,
+                       "윙 슬롯·덕트·그릴 중 가장 작은 것; 랩 알파는 이 값의 절반", unit="mm",
+                       evidence=[str(args.out / "run" / "render_mesh.png")])
+            if keep is None:
+                pause()
+            est = mesh.area / ((keep / 2) ** 2) * 0.7
+            local = est > 2e6
+            plan["route"] = "3-wrap-keep-openings" + ("-local" if local else "")
+            arguments = ["--in", work, "--out", args.out / "run", "--no-mirror", "--wrap", "--keep-openings-above", keep,
+                         "--force-wrap", "--smooth-seams"] + (["--local-wrap", "--wrap-alpha-div", 330] if local else []) + (["--no-render"] if args.no_render else [])
+            if local:
+                decide("국소 재랩 사용", f"전역 가는 알파의 삼각형 추정 {est/1e6:.1f} M > 2 M")
+            ok, text = run("prepare_geometry.py", arguments, "run_wrap")
+            out_stl = args.out / "run" / ("wrap_smooth.stl" if (args.out / "run" / "wrap_smooth.stl").exists() else "wrap.stl")
+            if out_stl.exists():
+                w = trimesh.load(out_stl, force="mesh"); w.merge_vertices()
+                fill = abs(w.volume) / float(np.prod(w.extents))
+                hollow = not check("랩이 속 찬 차 (채움률 0.3~0.6)", 0.3 <= fill <= 0.6, f"{fill:.2f}, 삼각형 {len(w.faces):,}",
+                                   "이음새로 랩이 안으로 샘 → 평바닥 가정으로 전환")
+                if hollow and plan.get("retries", 0) < args.max_retries:
+                    plan["retries"] = plan.get("retries", 0) + 1
+                    fz = ask("floor_z_mm", f"랩이 이음새로 새어 속이 비었습니다. 평바닥을 z = {round(float(lo[2] + 0.15 * H), 1)} mm (높이의 15 %)에 두고 다시 감쌀까요?",
+                             round(float(lo[2] + 0.15 * H), 1), "단면 훑기가 닫힘을 못 찾아 높이의 15 % 를 제안", unit="mm")
+                    if fz is None:
+                        pause()
+                    decide("경로 C 로 전환: 평바닥 가정 + 랩", f"채움률 {fill:.2f} < 0.3")
+                    plan["route"] = "C-flat-floor-wrap (after leak)"
+                    ok, text = run("flat_floor_wrap.py", ["--in", work, "--out", args.out / "assumed", "--floor-z", fz, "--alpha-div", 360], "flatfloor")
+                    out_stl = args.out / "assumed" / "wrapped.stl"
+                    if out_stl.exists():
+                        w = trimesh.load(out_stl, force="mesh"); w.merge_vertices()
+                        fill = abs(w.volume) / float(np.prod(w.extents))
+                        check("평바닥 랩 채움률 0.3~0.6", 0.3 <= fill <= 0.6, f"{fill:.2f}")
+            closed_txt = args.out / "run" / "wrap_closed.txt"
+            if closed_txt.exists():
+                gaps = [float(m) for m in re.findall(r"틈 ≈\s*([\d.]+) mm", closed_txt.read_text())]
+                bad = [g for g in gaps if g >= keep]
+                check(f"{keep:.0f} mm 이상 구멍은 열려 있음", not bad, f"닫힌 자리 중 {keep:.0f} mm 이상: {len(bad)}개")
+            plan["deliverables"].append(str(out_stl))
+            finish("done" if ok else "failed")
+        else:
+            decide("경로 C: 평바닥 가정 + 랩", f"바닥 높이 제안 z={floor_prop} (단면 닫힘 또는 30 % 덮임 높이; 언더사이드 덮임률 {coverage*100:.0f} %)")
+            fz = ask("floor_z_mm", f"평바닥을 z = {floor_prop} mm 에 둘까요? (단면 훑기가 찾은 첫 닫힘 높이)", floor_prop,
+                     "지면 간극·언더바디 형상은 설계 의도라 고객 확인 필요; 절대 Cd 가 달라짐", unit="mm",
+                     evidence=[str(floor_summary)])
+            if fz is None:
+                pause()
+            plan["route"] = "C-flat-floor-wrap"
+            ok, text = run("flat_floor_wrap.py", ["--in", work, "--out", args.out / "assumed", "--floor-z", fz, "--alpha-div", 360], "flatfloor")
+            wrap = args.out / "assumed" / "wrapped.stl"
+            if wrap.exists():
+                w = trimesh.load(wrap, force="mesh"); w.merge_vertices()
+                fill = abs(w.volume) / float(np.prod(w.extents))
+                check("랩 수밀", w.is_watertight, f"몸체 {w.body_count}")
+                check("채움률 0.3~0.6 (속 찬 차)", 0.3 <= fill <= 0.6, f"{fill:.2f}", "바닥 높이를 다시 물을 것")
+                plan["deliverables"].append(str(wrap))
+            finish("done" if ok else "failed")
+
+else:
+    # ---------------------------------------------------------------- STEP
+    ok, text = run("propose_parameters.py", ["--in", src, "--out", args.out / "params.json"], "propose")
+    params = json.loads((args.out / "params.json").read_text()) if (args.out / "params.json").exists() else {}
+    diag["params"] = {k: v for k, v in params.items() if k != "questions"}
+    half = params.get("half_model")
+    mirror_ans = ask("half_model", f"반쪽 모델로 보입니다({half}). 미러해서 전체 차로 볼까요?", bool(half) if half is not None else True,
+                     "대칭 확인은 고객 몫; 미러하면 전면 면적·랩이 전체 차 기준", kind="bool")
+    seal_prop = params.get("seal_below")
+    seal = ask("seal_below_mm", f"이 크기보다 작은 구멍은 묻지 않고 닫습니다 (제안 {seal_prop} mm). 유동이 지나야 하는 가장 작은 구멍보다 작아야 합니다.",
+               seal_prop, "구멍 크기 분포에서 가장 넓은 로그 간격", unit="mm")
+    rims = params.get("close_near") or []          # [[x, y, z, r], ...] from autotune.detect_wheels
+    rims_ans = ask("close_rims", f"바퀴 림처럼 보이는 고리 {len(rims)}곳을 닫힌 원판으로 볼까요? (스포크 구멍은 Cd 를 14 % 바꿉니다)", True,
+                   "림 위치·크기는 자동 감지; 원판 처리 여부는 해석 의도", kind="bool")
+    if mirror_ans is None or seal is None or rims_ans is None:
+        pause()
+    arguments = ["--in", src, "--out", args.out / "run", "--seal-below", seal] + ([] if mirror_ans else ["--no-mirror"]) \
+        + (["--auto"] if not rims else []) + (["--no-render"] if args.no_render else [])
+    if rims_ans and rims:
+        for r in rims:
+            x, y, z, rad = (list(r) + [450])[:4]
+            arguments += [f"--close-near={x:.0f},{y:.0f},{z:.0f},{rad:.0f}"]
+    plan["route"] = "A-heal"
+    ok, text = run("prepare_geometry.py", arguments, "run_heal")
+    summary = json.loads((args.out / "run" / "summary.json").read_text()) if (args.out / "run" / "summary.json").exists() else {}
+    heal = json.loads((args.out / "run" / "heal.json").read_text()).get("heal", {}) if (args.out / "run" / "heal.json").exists() else {}
+    nums = summary.get("numbers", {})
+    check("STEP 되읽기·경계상자", summary.get("stages", {}).get("heal", {}).get("status") == "ok", f"구멍 {nums.get('holes_found')} 중 {nums.get('holes_filled')} 닫힘, 실측 잔여 {nums.get('free_boundaries_measured')}")
+    plan["deliverables"].append(str(args.out / "run" / "healed.stp"))
+    left = heal.get("left_open", [])
+    big_left = [b for b in left if float(b.get("size", 0)) > 1000]
+    if not big_left:
+        decide("큰 구멍 없음 → 힐링 STEP 이 인도물", f"남은 구멍 {len(left)}개 전부 1 m 이하")
+        if not (args.out / "run" / "wrap.stl").exists():
+            ok, text = run("prepare_geometry.py", arguments + ["--wrap", "--force-wrap", "--smooth-seams"], "run_wrap")
+        finish("done" if ok else "failed")
+    decide("경로 C+E: 평바닥 가정 랩 → 랩 형상 캡으로 STEP 닫기", f"남은 구멍 중 1 m 이상 {len(big_left)}개 (최대 {max(float(b['size']) for b in big_left):.0f} mm): 언더바디·캐빈은 봉합 크기로 못 닫음")
+    plan["route"] = "A-heal + C-flat-floor-wrap + E-wrapcaps"
+    full_mesh = args.out / "run" / ("mesh_full.stl" if mirror_ans else "mesh.stl")
+    ok, text = run("flat_floor_wrap.py", ["--in", full_mesh, "--out", args.out / "floorscan", "--no-wrap"], "floorscan")
+    fsum = args.out / "floorscan" / "summary.json"
+    floor_prop = json.loads(fsum.read_text()).get("floor_z") if fsum.exists() else None
+    fz = ask("floor_z_mm", f"언더바디가 열려 있어 평바닥을 가정합니다. 높이 z = {floor_prop} mm (단면 훑기의 첫 닫힘)로 둘까요?", floor_prop,
+             "지면 간극·언더바디는 설계 의도; 이 높이가 절대 Cd 를 바꿈", unit="mm", evidence=[str(fsum), str(args.out / "run" / "render_mesh.png")])
+    if fz is None:
+        pause()
+    ok, text = run("flat_floor_wrap.py", ["--in", full_mesh, "--out", args.out / "assumed", "--floor-z", fz, "--alpha-div", 360], "flatfloor")
+    wrap = args.out / "assumed" / "wrapped.stl"
+    if wrap.exists():
+        w = trimesh.load(wrap, force="mesh"); w.merge_vertices()
+        fill = abs(w.volume) / float(np.prod(w.extents))
+        check("랩 수밀", w.is_watertight, f"몸체 {w.body_count}")
+        check("채움률 0.3~0.6", 0.3 <= fill <= 0.6, f"{fill:.2f}")
+        plan["deliverables"].append(str(wrap))
+    ok, text = run("close_with_wrap.py", ["--step", args.out / "run" / "healed.stp", "--wrap", wrap, "--out", args.out / "healed_wrapcaps.stp",
+                                          "--report", args.out / "wrapcaps.json", "--floor-z", fz], "wrapcaps")
+    rep = json.loads((args.out / "wrapcaps.json").read_text()) if (args.out / "wrapcaps.json").exists() else {}
+    skipped = [c for c in rep.get("caps", []) if c.get("skipped") or c.get("failed")]
+    check("STEP 자유경계 = 대칭면 + 뜻 필요한 곳뿐", rep.get("big_loops_after", 99) <= 1 + len(skipped),
+          f"남은 고리 {rep.get('big_loops_after')} (건너뛴 캡 {len(skipped)})")
+    if skipped:
+        ask("wheel_treatment", f"바퀴 주변 고리 {len(skipped)}곳은 접힘 때문에 자동으로 못 닫았습니다. 어떻게 할까요?", "leave",
+            "림·타이어 접합은 설계·해석 의도(회전 휠, 원판, 실제 타이어 형상)", kind="choice", choices=["leave", "disc", "tyre_contact"],
+            evidence=[str(args.out / "wrapcaps.json")])
+    plan["deliverables"].append(str(args.out / "healed_wrapcaps.stp"))
+    finish("done" if ok else "failed")

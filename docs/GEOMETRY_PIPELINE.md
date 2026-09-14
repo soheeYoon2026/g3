@@ -140,6 +140,21 @@ are not detected: GTR35.stl is in inches, Car_m.stl in metres — convert to mm.
 OpenVDB's needs a conda environment and lacks the level-set filters; the review
 with measurements is in `VERSION2_PLAN.md`.
 
+## Controller
+
+`plan_geometry.py --in X --out D` runs the whole thing by rules: diagnose (format,
+units, half model, boundary-edge share, thin walls, underside seen from below),
+pick the route (heal / flat-floor wrap / wrap-shaped caps / keep-openings wrap /
+resurface), run the scripts above, check the results (round trip, watertight,
+fill ratio 0.3–0.6, kept openings, volume change, remaining free loops) and retry
+with a fixed set of knobs. Whatever is the customer's call (units, symmetry,
+sealing size, closed rims, floor height, smallest opening, voxel, wheel
+treatment) becomes an entry in `questions.json` with a proposal, a reason and
+evidence; the run pauses there unless `--assume-defaults`. `plan_ui.py` serves a
+local page with the questions, the plan, the log and a chat with a model that
+explains the measurements and fills the answers in; the rules keep the tools.
+CAS-A end to end with defaults: 4 minutes, the same route a person took.
+
 ## Individual tools
 
 Every stage is also a standalone script under `scripts/`:
@@ -155,6 +170,7 @@ Every stage is also a standalone script under `scripts/`:
   `overlay_sections.py` — reference vs candidate section overlays to look at them
 - `local_wrap.py` — coarse wrap + fine local re-wrap + boolean splice (manifold3d)
 - `resurface_noclose.py` — resurfacing without closing (the `resurface` stage)
+- `plan_geometry.py`, `plan_ui.py` — the rule-based controller and its question page
 - `close_with_wrap.py` — close the free boundaries the heal left, inside the STEP: cap
   boundary on the hole's own edges, cap interior on the wrap, sewn at 0.5 mm; loops split
   at the symmetry plane, folded caps (>10 % dihedrals over 120°) left for intent,
