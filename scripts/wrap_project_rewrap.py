@@ -28,7 +28,7 @@ ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDe
 ap.add_argument("--wrap", type=Path, required=True, help="the coarse, closed wrap")
 ap.add_argument("--reference", type=Path, required=True, help="the original mesh")
 ap.add_argument("--out", type=Path, required=True)
-ap.add_argument("--edge", type=float, default=10.0, help="mm; remesh edge length before projecting")
+ap.add_argument("--edge", type=float, default=10.0, help="mm; remesh edge length before projecting; 0 = no remesh")
 ap.add_argument("--max-move", type=float, default=13.0, help="mm; a vertex farther than this from the original stays")
 ap.add_argument("--fine-alpha", type=float, default=6.5, help="mm; the second wrap")
 ap.add_argument("--report", type=Path)
@@ -41,31 +41,37 @@ coarse = trimesh.load(args.wrap, force="mesh")
 coarse.merge_vertices()
 print(f"거친 랩 {args.wrap.name}: 삼각형 {len(coarse.faces):,}  수밀 {coarse.is_watertight}  체적 {abs(coarse.volume)/1e9:.3f} m³")
 
-# 1. remesh (CGAL isotropic, whole mesh, read back through vertex ids)
-from CGAL import CGAL_Polygon_mesh_processing as P
-from CGAL.CGAL_Polyhedron_3 import Polyhedron_3
-h, tmp = tempfile.mkstemp(suffix=".off")
-os.close(h)
-coarse.export(tmp)
-poly = Polyhedron_3(tmp)
-facets = list(poly.facets())
-P.isotropic_remeshing(facets, float(args.edge), poly, 3)
-os.unlink(tmp)
-verts, faces = [], []
-for i, v in enumerate(poly.vertices()):
-    pt = v.point()
-    verts.append((pt.x(), pt.y(), pt.z()))
-    v.set_id(i)
-for f in poly.facets():
-    hh = f.halfedge()
-    tri = []
-    for _ in range(3):
-        tri.append(hh.vertex().id())
-        hh = hh.next()
-    faces.append(tri)
-mesh = trimesh.Trimesh(np.array(verts), np.array(faces), process=False)
-mesh.merge_vertices()
-print(f"재메쉬 {args.edge:.0f} mm: 삼각형 {len(mesh.faces):,}  {time.time()-t0:.0f}s")
+# 1. remesh (CGAL isotropic, whole mesh, read back through vertex ids); --edge 0 skips it
+#    (a marching-cubes level set is already at its voxel size, and its merged vertices
+#    can make the CGAL polyhedron builder reject it)
+if args.edge > 0:
+    from CGAL import CGAL_Polygon_mesh_processing as P
+    from CGAL.CGAL_Polyhedron_3 import Polyhedron_3
+    h, tmp = tempfile.mkstemp(suffix=".off")
+    os.close(h)
+    coarse.export(tmp)
+    poly = Polyhedron_3(tmp)
+    facets = list(poly.facets())
+    P.isotropic_remeshing(facets, float(args.edge), poly, 3)
+    os.unlink(tmp)
+    verts, faces = [], []
+    for i, v in enumerate(poly.vertices()):
+        pt = v.point()
+        verts.append((pt.x(), pt.y(), pt.z()))
+        v.set_id(i)
+    for f in poly.facets():
+        hh = f.halfedge()
+        tri = []
+        for _ in range(3):
+            tri.append(hh.vertex().id())
+            hh = hh.next()
+        faces.append(tri)
+    mesh = trimesh.Trimesh(np.array(verts), np.array(faces), process=False)
+    mesh.merge_vertices()
+    print(f"재메쉬 {args.edge:.0f} mm: 삼각형 {len(mesh.faces):,}  {time.time()-t0:.0f}s")
+else:
+    mesh = coarse
+    print(f"재메쉬 생략 (--edge 0): 삼각형 {len(mesh.faces):,}")
 
 # 2. project onto the original
 t1 = time.time()

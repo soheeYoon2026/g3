@@ -172,7 +172,8 @@ Every stage is also a standalone script under `scripts/`:
 - `list_closed_openings.py` — what a wrap closed (patch centre, size, bridged gap);
   `overlay_sections.py` — reference vs candidate section overlays to look at them
 - `local_wrap.py` — coarse wrap + fine local re-wrap + boolean splice (manifold3d)
-- `wrap_project_rewrap.py` — sharpen a coarse wrap: isotropic remesh, closest-point projection onto the original within `--max-move` (seams and the assumed floor stay on the wrap), fine wrap in a child process; the August GT-R recipe, run by the controller after the 29 mm closure is accepted
+- `wrap_project_rewrap.py` — sharpen a coarse wrap: isotropic remesh, closest-point projection onto the original within `--max-move` (seams and the assumed floor stay on the wrap), fine wrap in a child process; `--edge 0` skips the remesh (for a marching-cubes level set); the August GT-R recipe, run by the controller after the 29 mm closure is accepted
+- `winding_isosurface.py` — 0.5 level set of the generalized winding number (libigl, BVH built once) on a voxel grid; alpha-free topology stage for open, dirty meshes; close the big openings (floor) first and leave the orientation alone (igl orient_outward removed the GT-R wheels); GT-R 8 mm in 26 s, and after the same sharpening 17 % added material vs 22 % for the 29 mm wrap
 - `resurface_noclose.py` — resurfacing without closing (the `resurface` stage)
 - `plan_geometry.py`, `plan_ui.py` — the rule-based controller and its question page
 - `close_with_wrap.py` — close the free boundaries the heal left, inside the STEP: cap

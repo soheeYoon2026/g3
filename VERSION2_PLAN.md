@@ -2590,3 +2590,20 @@ gives the list after the fact). Open-code candidates: generalized winding number
 non-commercial only; PolyMender/fTetWild are single-scale octree/envelope tools. Licence
 note for the product: CGAL Alpha_wrap_3 and PMP are GPL, MeshLib is paid for commercial use.
 
+### Winding-number level set as the topology stage (2026-09-14)
+
+`scripts/winding_isosurface.py`: generalized winding number (libigl fast winding number,
+BVH built once) sampled on a grid, 0.5 level set by marching cubes, largest piece kept. On
+the flat-floor GT-R (1.24 M faces, 921 components, inconsistent orientation): 8 mm voxel in
+26 s → 1.49 M faces, watertight, 6.525 m³; 5 mm in 50 s → 3.88 M faces, same volume. The
+field is 13 % negative and 30 % above 1 (inconsistent input orientation) yet the outer level
+set is intact; igl `orient_outward` flipped 137 of 921 patches including the wheels and
+removed them → rejected. After the same sharpening as the 29 mm route (project ≤ 13 mm, 6.5 mm
+wrap; `wrap_project_rewrap.py --edge 0`, because the CGAL polyhedron builder rejects the
+merged marching-cubes mesh): 2.33 M faces, p50 0.22 mm like the 29 mm route, added material
+17.1 % vs 22.4 % (front −0.94 m², rear −0.67 m², floor equal); the 38–47 mm slots close in
+both routes. 5 mm gives the same final result as 8 mm. Pitfall: calling
+`igl.fast_winding_number(V, F, Q)` per slab rebuilds the BVH each time (5 s per slab).
+Verdict: an alpha-free replacement for the 29 mm coarse wrap, MPL 2; needs the floor first
+and no orientation fix. Next: make it the controller default with the 29 mm wrap as fallback.
+
