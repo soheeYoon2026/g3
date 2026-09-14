@@ -34,6 +34,7 @@ ap.add_argument("--out", type=Path, required=True)
 ap.add_argument("--answers", type=Path, help="answers.json from the UI or the customer")
 ap.add_argument("--assume-defaults", action="store_true", help="use every proposal instead of pausing")
 ap.add_argument("--max-retries", type=int, default=2)
+ap.add_argument("--time-budget", type=int, default=1500, help="seconds per script run; a run over budget is stopped and the plan falls back to a coarser route")
 ap.add_argument("--no-render", action="store_true")
 args = ap.parse_args()
 
@@ -83,7 +84,18 @@ def run(script, arguments, capture_name):
     cmd = [python, str(HERE / script)] + [str(a) for a in arguments]
     t0 = time.time()
     log(f"[실행] {script} {' '.join(str(a) for a in arguments)}")
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=args.time_budget)
+    except subprocess.TimeoutExpired as exc:
+        out = (exc.stdout or b"") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        text = out.decode() if isinstance(out, bytes) else out
+        (args.out / f"{capture_name}.txt").write_text(text, encoding="utf-8")
+        plan["runs"].append({"script": script, "args": [str(a) for a in arguments], "seconds": round(time.time() - t0, 1),
+                             "returncode": "timeout", "log": f"{capture_name}.txt"})
+        plan["warnings"].append(f"{script} 시간 예산 {args.time_budget} s 초과로 중단")
+        log(f"   시간 예산 {args.time_budget} s 초과 — 중단")
+        save()
+        return False, "timeout"
     text = "\n".join(line for line in (proc.stdout + proc.stderr).splitlines() if "swig/python detected" not in line)
     (args.out / f"{capture_name}.txt").write_text(text, encoding="utf-8")
     plan["runs"].append({"script": script, "args": [str(a) for a in arguments], "seconds": round(time.time() - t0, 1),
@@ -286,13 +298,29 @@ if not is_step:
             if keep is None:
                 pause()
             est = mesh.area / ((keep / 2) ** 2) * 0.7
-            local = est > 2e6
-            plan["route"] = "3-wrap-keep-openings" + ("-local" if local else "")
-            arguments = ["--in", work, "--out", args.out / "run", "--no-mirror", "--wrap", "--keep-openings-above", keep,
-                         "--force-wrap", "--smooth-seams"] + (["--local-wrap", "--wrap-alpha-div", 330] if local else []) + (["--no-render"] if args.no_render else [])
-            if local:
-                decide("국소 재랩 사용", f"전역 가는 알파의 삼각형 추정 {est/1e6:.1f} M > 2 M")
+            area_m2 = mesh.area / 1e6
+            diag_mm = float(np.linalg.norm(mesh.extents))
+            # An open mesh cannot take the local re-wrap (the cut piece needs a closed
+            # reference), and a fine alpha over a big open car does not finish: GT-R
+            # (77 m², 55k open edges) at 6.5 mm ran past an hour. Coarse alpha then,
+            # and the closed-openings table goes to the customer instead of a promise.
+            coarse = area_m2 >= 30.0 or len(mesh.faces) >= 1_000_000
+            plan["route"] = "3-wrap-keep-openings" + ("-coarse" if coarse else "")
+            if coarse:
+                decide("거친 알파 15 mm 로 감싸고 닫힌 자리는 보고", f"열린 메쉬 표면적 {area_m2:.0f} m² / 삼각형 {len(mesh.faces):,}: 가는 알파 전역 랩은 시간 안에 안 끝남")
+                arguments = ["--in", work, "--out", args.out / "run", "--no-mirror", "--wrap", "--wrap-alpha-div", round(diag_mm / 15.0, 1),
+                             "--force-wrap", "--smooth-seams"] + (["--no-render"] if args.no_render else [])
+            else:
+                arguments = ["--in", work, "--out", args.out / "run", "--no-mirror", "--wrap", "--keep-openings-above", keep,
+                             "--force-wrap", "--smooth-seams"] + (["--no-render"] if args.no_render else [])
             ok, text = run("prepare_geometry.py", arguments, "run_wrap")
+            if text == "timeout" and not coarse:
+                decide("거친 알파 15 mm 로 재실행", "가는 알파 랩이 시간 예산을 넘음")
+                coarse = True
+                plan["route"] = "3-wrap-keep-openings-coarse"
+                arguments = ["--in", work, "--out", args.out / "run", "--no-mirror", "--wrap", "--wrap-alpha-div", round(diag_mm / 15.0, 1),
+                             "--force-wrap", "--smooth-seams"] + (["--no-render"] if args.no_render else [])
+                ok, text = run("prepare_geometry.py", arguments, "run_wrap2")
             out_stl = args.out / "run" / ("wrap_smooth.stl" if (args.out / "run" / "wrap_smooth.stl").exists() else "wrap.stl")
             if out_stl.exists():
                 w = trimesh.load(out_stl, force="mesh"); w.merge_vertices()
@@ -317,7 +345,12 @@ if not is_step:
             if closed_txt.exists():
                 gaps = [float(m) for m in re.findall(r"틈 ≈\s*([\d.]+) mm", closed_txt.read_text())]
                 bad = [g for g in gaps if g >= keep]
-                check(f"{keep:.0f} mm 이상 구멍은 열려 있음", not bad, f"닫힌 자리 중 {keep:.0f} mm 이상: {len(bad)}개")
+                if coarse:
+                    ask("accept_coarse_closures", f"거친 알파(15 mm)라 {keep:.0f} mm 이상 틈 {len(bad)}곳이 닫혔습니다 (wrap_closed.txt). 이대로 쓸까요, 아니면 정리된 모델을 주시겠습니까?",
+                        "accept", "열린 패널 이음새가 많은 메쉬는 가는 알파로 감쌀 수 없음", kind="choice", choices=["accept", "provide_clean_model"],
+                        evidence=[str(closed_txt)])
+                else:
+                    check(f"{keep:.0f} mm 이상 구멍은 열려 있음", not bad, f"닫힌 자리 중 {keep:.0f} mm 이상: {len(bad)}개")
             plan["deliverables"].append(str(out_stl))
             finish("done" if ok else "failed")
         else:
