@@ -1,7 +1,7 @@
 """Local web page for the controller: questions with proposals and evidence, an
 answer form that resumes plan_geometry.py, and a chat with the AI controller.
 
-    plan_ui.py --in X.stp --dir var/runs/plan-x [--port 8765] [--model openai/gpt-oss-120b]
+    plan_ui.py --in X.stp --dir var/runs/plan-x [--port 8765] [--model openai/gpt-5.6-terra]
 
 The chat model sees plan.json (measurements, decisions, checks, open questions)
 and helps the customer decide; it cannot run anything. When it proposes answers
@@ -24,7 +24,8 @@ ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDe
 ap.add_argument("--in", dest="src", type=Path, required=True)
 ap.add_argument("--dir", type=Path, required=True, help="the controller's --out directory")
 ap.add_argument("--port", type=int, default=8765)
-ap.add_argument("--model", default=os.environ.get("PRIME_MODEL", "openai/gpt-oss-120b"))
+ap.add_argument("--model", default=os.environ.get("PRIME_MODEL", "openai/gpt-5.6-terra"),
+                help="Prime Inference model id; PRIME_MODEL overrides. Measured 2026-09-14: terra 2.5 s, gpt-oss-120b 5.2 s on the same question, both returned a valid answer block")
 ap.add_argument("--no-chat", action="store_true", help="page without the model (no API calls)")
 args = ap.parse_args()
 
@@ -50,7 +51,8 @@ choice → 선택지 문자열). 한국어로, 짧게, 결론부터."""
 def digest():
     plan = json.loads((DIR / "plan.json").read_text()) if (DIR / "plan.json").exists() else {}
     keep = {k: plan.get(k) for k in ("status", "route", "diagnosis", "decisions", "checks", "questions", "assumptions", "deliverables", "warnings")}
-    return json.dumps(keep, ensure_ascii=False)[:24000]
+    # terra takes a 1.05 M context, so the whole plan fits; the cap is only a guard
+    return json.dumps(keep, ensure_ascii=False)[:120000]
 
 
 def chat(history):
