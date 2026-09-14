@@ -179,6 +179,10 @@ def pause():
 
 
 def finish(status="done"):
+    if status == "done" and any(not c["ok"] for c in plan["checks"][-3:]):
+        status = "done_with_failed_checks"
+    if plan.get("status") == "needs_customer":
+        status = "needs_customer"
     plan["status"] = status
     QUESTIONS.write_text("[]")
     save()
@@ -390,10 +394,30 @@ if not is_step:
                     plan["route"] = "C-flat-floor-wrap (after leak)"
                     ok, text = run("flat_floor_wrap.py", ["--in", work, "--out", args.out / "assumed", "--floor-z", fz, "--alpha-div", 360], "flatfloor")
                     out_stl = args.out / "assumed" / "wrapped.stl"
+                    fill = 0.0
                     if out_stl.exists():
                         w = trimesh.load(out_stl, force="mesh"); w.merge_vertices()
                         fill = abs(w.volume) / float(np.prod(w.extents))
-                        check("평바닥 랩 채움률 0.3~0.6", 0.3 <= fill <= 0.6, f"{fill:.2f}")
+                    if not check("평바닥 랩 채움률 0.3~0.6", 0.3 <= fill <= 0.6, f"{fill:.2f}", "알파를 29 mm(대각선/180)로 올려 이음새를 덮고 재시도"):
+                        # the seams are wider than the alpha (GT-R: panel gaps force a 29 mm floor, measured before)
+                        decide("알파 29 mm 로 재시도", f"평바닥을 넣어도 채움률 {fill:.2f}: 이음새가 랩 알파보다 넓음")
+                        ok, text = run("flat_floor_wrap.py", ["--in", work, "--out", args.out / "assumed29", "--floor-z", fz, "--alpha-div", 180], "flatfloor29")
+                        out29 = args.out / "assumed29" / "wrapped.stl"
+                        fill29 = 0.0
+                        if out29.exists():
+                            w = trimesh.load(out29, force="mesh"); w.merge_vertices()
+                            fill29 = abs(w.volume) / float(np.prod(w.extents))
+                        if check("평바닥 랩 29 mm 채움률 0.3~0.6", 0.3 <= fill29 <= 0.6, f"{fill29:.2f}"):
+                            out_stl = out29
+                            ask("accept_coarse_29mm", "이음새가 넓어 29 mm 알파로만 속이 찹니다. 29 mm 결과(작은 틈·덕트는 닫힘)를 쓸까요, 정리된 모델을 주시겠습니까?",
+                                "accept", "29 mm 미만 틈은 전부 닫힌 상태", kind="choice", choices=["accept", "provide_clean_model"])
+                        else:
+                            ask("seams_too_wide", "평바닥과 29 mm 알파로도 속이 찹니다. 이음새가 그보다 넓습니다. 정리된 모델(이음새 봉합)을 주시거나, 닫을 자리를 지정해 주세요.",
+                                "provide_clean_model", f"채움률 15 mm {fill:.2f}, 29 mm {fill29:.2f}", kind="choice", choices=["provide_clean_model", "specify_closures"])
+                            plan["status"] = "needs_customer"
+                            save()
+                            if not args.assume_defaults:
+                                pause()
             closed_txt = args.out / "run" / "wrap_closed.txt"
             if closed_txt.exists():
                 rows_c = re.findall(r"([\d.]+) cm²\s+\(\s*([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\).*?틈 ≈\s*([\d.]+) mm", closed_txt.read_text())
