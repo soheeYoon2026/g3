@@ -151,6 +151,53 @@
      "tol": 6
     }
    ]
+  },
+  {
+   "name": "casa-assembly-heal",
+   "what": "부품 25개 합본(크랙 14곳)을 닫지 않는 재표면화로 수밀화 — LES 쪽 실사례",
+   "reference": "~/다운로드/casa_prep/CAS-A_assembled_signfix.stl",
+   "candidate": "~/다운로드/casa_prep/CAS-A_assembled_healed_v3mm.stl",
+   "checks": [
+    {
+     "tool": "measure_mesh",
+     "on": "candidate",
+     "key": "watertight",
+     "expect": true
+    },
+    {
+     "tool": "measure_mesh",
+     "on": "candidate",
+     "key": "bodies",
+     "expect": 5,
+     "tol": 0
+    },
+    {
+     "tool": "measure_mesh",
+     "on": "candidate",
+     "key": "volume_m3",
+     "expect": 8.4048,
+     "tol": 0.05
+    },
+    {
+     "tool": "list_openings",
+     "on": "candidate",
+     "key": "open_loops",
+     "expect": 0,
+     "tol": 0
+    },
+    {
+     "tool": "compare_to_reference",
+     "key": "distance_p90_mm",
+     "expect": 0.04,
+     "tol": 0.3
+    },
+    {
+     "tool": "compare_to_reference",
+     "key": "added_area_share",
+     "expect": 0.0022,
+     "tol": 0.004
+    }
+   ]
   }
  ]
 }
