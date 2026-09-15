@@ -154,7 +154,7 @@
   },
   {
    "name": "casa-assembly-heal",
-   "what": "부품 25개 합본(크랙 14곳)을 닫지 않는 재표면화로 수밀화 — LES 쪽 실사례",
+   "what": "부품 25개 합본(크랙 14곳)을 닫지 않는 재표면화로 수밀화 — LES 쪽 실사례. 2026-09-15 LES 4단계 파이프라인에서 이 파일로 상자 여유 검사까지 통과하고 완주함",
    "reference": "~/다운로드/casa_prep/CAS-A_assembled_signfix.stl",
    "candidate": "~/다운로드/casa_prep/CAS-A_assembled_healed_v3mm.stl",
    "checks": [
