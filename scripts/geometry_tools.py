@@ -73,12 +73,32 @@ def list_openings(path: str, top: int = 12) -> dict:
     return {"file": str(path), "open_loops": len(loops), "largest": rows}
 
 
+def _same_frame(a, b) -> dict:
+    """두 메쉬가 같은 좌표계·같은 단위인가. 아니면 거리 측정이 그럴듯한 쓰레기가 된다.
+
+    오늘(2026-09-15~16) 이 계열로 두 번 당했다: 통제기가 자기 출력을 다시 환산해 4.6 m 차가 117 m 가 됐고,
+    CAS-A 뷰어 메쉬가 캡 이전 단계라 표식이 엉뚱한 자리를 가리켰다. 값이 안 튀고 조용히 틀린다.
+    """
+    ea, eb = a.extents, b.extents
+    ratio = float(max(ea.max() / max(eb.max(), 1e-9), eb.max() / max(ea.max(), 1e-9)))
+    lo = np.maximum(a.bounds[0], b.bounds[0])
+    hi = np.minimum(a.bounds[1], b.bounds[1])
+    overlap = float(np.prod(np.clip(hi - lo, 0, None)) / max(np.prod(ea), np.prod(eb), 1e-9))
+    note = ""
+    if ratio > 1.2:
+        note = f"크기가 {ratio:.2f} 배 다릅니다 — 단위나 축이 다를 수 있습니다"
+    elif overlap < 0.5:
+        note = f"경계상자가 {overlap*100:.0f} %만 겹칩니다 — 다른 좌표계이거나 다른 단계의 형상일 수 있습니다"
+    return {"extent_ratio": round(ratio, 3), "bbox_overlap": round(overlap, 3), "frame_warning": note}
+
+
 def compare_to_reference(candidate: str, reference: str, web_distance_mm: float = 1.5, samples: int = 200000) -> dict:
     """닫은 형상이 원본에서 얼마나 떨어졌는지와, 틈을 건너뛰어 덧댄 면적·패치 목록."""
     import igl
     import trimesh
     ref = _load(reference)
     cand = _load(candidate)
+    frame = _same_frame(cand, ref)
     RV = np.ascontiguousarray(ref.vertices, np.float64)
     RF = np.ascontiguousarray(ref.faces, np.int64)
     P = cand.sample(int(samples))
@@ -103,7 +123,15 @@ def compare_to_reference(candidate: str, reference: str, web_distance_mm: float 
                             "centre_mm": [round(float(v), 0) for v in (C[sel] * A[sel, None]).sum(0) / A[sel].sum()],
                             "extent_mm": [round(float(v), 0) for v in (C[sel].max(0) - C[sel].min(0))],
                             "bridged_gap_mm": round(2.0 * float(dc[sel].max()), 0)})
-    return {"candidate": str(candidate), "reference": str(reference),
+    # a median far from zero means these are not the same surface: a different stage of the
+    # same model, or a different model. Bounding boxes can still look fine (CAS-A, 2026-09-16:
+    # 82 % overlap, same size, median 115 mm apart because the viewer mesh predated the caps).
+    diag = float(np.linalg.norm(ref.extents))
+    p50 = float(np.percentile(d, 50))
+    if p50 > 0.005 * diag and not frame["frame_warning"]:
+        frame["frame_warning"] = (f"중앙 이탈 {p50:.1f} mm 가 대각선의 {p50/diag*100:.1f} % 입니다 — "
+                                  "같은 형상의 다른 단계이거나 다른 형상일 수 있습니다")
+    return {"candidate": str(candidate), "reference": str(reference), **frame,
             "distance_p50_mm": round(float(np.percentile(d, 50)), 2),
             "distance_p90_mm": round(float(np.percentile(d, 90)), 2),
             "distance_p99_mm": round(float(np.percentile(d, 99)), 1),
