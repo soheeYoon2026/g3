@@ -34,7 +34,7 @@ ap.add_argument("--sew", type=float, default=0.5, help="mm; sewing tolerance")
 ap.add_argument("--min-loop", type=float, default=30.0, help="mm; smaller loops are ignored")
 ap.add_argument("--max-loops", type=int, default=0, help="0 = all")
 ap.add_argument("--reach", type=float, default=600.0, help="mm; farthest the wrap may pull an interior vertex")
-ap.add_argument("--plane-tol", type=float, default=3.0, help="mm; the wrap counterpart counts as a plane when 90 % of projected points are within this")
+ap.add_argument("--plane-tol", type=float, default=3.0, help="mm; the wrap counterpart counts as a plane when 90%% of projected points are within this")
 ap.add_argument("--floor-z", type=float, help="mm; the flat-floor assumption of the wrap stage. A rim lying below it whose "
                      "footprint is over 1 m² is extruded up to this plane and closed with one planar face")
 ap.add_argument("--max-fold", type=float, default=0.10, help="skip a cap whose share of dihedral angles over 120 deg exceeds this")
