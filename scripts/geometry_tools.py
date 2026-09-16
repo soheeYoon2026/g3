@@ -27,7 +27,7 @@ MAX_BYTES = 400 * 1024 * 1024
 
 def _load(path, merge=True):
     import trimesh
-    p = Path(path)
+    p = Path(path).expanduser()   # 문서 예시가 ~ 경로를 쓴다
     if not p.exists():
         raise FileNotFoundError(f"파일이 없습니다: {p}")
     if p.stat().st_size > MAX_BYTES:
