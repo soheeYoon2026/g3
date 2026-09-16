@@ -6,6 +6,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+import pytest
+
+# scripts/prepare_g2_fields.py 가 import 시점에 VTK 를 요구한다. 이 환경에는 없다.
+# 조용히 건너뛰지 않고 이유를 찍어 둔다 — 안 도는 시험은 통과가 아니다.
+try:
+    import vtk  # noqa: F401
+    HAVE_VTK = True
+except Exception:
+    HAVE_VTK = False
+
+needs_vtk = pytest.mark.skipif(not HAVE_VTK, reason="VTK 미설치 (pip install vtk) — 이 시험은 안 돈 것이다")
+
+
 def load_script(name):
     path = ROOT / "scripts" / name
     sys.path.insert(0, str(path.parent))
@@ -18,6 +31,7 @@ def load_script(name):
         sys.path.pop(0)
 
 
+@needs_vtk
 def test_g2_all_buckets_inventory_schema():
     module = load_script("prepare_smoke_g2_s3.py")
     row = module.normalize_inventory_row({
