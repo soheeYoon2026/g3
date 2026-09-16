@@ -34,6 +34,13 @@ def test_every_test_asserts_something():
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.name.startswith("test"):
                 continue
             body = ast.dump(node)
-            if not any(isinstance(n, ast.Assert) for n in ast.walk(node)) and "raises" not in body:
-                empty.append(f"{path.name}::{node.name}")
-    assert not empty, "단언이 없는 시험: " + ", ".join(empty)
+            if any(isinstance(n, ast.Assert) for n in ast.walk(node)) or "raises" in body:
+                continue
+            # 정당한 예외가 있다: "아무 예외도 안 나는 것" 자체가 단언인 양성 대조 같은 것.
+            # 무조건 면제하면 규칙이 죽고 무조건 실패로 두면 늑대가 되니, 본문에 이유를 적게 한다.
+            lines = path.read_text().splitlines()[node.lineno - 1: getattr(node, "end_lineno", node.lineno)]
+            if any("NO_ASSERT_OK:" in line for line in lines):
+                continue
+            empty.append(f"{path.name}::{node.name}")
+    assert not empty, ("단언이 없는 시험: " + ", ".join(empty)
+                       + "  — 의도한 것이면 함수 본문에 '# NO_ASSERT_OK: <이유>' 를 적으세요")
