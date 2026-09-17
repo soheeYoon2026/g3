@@ -25,6 +25,9 @@ def main():
     ap.add_argument("--vref", type=float, default=0.0,
                     help="기준 속도 (m/s). 주면 전압 계수 Cp_t = Cp + (|U|/vref)^2 도 낸다. "
                          "비점성 접근류에서 1.0 이어야 하고, 1.0 을 넘으면 어디선가 에너지가 생긴 것이다.")
+    ap.add_argument("--span", action="store_true",
+                    help="자유류 Cp 를 같이 재고 '정체 − 자유류' 진폭을 낸다. 이 진폭은 1.000 이어야 하고, "
+                         "빼기라서 기준점 보정(offset)이 무엇이든 상쇄된다. 즉 척도만 시험한다.")
     ap.add_argument("--coarsen", default="",
                     help="쉼표로 준 칸 크기(mm)로 장을 일부러 굵게 만들어 통계가 어느 쪽으로 움직이는지 본다. "
                          "격자 굵기가 값을 올리는지 내리는지를 재는 대조군이다.")
@@ -96,6 +99,24 @@ def main():
         p(f"    |Cp_t − 1| > 0.05 인 셀 {int(bad.sum())} / {len(q)} ({bad.sum()/len(q)*100:.1f} %)")
         p("    읽는 법: 정체 Cp 중앙값이 1 을 넘는데 Cp_t 도 같이 넘으면 수치 결함이다.")
         p("            Cp 만 넘고 Cp_t 가 1 이면 속도장 쪽(기준속도·보정)을 먼저 의심한다.")
+
+    if a.span:
+        L = hi[0] - lo[0]
+        far = C[:, 0] < lo[0] - 2 * L
+        p("")
+        p("  · 진폭 시험 — '정체 − 자유류' 는 규약과 무관하게 1.000 이어야 한다")
+        p("    (빼기라서 기준점 보정이 무엇이든 상쇄된다. 척도만 시험하는 잣대다.)")
+        if not far.any():
+            p("    자유류 구역(코 앞 2 차체길이 밖)에 셀이 없다 — 계산영역이 짧다")
+        else:
+            cp_inf = float(np.median(Cp[far]))
+            p(f"    자유류 Cp∞ (코 앞 2 차체길이 밖, 셀 {int(far.sum())})   {cp_inf:+.5f}")
+            if Cpt is not None:
+                sp_far = np.linalg.norm(np.asarray(vol["Velocity"]), axis=1)[far]
+                p(f"    자유류 |U| 중앙값 {np.median(sp_far):.3f} (기준 {a.vref:g}, 어긋남 "
+                  f"{(np.median(sp_far)/a.vref-1)*100:+.2f} %)")
+            p(f"    정체창 Cp 최대 {Cp[m].max():+.5f}  →  진폭 {Cp[m].max()-cp_inf:+.5f}")
+            p("    진폭이 1 보다 크면 기준동압이 그만큼 작게 잡힌 것이다(보정으로는 안 고쳐진다).")
 
     if a.coarsen:
         p("")
