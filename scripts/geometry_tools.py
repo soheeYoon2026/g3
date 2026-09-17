@@ -210,6 +210,78 @@ def closed_openings(reference: str, candidate: str, keep_above_mm: float,
             "how": "덧댄 패치가 건너뛴 틈이 keep_above_mm 이상이면 닫힌 것으로 본다"}
 
 
+def _silhouette_m2(mesh, faces_mask=None, pixel_mm: float = 2.0) -> float:
+    """yz 평면에 래스터해 겹침 없는 투영 면적. 법선 합은 안 쓴다(속면이 이중 계산된다)."""
+    T = mesh.triangles[:, :, 1:] if faces_mask is None else mesh.triangles[faces_mask][:, :, 1:]
+    if not len(T):
+        return 0.0
+    lo = T.reshape(-1, 2).min(axis=0)
+    hi = T.reshape(-1, 2).max(axis=0)
+    h = float(pixel_mm)
+    nx, ny = int((hi[0] - lo[0]) / h) + 2, int((hi[1] - lo[1]) / h) + 2
+    grid = np.zeros((nx, ny), bool)
+    for tri in T:   # 삼각형 경계상자 채우기 = 보수적 상한
+        a = ((tri[:, 0].min() - lo[0]) / h, (tri[:, 0].max() - lo[0]) / h)
+        b = ((tri[:, 1].min() - lo[1]) / h, (tri[:, 1].max() - lo[1]) / h)
+        grid[int(a[0]):int(a[1]) + 1, int(b[0]):int(b[1]) + 1] = True
+    return float(grid.sum() * h * h / 1e6)
+
+
+def region_profile(candidate: str, reference: str = "", bands: int = 8, axis: str = "x",
+                   web_distance_mm: float = 1.5, pixel_mm: float = 2.0) -> dict:
+    """흐름 방향 구간별 표면적과, 원본이 있으면 구간별로 덧댄 면적. 기저면 비도 함께.
+
+    부위 마스크는 조용히 틀린다. 그래서 자체 검사를 붙였다: **기저면 투영이 정면 투영보다 크면
+    마스크가 틀린 것**이다(옆 세션 2026-09-17: "뒤 1/4 안에서 n_x>0.7" 마스크가 경사면·언더바디를
+    잡아 비가 3.59 로 나왔다. 1 을 넘을 수 없는 양이다).
+    """
+    import igl
+    ax = {"x": 0, "y": 1, "z": 2}[axis.lower()]
+    cand = _load(candidate)
+    C = np.asarray(cand.triangles_center, float)
+    A = cand.area_faces
+    N = np.asarray(cand.face_normals, float)
+    lo, hi = cand.bounds
+    span = hi[ax] - lo[ax]
+    edges = np.linspace(lo[ax], hi[ax], int(bands) + 1)
+    added = None
+    if reference:
+        ref = _load(reference)
+        d = np.sqrt(igl.point_mesh_squared_distance(np.ascontiguousarray(C, np.float64),
+                                                    np.ascontiguousarray(ref.vertices, np.float64),
+                                                    np.ascontiguousarray(ref.faces, np.int64))[0])
+        added = d > float(web_distance_mm)
+    rows = []
+    for i in range(int(bands)):
+        sel = (C[:, ax] >= edges[i]) & (C[:, ax] < edges[i + 1] if i < bands - 1 else C[:, ax] <= edges[i + 1])
+        row = {"band": i + 1, "from_mm": round(float(edges[i]), 0), "to_mm": round(float(edges[i + 1]), 0),
+               "area_cm2": round(float(A[sel].sum()) / 100, 0)}
+        if added is not None:
+            row["added_cm2"] = round(float(A[sel & added].sum()) / 100, 1)
+            row["added_share"] = round(float(A[sel & added].sum() / max(A[sel].sum(), 1e-9)), 4)
+        rows.append(row)
+    frontal = _silhouette_m2(cand, None, pixel_mm)
+    rear = (C[:, ax] >= lo[ax] + 0.75 * span) & (N[:, ax] > 0.5)
+    base = _silhouette_m2(cand, rear, pixel_mm)
+    out = {"file": str(candidate), "bands": rows,
+           "frontal_projection_m2": round(frontal, 4), "base_projection_m2": round(base, 4),
+           "base_over_frontal": round(base / max(frontal, 1e-9), 3)}
+    if out["base_over_frontal"] > 1.0:
+        out["mask_error"] = ("기저면 투영이 정면 투영보다 큽니다 — 부위 마스크가 경사면이나 언더바디를 "
+                             "잡고 있습니다. 이 값을 쓰지 마세요")
+    if added is not None:
+        tot = float(A[added].sum())
+        thirds = []
+        for name, m in (("front_quarter", C[:, ax] < lo[ax] + 0.25 * span),
+                        ("middle_half", (C[:, ax] >= lo[ax] + 0.25 * span) & (C[:, ax] < lo[ax] + 0.75 * span)),
+                        ("rear_quarter", C[:, ax] >= lo[ax] + 0.75 * span)):
+            thirds.append({"where": name, "added_cm2": round(float(A[m & added].sum()) / 100, 0),
+                           "share_of_added": round(float(A[m & added].sum() / max(tot, 1e-9)), 3)})
+        out["added_by_region"] = thirds
+        out["added_area_share_total"] = round(float(tot / A.sum()), 4)
+    return out
+
+
 TOOLS = {
     "measure_mesh": (measure_mesh, {
         "path": {"type": "string", "description": "STL/OBJ 경로"}}, ["path"]),
@@ -225,6 +297,10 @@ TOOLS = {
         "axis": {"type": "string", "enum": ["x", "y", "z"]},
         "value_mm": {"type": "number"}, "web_distance_mm": {"type": "number"}},
         ["reference", "candidate", "axis", "value_mm"]),
+    "region_profile": (region_profile, {
+        "candidate": {"type": "string"}, "reference": {"type": "string", "description": "있으면 구간별 덧댄 면적도 낸다"},
+        "bands": {"type": "integer"}, "axis": {"type": "string", "enum": ["x", "y", "z"]},
+        "web_distance_mm": {"type": "number"}, "pixel_mm": {"type": "number"}}, ["candidate"]),
     "closed_openings": (closed_openings, {
         "reference": {"type": "string"}, "candidate": {"type": "string"},
         "keep_above_mm": {"type": "number", "description": "이 크기 이상은 열린 채로 남아야 한다"},
