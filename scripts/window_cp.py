@@ -22,6 +22,9 @@ def main():
     ap.add_argument("--window", required=True,
                     help="상대좌표 창 'x0,x1,y0,y1,z0,z1' 예: -0.030,-0.004,0.30,0.70,0.20,0.70")
     ap.add_argument("--slabs", type=int, default=0, help="x 를 N 등분해 접근 단면도 같이 낸다")
+    ap.add_argument("--coarsen", default="",
+                    help="쉼표로 준 칸 크기(mm)로 장을 일부러 굵게 만들어 통계가 어느 쪽으로 움직이는지 본다. "
+                         "격자 굵기가 값을 올리는지 내리는지를 재는 대조군이다.")
     ap.add_argument("--out")
     a = ap.parse_args()
 
@@ -76,6 +79,20 @@ def main():
         yz = np.all((C[:, 1:] >= box_lo[1:]) & (C[:, 1:] <= box_hi[1:]), axis=1)
         for i in range(a.slabs):
             stats(f"x {e[i]:+.4f}..{e[i+1]:+.4f}", yz & (C[:, 0] >= e[i]) & (C[:, 0] < e[i+1]))
+
+    if a.coarsen:
+        p("")
+        p("  · 대조군 — 장을 일부러 굵게 만들면 어디로 움직이나")
+        p("    (주의: 푼 장을 사후 평균낸 것이라 '표본 추출' 성분만 잰다. 굵은 격자로 다시 푸는")
+        p("     것은 해 자체도 바꾸므로 여기서 재는 값이 전부가 아니다.)")
+        cp_w, V_w, C_w = Cp[m], V[m], C[m]
+        p(f"    {'원본 그대로':<26s} 중앙값 {np.median(cp_w):+.4f}  최대 {cp_w.max():+.4f}")
+        for s in [float(x) for x in a.coarsen.split(",") if x.strip()]:
+            g = np.floor((C_w - box_lo) / (s / 1000.0)).astype(np.int64)
+            key = g[:, 0] * 1000000 + g[:, 1] * 1000 + g[:, 2]
+            u, inv = np.unique(key, return_inverse=True)
+            avg = np.bincount(inv, weights=cp_w * V_w) / np.bincount(inv, weights=V_w)
+            p(f"    {str(int(s)) + ' mm 균일칸 체적평균':<26s} 중앙값 {np.median(avg):+.4f}  최대 {avg.max():+.4f}  칸 {len(u)}")
 
     txt = "\n".join(out)
     print(txt)
