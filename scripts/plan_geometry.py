@@ -16,11 +16,16 @@ Answers are a JSON object {question_id: value}; a value of null keeps the propos
 """
 
 import argparse
+import atexit
+import os
+import gc
 import json
 import re
 import subprocess
 import sys
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +34,9 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 from aox_g3 import ledger
+from aox_g3.run_state import RunLock, write_json
+from aox_g3.measurement_cache import cached_thickness
+from aox_g3.quality_display import healing_result
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("--in", dest="src", type=Path, required=True)
@@ -44,12 +52,19 @@ args = ap.parse_args()
 import trimesh  # noqa: E402
 
 args.out.mkdir(parents=True, exist_ok=True)
+try:
+    RUN_LOCK = RunLock(args.out)
+except RuntimeError as exc:
+    print(str(exc), flush=True)
+    sys.exit(2)
+atexit.register(RUN_LOCK.close)
 PLAN = args.out / "plan.json"
 QUESTIONS = args.out / "questions.json"
 LOG = open(args.out / "plan_log.txt", "a", encoding="utf-8")
 python = sys.executable
+STATE_IO_LOCK = threading.RLock()
 
-plan = json.loads(PLAN.read_text()) if PLAN.exists() else {
+plan = json.loads(PLAN.read_text(encoding="utf-8")) if PLAN.exists() else {
     "input": str(args.src), "out": str(args.out), "status": "running", "diagnosis": {}, "route": None,
     "decisions": [], "runs": [], "checks": [], "questions": [], "answers": {}, "assumptions": [],
     "deliverables": [], "warnings": []}
@@ -58,21 +73,92 @@ if args.answers and args.answers.exists():
     answers.update({k: v for k, v in json.loads(args.answers.read_text()).items() if v is not None})
 plan["answers"] = answers
 plan["status"] = "running"
+plan["runtime"] = {"protocol": 1, "pid": os.getpid(), "started_at": time.time()}
+
+
+def finalize_runtime():
+    if plan.get("status") == "running":
+        plan["status"] = "failed"
+        plan["runtime"].setdefault("error", "완료 상태 없이 실행이 종료되었습니다.")
+    plan["runtime"]["ended_at"] = time.time()
+    write_json(PLAN, plan)
+    LOG.close()
+
+
+def runtime_exception(kind, value, traceback):
+    plan["status"] = "failed"
+    plan["runtime"]["error"] = f"{kind.__name__}: {value}"
+    sys.__excepthook__(kind, value, traceback)
+
+
+sys.excepthook = runtime_exception
+atexit.register(finalize_runtime)
+write_json(PLAN, plan)
 
 
 def log(msg):
-    print(msg)
-    LOG.write(msg + "\n")
-    LOG.flush()
+    # Keep the public vocabulary bounded; stage and state belong in the message.
+    tags = {
+        "실행": ("진행", ""), "입력": ("진행", "입력: "),
+        "초기 검사": ("진단", "초기 검사: "), "분류": ("진단", "분류: "),
+        "미리보기": ("진행", "미리보기: "), "두께 측정": ("진행", "두께 측정: "),
+        "바닥 검사": ("진단", "바닥 검사: "), "재사용": ("진행", "재사용: "),
+        "건너뜀": ("진행", "완료 단계 재사용: "), "경로 선택": ("수리", "방법 선택: "),
+        "결정": ("수리", "방법 선택: "), "가정": ("질문", "제안값 적용: "),
+        "답변 대기": ("질문", "답변 대기 — "), "경고": ("진행", "주의 — "),
+        "끝": ("진행", "종료: "), "형상 보고": ("진단", "힐링 결과: "),
+    }
+    match = re.match(r"^\[([^]]+)\]\s*(.*)$", msg)
+    if match and match.group(1) in tags:
+        tag, description = tags[match.group(1)]
+        msg = f"[{tag}] {description}{match.group(2)}"
+    with STATE_IO_LOCK:
+        if msg.startswith("["):
+            plan["runtime"]["current_stage"] = msg
+            plan["runtime"]["updated_at"] = time.time()
+            write_json(PLAN, plan)
+        print(msg, flush=True)
+        LOG.write(msg + "\n")
+        LOG.flush()
+
+
+def ray_hits_batched(intersector, origins, directions, batch_size=25, progress=log):
+    """First hits with global ray indices, without one huge candidate array."""
+    locations, ray_indices = [], []
+    start, total = 0, len(origins)
+    while start < total:
+        stop = min(start + batch_size, total)
+        try:
+            loc, ray, _ = intersector.intersects_location(
+                origins[start:stop], directions[start:stop], multiple_hits=False)
+        except MemoryError:
+            gc.collect()
+            if batch_size == 1:
+                raise RuntimeError(
+                    "두께 측정 메모리 부족: 광선 1개도 계산할 수 없습니다. "
+                    "측정값을 추정하지 않고 중단합니다.") from None
+            batch_size = max(1, batch_size // 2)
+            progress(f"[두께 측정] 메모리 부족 — 광선 묶음을 {batch_size}개로 줄여 재시도")
+            continue
+        if len(ray):
+            locations.append(loc)
+            ray_indices.append(np.asarray(ray, dtype=np.int64) + start)
+        start = stop
+        progress(f"[두께 측정] 광선 {start:,}/{total:,} (묶음 {batch_size}개)")
+    return (np.concatenate(locations) if locations else np.empty((0, 3)),
+            np.concatenate(ray_indices) if ray_indices else np.empty(0, dtype=np.int64))
 
 
 def save():
-    PLAN.write_text(json.dumps(plan, ensure_ascii=False, indent=1))
+    with STATE_IO_LOCK:
+        write_json(PLAN, plan)
 
 
-def decide(what, because, evidence=None):
+def decide(what, because, evidence=None, tag=None):
+    if tag is None:
+        tag = "진단" if what == "바닥이 없는 껍질" else "경로 선택"
     plan["decisions"].append({"what": what, "because": because, "evidence": evidence or {}})
-    log(f"[결정] {what}  ← {because}")
+    log(f"[{tag}] {what}  ← {because}")
     save()
 
 
@@ -186,26 +272,39 @@ def ask(qid, question, proposal, reason, kind="number", unit="", evidence=None, 
     return None
 
 
-def viewer_mesh(path, target=150_000):
+def viewer_mesh(path, target=150_000, loaded_mesh=None, face_count=None):
     """A light copy of the mesh for the page's 3D viewer (viewer.stl)."""
     out = args.out / "viewer.stl"
     try:
-        m = trimesh.load(path, force="mesh")
-        if len(m.faces) > target:
+        identity = {"input_hash": ledger.file_hash(Path(path)), "target": target, "max_error": 5.0, "version": 1}
+        if not args.force and out.exists() and plan.get("viewer_identity") == identity:
+            log("[미리보기] 저장된 프록시 재사용 — 같은 입력·설정")
+            return out
+        log("[미리보기] 원본 프록시 준비 중 — 수리 계산은 하지 않습니다")
+        m = loaded_mesh
+        if face_count is None:
+            m = trimesh.load(path, force="mesh") if m is None else m
+            face_count = len(m.faces)
+        if face_count > target:
             from meshlib import mrmeshpy as MR, mrmeshnumpy as MN
             ml = MR.loadMesh(str(path))
             ds = MR.DecimateSettings()
-            ds.maxDeletedFaces = int(len(m.faces) - target)
+            ds.maxDeletedFaces = int(face_count - target)
             ds.maxError = 5.0
             ds.packMesh = True
             MR.decimateMesh(ml, ds)
             m = trimesh.Trimesh(np.asarray(MN.getNumpyVerts(ml)), np.asarray(MN.getNumpyFaces(ml.topology)), process=False)
         m.export(out)
-        plan["viewer_mesh"] = "viewer.stl"
-        plan["viewer_bbox"] = [m.bounds[0].round(1).tolist(), m.bounds[1].round(1).tolist()]
-        save()
+        with STATE_IO_LOCK:
+            plan["viewer_mesh"] = "viewer.stl"
+            plan["viewer_identity"] = identity
+            plan["viewer_bbox"] = [m.bounds[0].round(1).tolist(), m.bounds[1].round(1).tolist()]
+            save()
+        log("[미리보기] 원본 프록시 생성 완료")
     except Exception as exc:
         plan["warnings"].append(f"viewer mesh 실패: {type(exc).__name__}: {exc}")
+        log(f"[경고] 프록시 미리보기 생성 실패: {type(exc).__name__}")
+        save()
     return out
 
 
@@ -222,11 +321,11 @@ def focus_render(mesh_path, point, span, name, title, mirror=False):
 
 def pause():
     pending = [q for q in plan["questions"] if "answer" not in q and not q.get("assumed")]
-    QUESTIONS.write_text(json.dumps(pending, ensure_ascii=False, indent=1))
+    QUESTIONS.write_text(json.dumps(pending, ensure_ascii=False, indent=1), encoding="utf-8")
     plan["status"] = "waiting_for_answers"
     save()
-    log(f"[정지] 고객 답이 필요한 질문 {len(pending)}개 → {QUESTIONS}")
-    log("      답을 answers.json 에 {id: value} 로 적고 --answers 로 다시 실행하거나, plan_ui.py 로 답하세요.")
+    log(f"[질문] 답변이 필요한 항목 {len(pending)}개")
+    log("[답변 대기] 브라우저에서 답을 선택하고 ‘답 저장 후 이어서 실행’을 누르세요.")
     sys.exit(3)
 
 
@@ -236,7 +335,7 @@ def finish(status="done"):
     if plan.get("status") == "needs_customer":
         status = "needs_customer"
     plan["status"] = status
-    QUESTIONS.write_text("[]")
+    QUESTIONS.write_text("[]", encoding="utf-8")
     save()
     log(f"[끝] {status}  산출물: " + ", ".join(plan["deliverables"]))
 
@@ -248,15 +347,45 @@ diag = plan["diagnosis"]
 diag["format"] = "STEP" if is_step else "mesh"
 
 if not is_step:
+    # Show native coordinates before asking which units/axis they represent.
+    # This only creates a display proxy; repair remains behind customer answers.
+    initial_identity = {"hash": ledger.file_hash(src), "version": 1,
+                        "trimesh": trimesh.__version__, "numpy": np.__version__}
+    cached_initial = plan.get("initial_mesh_diagnosis", {})
+    reuse_initial = (not args.force and cached_initial.get("identity") == initial_identity
+                     and cached_initial.get("status") == "done")
+    log("[입력] 파일 읽는 중 — 이어갈 단계 준비")
     mesh = trimesh.load(src, force="mesh")
-    mesh.merge_vertices()
-    ext = mesh.extents
-    _, counts = np.unique(mesh.edges_sorted, axis=0, return_counts=True)
-    open_share = float((counts == 1).sum() / max(1, len(counts)))
-    parts = mesh.split(only_watertight=False)
-    diag.update({"triangles": int(len(mesh.faces)), "extents": ext.round(2).tolist(), "bbox_min": mesh.bounds[0].round(2).tolist(),
-                 "bodies": int(len(parts)), "boundary_edge_share": round(open_share, 5), "watertight": bool(mesh.is_watertight)})
-    log(f"[진단] 메쉬 삼각형 {len(mesh.faces):,}  치수 {ext.round(1).tolist()}  몸체 {len(parts)}  경계 모서리 비율 {open_share*100:.3f} %")
+    face_count = len(mesh.faces)
+    if reuse_initial:
+        diag.update(cached_initial["diagnosis"])
+        ext = np.asarray(cached_initial["extents_exact"], dtype=float)
+        open_share = cached_initial["boundary_edge_share_exact"]
+        log("[초기 검사] 저장된 결과 재사용 — 같은 입력·검사 설정")
+        viewer_mesh(src, loaded_mesh=mesh.copy() if face_count <= 150_000 else None, face_count=face_count)
+        # Vertex normalization is needed by downstream geometry operations, not a re-diagnosis.
+        mesh.merge_vertices()
+    else:
+        proxy_source = mesh.copy() if face_count <= 150_000 else None
+        log("[초기 검사] 검사 중 — 미리보기 생성과 병렬 진행")
+        with ThreadPoolExecutor(max_workers=1) as preview_pool:
+            preview_future = preview_pool.submit(viewer_mesh, src, 150_000, proxy_source, face_count)
+            mesh.merge_vertices()
+            ext = mesh.extents
+            _, counts = np.unique(mesh.edges_sorted, axis=0, return_counts=True)
+            open_share = float((counts == 1).sum() / max(1, len(counts)))
+            parts = mesh.split(only_watertight=False)
+            measured = {"triangles": int(len(mesh.faces)), "extents": ext.round(2).tolist(),
+                        "bbox_min": mesh.bounds[0].round(2).tolist(), "bodies": int(len(parts)),
+                        "boundary_edge_share": round(open_share, 5), "watertight": bool(mesh.is_watertight)}
+            log("[초기 검사] 완료 — 미리보기 생성 종료 확인 중")
+            preview_future.result()
+        diag.update(measured)
+        plan["initial_mesh_diagnosis"] = {"identity": initial_identity, "status": "done",
+                                          "diagnosis": measured, "extents_exact": ext.tolist(),
+                                          "boundary_edge_share_exact": open_share}
+        save()
+        log(f"[진단] 메쉬 삼각형 {len(mesh.faces):,}  치수 {ext.round(1).tolist()}  몸체 {diag['bodies']}  경계 모서리 비율 {open_share*100:.3f} %")
 
     # units: a car is 3-6 m long
     longest = float(ext.max())
@@ -294,21 +423,39 @@ if not is_step:
         decide(f"입력을 mm·x길이축으로 변환 ({unit}, 길이축 {axis_ans})", "단위와 축은 자동 감지가 안 되므로 질문 뒤 변환", {"file": str(work)})
     ext = mesh.extents
     diag["extents_mm"] = ext.round(1).tolist()
-    viewer_mesh(work)
+    if scale != 1.0 or axis_ans != "x":
+        viewer_mesh(work)
 
-    # thin walls: inward first hit
-    big = max(mesh.split(only_watertight=False), key=lambda p: len(p.faces))
-    pts, fid = trimesh.sample.sample_surface(big, 3000, seed=0)
-    n = big.face_normals[fid]
-    loc, ray, _ = big.ray.intersects_location(pts - n * 0.05, -n, multiple_hits=False)
-    thick = np.linalg.norm(loc - (pts - n * 0.05)[ray], axis=1) if len(ray) else np.array([50.0])
-    t5 = float(np.percentile(thick, 5))
-    diag["thickness_p5_mm"] = round(t5, 2)
     diag["surface_area_m2"] = round(float(mesh.area) / 1e6, 2)
 
     if open_share < 1e-3:
         # ------------------------------------------------ closed mesh: resurface
-        decide("경로 D: 닫지 않는 재표면화", f"경계 모서리 비율 {open_share*100:.3f} % < 0.1 % (닫힌 입력)")
+        log(f"[분류] 열림 경계가 적은 메쉬 — 경계 비율 {open_share*100:.3f} % < 0.1 % (수밀 보증 아님)")
+        decide("경로 D: 닫지 않는 재표면화", "열림 경계 비율이 재표면화 경로 기준 미만")
+        # Only this route consumes wall thickness to propose its voxel size.
+        def measure_thickness():
+            big = max(mesh.split(only_watertight=False), key=lambda p: len(p.faces))
+            pts, fid = trimesh.sample.sample_surface(big, 3000, seed=0)
+            n = big.face_normals[fid]
+            log("[두께 측정] 측정 중 — 광선 3,000개를 작은 묶음으로 계산")
+            loc, ray = ray_hits_batched(big.ray, pts - n * 0.05, -n)
+            thick = np.linalg.norm(loc - (pts - n * 0.05)[ray], axis=1) if len(ray) else np.array([50.0])
+            return float(np.percentile(thick, 5))
+
+        settings = {"version": 1, "samples": 3000, "seed": 0, "offset_mm": 0.05,
+                    "percentile": 5, "batch_size": 25, "no_hit_mm": 50.0,
+                    "component": "largest_face_count", "numpy": np.__version__,
+                    "trimesh": trimesh.__version__}
+        t5, reused = cached_thickness(args.out / "thickness_measurement.json", work,
+                                      settings, measure_thickness, force=args.force)
+        diag["thickness_p5_mm"] = round(t5, 2)
+        diag["thickness_measurement"] = {"status": "reused" if reused else "measured",
+                                         "file": str(args.out / "thickness_measurement.json")}
+        if reused:
+            log(f"[두께 측정] 저장값 재사용 — {t5:.2f} mm, 같은 입력·설정")
+        else:
+            log(f"[두께 측정] 완료 — 두께 5% 분위 {t5:.2f} mm")
+        save()
         voxel_prop = float(np.clip(round(t5 / 2.5, 1), 0.6, 3.0))
         est = mesh.area / (voxel_prop ** 2) * 0.7
         if est > 1.5e8:
@@ -342,7 +489,11 @@ if not is_step:
             finish("failed")
     else:
         # ------------------------------------------------ open mesh
-        decide("열린 메쉬", f"경계 모서리 비율 {open_share*100:.2f} % ≥ 0.1 %")
+        diag.pop("thickness_p5_mm", None)
+        diag["thickness_measurement"] = {"status": "not_required", "reason": "열린 메쉬 랩 경로는 두께를 사용하지 않음"}
+        decide("열린 메쉬", f"경계 모서리 비율 {open_share*100:.3f} % ≥ 0.1 %", tag="분류")
+        log("[두께 측정] 생략 — 열린 메쉬 경로에서는 사용하지 않음")
+        log("[바닥 검사] 검사 중 — 아래쪽 광선으로 바닥 덮임 확인")
         # Is the underside there? Area of downward-facing surface in the lower third,
         # against the footprint. GT-R (no floor at all) has almost none; a car with
         # open panel seams still has its floor. The section scan alone cannot tell
@@ -365,6 +516,7 @@ if not is_step:
         low = seen & (first < lo[2] + 0.3 * H)
         coverage = float(low.sum() / max(1, seen.sum()))
         diag["underside_coverage"] = round(coverage, 3)
+        log(f"[바닥 검사] 광선 검사 완료 — 바닥 덮임률 {coverage*100:.1f} %")
         diag["underside_first_hit_median_frac"] = round(float(np.nanmedian((first - lo[2]) / H)), 3) if seen.any() else None
         ok, text = run("flat_floor_wrap.py", ["--in", work, "--out", args.out / "floorscan", "--no-wrap"], "floorscan")
         floor_summary = args.out / "floorscan" / "summary.json"
@@ -521,7 +673,10 @@ if not is_step:
             decide("경로 C: 평바닥 가정 + 랩", f"바닥 높이 제안 z={floor_prop} (단면 닫힘 또는 30 % 덮임 높이; 언더사이드 덮임률 {coverage*100:.0f} %)")
             fz = ask("floor_z_mm", f"평바닥을 z = {floor_prop} mm 에 둘까요? (단면 훑기가 찾은 첫 닫힘 높이)", floor_prop,
                      "지면 간극·언더바디 형상은 설계 의도라 고객 확인 필요; 절대 Cd 가 달라짐", unit="mm",
-                     evidence=[str(floor_summary)] + ([e] if (e := focus_render(work, [float(lo[0] + 0.5 * (hi[0] - lo[0])), float((lo[1] + hi[1]) / 2), float(floor_prop)], 1500, "floor", "평바닥 높이 후보 (아래에서)")) else []),
+                     # Do not render the full-resolution mesh before registering
+                     # the question: this can block for tens of minutes. The
+                     # viewer's plane_z marker supplies the visual floor guide.
+                     evidence=[str(floor_summary)] if floor_summary.exists() else [],
                      where={"plane_z": float(floor_prop)})
             if fz is None:
                 pause()
@@ -564,7 +719,9 @@ else:
     summary = json.loads((args.out / "run" / "summary.json").read_text()) if (args.out / "run" / "summary.json").exists() else {}
     heal = json.loads((args.out / "run" / "heal.json").read_text()).get("heal", {}) if (args.out / "run" / "heal.json").exists() else {}
     nums = summary.get("numbers", {})
-    check("STEP 되읽기·경계상자", summary.get("stages", {}).get("heal", {}).get("status") == "ok", f"구멍 {nums.get('holes_found')} 중 {nums.get('holes_filled')} 닫힘, 실측 잔여 {nums.get('free_boundaries_measured')}")
+    plan["healing_result"] = healing_result(summary)
+    check("힐링 단계 실행", plan["healing_result"]["execution_status"] == "ok", "heal: " + plan["healing_result"]["execution_status"] + " (형상 품질 검사와 별개)")
+    log(f"[형상 보고] run/healed.stp: closed={nums.get('closed')}, valid={nums.get('valid')}, floating_caps={nums.get('floating_caps')}, 잔여 자유경계={nums.get('free_boundaries_measured')}")
     plan["deliverables"].append(str(args.out / "run" / "healed.stp"))
     full_mesh0 = args.out / "run" / ("mesh_full.stl" if mirror_ans else "mesh.stl")
     if full_mesh0.exists():
