@@ -30,6 +30,10 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
 import numpy as np  # noqa: E402
+from aox_g3.controller_state import preparation_outcome
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8")
 
 ap = argparse.ArgumentParser(description=__doc__,
                              formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -120,7 +124,8 @@ def run_script(script, arguments, capture_to=None):
                          "****", "RuntimeWarning", "d1[is_ab]")))
     if capture_to is not None:
         Path(capture_to).write_text(text, encoding="utf-8")
-    if proc.returncode not in (0, 1):   # 1 is "not closed", which is informative
+    informative = script == "seal_geometry.py" and proc.returncode == 1 and "0/1 성공" in text
+    if proc.returncode != 0 and not informative:
         raise RuntimeError(f"{script} exit {proc.returncode}: {text[-400:]}")
     return text
 
@@ -373,6 +378,26 @@ if args.wrap:
             log("   " + "\n   ".join(text.splitlines()[-3:]))
 
 # --------------------------------------------------------------------- summary
+required = ["mesh"] + ([] if is_mesh_input else ["cad", "heal"])
+if args.resurface is not None:
+    required.append("resurface")
+if args.wrap:
+    required.append("wrap")
+if args.local_wrap and args.keep_openings_above and summary["stages"].get("wrap", {}).get("status") == "ok":
+    required.append("local")
+if args.smooth_seams is not None and args.wrap and summary["stages"].get("wrap", {}).get("status") == "ok":
+    required.append("smooth")
+exit_code = preparation_outcome(summary, required)
+required_outputs = [mesh_stl] + ([] if is_mesh_input else [healed_step, heal_json])
+if args.resurface is not None:
+    required_outputs.append(args.out / "resurfaced.stl")
+if args.wrap and summary["stages"].get("wrap", {}).get("status") == "ok":
+    required_outputs.append(args.out / "wrap.stl")
+missing = [p.name for p in required_outputs if not p.is_file() or p.stat().st_size == 0]
+summary["missing_required_outputs"] = missing
+if missing:
+    summary["status"] = "failed"
+    exit_code = 2
 (args.out / "summary.json").write_text(
     json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 log("\n== 요약 ==")
@@ -382,3 +407,4 @@ for key, value in summary["numbers"].items():
     log(f"   {key}: {value}")
 log(f"\n출력 폴더: {args.out}")
 log_file.close()
+sys.exit(exit_code)

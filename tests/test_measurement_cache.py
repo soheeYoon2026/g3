@@ -16,34 +16,38 @@ class MeasurementCacheTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             answers = base / "answers.json"
-            answers.write_text(json.dumps({"units": "mm", "length_axis_now": "x"}), encoding="utf-8")
+            answers.write_text(json.dumps({"units": "mm", "length_axis_now": "x", "closed_mesh_action": "resurface"}), encoding="utf-8")
             env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
             for opened in (False, True):
                 mesh = trimesh.creation.box(extents=[4000, 1800, 1400])
                 if opened:
                     mesh.update_faces(mesh.face_normals[:, 2] > -0.5)
+                else:
+                    # A closed mesh with inconsistent face orientation needs repair.
+                    mesh.faces[0] = mesh.faces[0][::-1]
                 src = base / ("open.stl" if opened else "closed.stl")
                 mesh.export(src)
                 out = base / ("open" if opened else "closed")
                 command = [sys.executable, str(root / "scripts" / "plan_geometry.py"),
                            "--in", str(src), "--out", str(out), "--answers", str(answers), "--no-render"]
                 result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", env=env, timeout=60)
-                self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+                self.assertEqual(result.returncode, 3 if opened else 0, result.stdout + result.stderr)
                 cache = out / "thickness_measurement.json"
-                self.assertEqual(cache.exists(), not opened)
+                self.assertFalse(cache.exists())
                 if opened:
                     self.assertNotIn("[진행] 두께 측정: 측정 중", result.stdout)
                     self.assertIn("[진행] 두께 측정: 생략", result.stdout)
                     self.assertLess(result.stdout.index("[진단] 분류: 열린 메쉬"), result.stdout.index("[진행] 두께 측정: 생략"))
                 else:
-                    before = cache.read_bytes()
                     resumed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", env=env, timeout=60)
-                    self.assertEqual(resumed.returncode, 3, resumed.stdout + resumed.stderr)
-                    self.assertIn("[진행] 두께 측정: 저장값 재사용", resumed.stdout)
+                    self.assertEqual(resumed.returncode, 0, resumed.stdout + resumed.stderr)
+                    plan = json.loads((out / "plan.json").read_text(encoding="utf-8"))
+                    self.assertEqual(plan["route"], "automatic-local-cleanup")
+                    self.assertNotIn("closed_mesh_action", [q["id"] for q in plan["questions"]])
                     self.assertIn("[진단] 초기 검사: 저장된 결과 재사용", resumed.stdout)
                     self.assertNotIn("[진단] 초기 검사: 검사 중", resumed.stdout)
                     self.assertNotIn("[진행] 두께 측정: 측정 중", resumed.stdout)
-                    self.assertEqual(cache.read_bytes(), before)
+                    self.assertFalse(cache.exists())
 
     def test_reuse_and_invalidation(self):
         with tempfile.TemporaryDirectory() as directory:

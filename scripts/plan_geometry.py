@@ -30,6 +30,10 @@ from pathlib import Path
 
 import numpy as np
 
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8")
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
@@ -37,6 +41,8 @@ from aox_g3 import ledger
 from aox_g3.run_state import RunLock, write_json
 from aox_g3.measurement_cache import cached_thickness
 from aox_g3.quality_display import healing_result
+from aox_g3.controller_state import mesh_checkpoint, outcome
+from aox_g3.mesh_cleanup import cleanup, validate
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("--in", dest="src", type=Path, required=True)
@@ -72,7 +78,15 @@ answers = dict(plan.get("answers", {}))
 if args.answers and args.answers.exists():
     answers.update({k: v for k, v in json.loads(args.answers.read_text()).items() if v is not None})
 plan["answers"] = answers
+# Current checks/questions must describe this attempt, not an earlier failed route.
+plan.setdefault("attempt_history", []).append({
+    "status": plan.get("status"), "checks": plan.get("checks", []),
+    "questions": plan.get("questions", []), "deliverables": plan.get("deliverables", [])})
+for key in ("checks", "questions", "deliverables"):
+    plan[key] = []
+plan["retries"] = 0
 plan["status"] = "running"
+plan.pop("result", None)
 plan["runtime"] = {"protocol": 1, "pid": os.getpid(), "started_at": time.time()}
 
 
@@ -239,6 +253,9 @@ def run(script, arguments, capture_name):
     produced = [p for p, v in after.items() if before.get(p) != v]
     ledger.record(args.out, script, arguments, inputs, produced + [args.out / f"{capture_name}.txt"], ident,
                   time.time() - t0, status="done" if proc.returncode == 0 else "failed")
+    if proc.returncode == 4 and script == "prepare_geometry.py":
+        log("[경고] 계산은 끝났지만 랩 품질 미통과 — 후속 검증·대체 경로 진행")
+        return True, text
     if proc.returncode != 0:
         log(f"   실패 (코드 {proc.returncode}): {text.strip().splitlines()[-1] if text.strip() else ''}")
         if script != "flat_floor_wrap.py" or "--no-wrap" not in [str(a) for a in arguments]:
@@ -259,6 +276,8 @@ def ask(qid, question, proposal, reason, kind="number", unit="", evidence=None, 
              "evidence": evidence or [], "choices": choices, "where": where or {}}
     plan["questions"] = [q for q in plan["questions"] if q["id"] != qid] + [entry]
     if qid in answers:
+        if kind == "choice" and choices and answers[qid] not in choices:
+            raise ValueError(f"{qid}: 지원하지 않는 답변 {answers[qid]!r}; 선택지 {choices}")
         entry["answer"] = answers[qid]
         save()
         return answers[qid]
@@ -321,7 +340,7 @@ def focus_render(mesh_path, point, span, name, title, mirror=False):
 
 def pause():
     pending = [q for q in plan["questions"] if "answer" not in q and not q.get("assumed")]
-    QUESTIONS.write_text(json.dumps(pending, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_json(QUESTIONS, pending)
     plan["status"] = "waiting_for_answers"
     save()
     log(f"[질문] 답변이 필요한 항목 {len(pending)}개")
@@ -330,14 +349,16 @@ def pause():
 
 
 def finish(status="done"):
-    if status == "done" and any(not c["ok"] and not c.get("resolved") for c in plan["checks"]):
-        status = "done_with_failed_checks"
-    if plan.get("status") == "needs_customer":
-        status = "needs_customer"
+    status, code = outcome(plan, status)
+    if status == "waiting_for_answers":
+        pause()
     plan["status"] = status
-    QUESTIONS.write_text("[]", encoding="utf-8")
+    plan["result"] = {"status": status, "exit_code": code,
+                      "quality_passed": status == "done"}
+    write_json(QUESTIONS, [])
     save()
     log(f"[끝] {status}  산출물: " + ", ".join(plan["deliverables"]))
+    sys.exit(code)
 
 
 # ----------------------------------------------------------------- diagnosis
@@ -355,7 +376,14 @@ if not is_step:
     reuse_initial = (not args.force and cached_initial.get("identity") == initial_identity
                      and cached_initial.get("status") == "done")
     log("[입력] 파일 읽는 중 — 이어갈 단계 준비")
-    mesh = trimesh.load(src, force="mesh")
+    def load_native():
+        native = trimesh.load(src, force="mesh")
+        native.merge_vertices()
+        return native
+    mesh, native_reused = mesh_checkpoint(args.out, "native_mesh", initial_identity,
+                                          load_native, force=args.force)
+    if native_reused:
+        log("[재사용] 저장된 메시 배열 — 원본 파싱·정점 병합 생략")
     face_count = len(mesh.faces)
     if reuse_initial:
         diag.update(cached_initial["diagnosis"])
@@ -364,20 +392,20 @@ if not is_step:
         log("[초기 검사] 저장된 결과 재사용 — 같은 입력·검사 설정")
         viewer_mesh(src, loaded_mesh=mesh.copy() if face_count <= 150_000 else None, face_count=face_count)
         # Vertex normalization is needed by downstream geometry operations, not a re-diagnosis.
-        mesh.merge_vertices()
     else:
         proxy_source = mesh.copy() if face_count <= 150_000 else None
         log("[초기 검사] 검사 중 — 미리보기 생성과 병렬 진행")
         with ThreadPoolExecutor(max_workers=1) as preview_pool:
             preview_future = preview_pool.submit(viewer_mesh, src, 150_000, proxy_source, face_count)
-            mesh.merge_vertices()
             ext = mesh.extents
             _, counts = np.unique(mesh.edges_sorted, axis=0, return_counts=True)
             open_share = float((counts == 1).sum() / max(1, len(counts)))
             parts = mesh.split(only_watertight=False)
             measured = {"triangles": int(len(mesh.faces)), "extents": ext.round(2).tolist(),
                         "bbox_min": mesh.bounds[0].round(2).tolist(), "bodies": int(len(parts)),
-                        "boundary_edge_share": round(open_share, 5), "watertight": bool(mesh.is_watertight)}
+                        "boundary_edge_share": round(open_share, 5), "watertight": bool(mesh.is_watertight),
+                        "winding_consistent": bool(mesh.is_winding_consistent),
+                        "finite_coordinates": bool(np.isfinite(mesh.vertices).all())}
             log("[초기 검사] 완료 — 미리보기 생성 종료 확인 중")
             preview_future.result()
         diag.update(measured)
@@ -386,6 +414,17 @@ if not is_step:
                                           "boundary_edge_share_exact": open_share}
         save()
         log(f"[진단] 메쉬 삼각형 {len(mesh.faces):,}  치수 {ext.round(1).tolist()}  몸체 {diag['bodies']}  경계 모서리 비율 {open_share*100:.3f} %")
+
+    # Upgrade legacy diagnostics once, without repeating split/boundary analysis.
+    if "winding_consistent" not in diag or "finite_coordinates" not in diag:
+        diag["winding_consistent"] = bool(mesh.is_winding_consistent)
+        diag["finite_coordinates"] = bool(np.isfinite(mesh.vertices).all())
+        plan["initial_mesh_diagnosis"]["diagnosis"].update({
+            "winding_consistent": diag["winding_consistent"],
+            "finite_coordinates": diag["finite_coordinates"]})
+        save()
+    if not diag["finite_coordinates"]:
+        raise ValueError("입력 좌표에 NaN/무한대가 있습니다. 단위 추정·수리를 중단합니다.")
 
     # units: a car is 3-6 m long
     longest = float(ext.max())
@@ -412,13 +451,19 @@ if not is_step:
         # turned a 4.6 m GT-R into a 117 m one and put the question markers 56 m wide.
         decide("이미 변환된 입력이라 단위·축 변환 생략", f"입력이 출력 폴더의 input_mm.stl 과 같은 파일: {src}")
         scale, axis_ans = 1.0, "x"
-    v = mesh.vertices * scale
-    if axis_ans == "y":
-        v = np.column_stack([v[:, 1], -v[:, 0], v[:, 2]])
-    elif axis_ans == "z":
-        v = np.column_stack([v[:, 2], v[:, 1], -v[:, 0]])
-    mesh = trimesh.Trimesh(v, mesh.faces, process=False)
-    mesh.export(work)
+    normalized_identity = {"source": initial_identity, "scale": scale,
+                           "axis": axis_ans, "version": 1}
+    def normalize_mesh():
+        v = mesh.vertices * scale
+        if axis_ans == "y":
+            v = np.column_stack([v[:, 1], -v[:, 0], v[:, 2]])
+        elif axis_ans == "z":
+            v = np.column_stack([v[:, 2], v[:, 1], -v[:, 0]])
+        return trimesh.Trimesh(v, mesh.faces, process=False)
+    mesh, normalized_reused = mesh_checkpoint(args.out, "normalized_mesh", normalized_identity,
+                                              normalize_mesh, force=args.force, stl=True)
+    if normalized_reused:
+        log("[재사용] mm·x길이축 메시 — 변환·STL 저장 생략")
     if scale != 1.0 or axis_ans != "x":
         decide(f"입력을 mm·x길이축으로 변환 ({unit}, 길이축 {axis_ans})", "단위와 축은 자동 감지가 안 되므로 질문 뒤 변환", {"file": str(work)})
     ext = mesh.extents
@@ -427,6 +472,62 @@ if not is_step:
         viewer_mesh(work)
 
     diag["surface_area_m2"] = round(float(mesh.area) / 1e6, 2)
+
+    # A routing threshold is not evidence that geometry needs repair.
+    if open_share < 1e-3:
+        validation_identity = {"source": normalized_identity, "version": 2}
+        validation = plan.get("basic_mesh_validation", {})
+        if args.force or validation.get("identity") != validation_identity:
+            log("[초기 검사] mm 기준 퇴화 면 확인 — 수밀·면 방향·좌표는 초기 결과 재사용")
+            validation = {"identity": validation_identity,
+                          "watertight": diag["watertight"],
+                          "winding_consistent": diag["winding_consistent"],
+                          "degenerate_faces": int((~mesh.nondegenerate_faces()).sum()),
+                          "finite_coordinates": diag["finite_coordinates"],
+                          "self_intersections": "not_checked",
+                          "component_intersections": "not_checked"}
+            plan["basic_mesh_validation"] = validation
+            save()
+        check("원본 메시 수밀", validation["watertight"], str(validation["watertight"]))
+        check("원본 면 방향 일관성", validation["winding_consistent"], str(validation["winding_consistent"]))
+        check("원본 퇴화 면 없음", validation["degenerate_faces"] == 0, f"{validation['degenerate_faces']}개")
+        check("원본 좌표 유효", validation["finite_coordinates"], str(validation["finite_coordinates"]))
+        passed = all(c["ok"] for c in plan["checks"])
+        if passed:
+            plan["route"] = "preserve-basic-valid"
+            decide("기본 검사 통과 → 형상 유지", "두께 측정·재표면화를 자동 실행할 근거 없음")
+            plan["deliverables"].append(str(src if scale == 1.0 and axis_ans == "x" else work))
+            plan["validation_scope"] = "basic_only; self/component intersections not checked"
+            finish()
+        if not validation["winding_consistent"] or validation["degenerate_faces"]:
+            decide("면 방향·퇴화 면 자동 정리", "정점을 이동하지 않고 발견된 문제만 정리")
+            mesh, reused_cleanup = mesh_checkpoint(args.out, "cleaned_mesh",
+                {"source": normalized_identity, "cleanup_version": 1},
+                lambda: cleanup(mesh), force=args.force)
+            cleaned = args.out / "cleaned.stl"
+            if not reused_cleanup or not cleaned.exists() or plan.get("cleaned_hash") != ledger.file_hash(cleaned):
+                mesh.export(cleaned)
+                plan["cleaned_hash"] = ledger.file_hash(cleaned)
+            work = cleaned
+            repaired_validation = validate(mesh)
+            plan["cleanup_result"] = repaired_validation
+            for c in plan["checks"]:
+                if not c["ok"]:
+                    c["resolved"] = "자동 정리 후 아래 결과로 재검사"
+            check("정리 결과 수밀", repaired_validation["watertight"], str(repaired_validation["watertight"]))
+            check("정리 결과 면 방향 일관성", repaired_validation["winding_consistent"], str(repaired_validation["winding_consistent"]))
+            check("정리 결과 퇴화 면 없음", repaired_validation["degenerate_faces"] == 0, str(repaired_validation["degenerate_faces"]))
+            check("정리 결과 좌표 유효", repaired_validation["finite_coordinates"], str(repaired_validation["finite_coordinates"]))
+            if all(c["ok"] or c.get("resolved") for c in plan["checks"]):
+                plan["route"] = "automatic-local-cleanup"
+                plan["deliverables"].append(str(cleaned))
+                plan["validation_scope"] = "basic_only; self/component intersections not checked"
+                finish()
+        if not mesh.is_winding_consistent or len(mesh.faces) == 0:
+            plan["deliverables"].append(str(work))
+            finish()
+        # Do not mark input failures resolved until output checks actually pass.
+        input_failed_checks = [c for c in plan["checks"] if not c["ok"] and not c.get("resolved")]
 
     if open_share < 1e-3:
         # ------------------------------------------------ closed mesh: resurface
@@ -461,10 +562,12 @@ if not is_step:
         if est > 1.5e8:
             voxel_prop = float(np.ceil(np.sqrt(mesh.area * 0.7 / 1.5e8) * 10) / 10)
             plan["warnings"].append(f"삼각형 추정 {est/1e6:.0f} M → 복셀을 {voxel_prop} mm 로 올림")
-        voxel = ask("voxel_mm", f"재표면화 복셀 크기 (제안 {voxel_prop} mm). 판 두께 5 % 분위 {t5:.1f} mm 의 절반 이하가 규칙입니다.", voxel_prop,
-                    f"가장 얇은 부위(5 % 분위) {t5:.1f} mm; 복셀은 그 절반 이하, 0.6~3 mm", unit="mm")
+        voxel = ask("voxel_mm", f"재표면화 복셀 크기 (제안 {voxel_prop} mm). 이 크기로 진행할까요?", voxel_prop,
+                    f"두께 5% 분위 {t5:.1f} mm·계산량 기준; 복셀이 커지면 작은 틈·얇은 형상이 달라질 수 있습니다", unit="mm")
         if voxel is None:
             pause()
+        if isinstance(voxel, bool) or not isinstance(voxel, (int, float)) or not np.isfinite(voxel) or voxel <= 0:
+            raise ValueError("복셀 크기는 유한한 양수여야 합니다.")
         plan["route"] = "D-resurface"
         ok, text = run("prepare_geometry.py", ["--in", work, "--out", args.out / "run", "--no-mirror", "--resurface", voxel]
                        + (["--no-render"] if args.no_render else []), "run_resurface")
@@ -482,8 +585,23 @@ if not is_step:
                 nv = max(0.6, round(voxel / 2, 1))
                 decide(f"복셀 {voxel} → {nv} mm 로 재실행", f"체적 변화 {dv*100:+.1f} % 가 3 % 를 넘음")
                 ok, text = run("prepare_geometry.py", ["--in", work, "--out", args.out / "run", "--no-mirror", "--resurface", nv, "--no-render"], "run_resurface2")
+                if ok and res.exists():
+                    plan["checks"] = [c for c in plan["checks"] if c["name"] not in
+                                      ("수밀", "체적 변화 < 3 %", "경계상자 유지")]
+                    r = trimesh.load(res, force="mesh"); r.merge_vertices()
+                    _, c2 = np.unique(r.edges_sorted, axis=0, return_counts=True)
+                    dv = abs(r.volume) / max(1e-9, abs(mesh.volume)) - 1
+                    check("수밀", (c2 == 1).sum() == 0 and (c2 > 2).sum() == 0,
+                          f"재시도 경계 {(c2 == 1).sum()} 비다양체 {(c2 > 2).sum()}")
+                    check("체적 변화 < 3 %", abs(dv) < 0.03, f"재시도 {dv * 100:+.1f} %")
+                    check("경계상자 유지", np.allclose(r.extents, mesh.extents, atol=2 * nv + 1),
+                          f"재시도 {r.extents.round(0).tolist()}")
             if str(res) not in plan["deliverables"]:
                 plan["deliverables"].append(str(res))
+            output_checks = [c for c in plan["checks"] if c["name"] in ("수밀", "체적 변화 < 3 %", "경계상자 유지")]
+            if ok and len(output_checks) == 3 and all(c["ok"] for c in output_checks):
+                for c in input_failed_checks:
+                    c["resolved"] = "재표면화 결과 검사 통과"
             finish()
         else:
             finish("failed")
@@ -493,51 +611,70 @@ if not is_step:
         diag["thickness_measurement"] = {"status": "not_required", "reason": "열린 메쉬 랩 경로는 두께를 사용하지 않음"}
         decide("열린 메쉬", f"경계 모서리 비율 {open_share*100:.3f} % ≥ 0.1 %", tag="분류")
         log("[두께 측정] 생략 — 열린 메쉬 경로에서는 사용하지 않음")
-        log("[바닥 검사] 검사 중 — 아래쪽 광선으로 바닥 덮임 확인")
-        # Is the underside there? Area of downward-facing surface in the lower third,
-        # against the footprint. GT-R (no floor at all) has almost none; a car with
-        # open panel seams still has its floor. The section scan alone cannot tell
-        # the two apart: open seams keep any outline from closing.
-        # Seen from below: cast rays up through a grid over the footprint; with a floor
-        # the first hit is low (under 30 % of the height), with the floor missing the
-        # rays go on to the cabin ceiling and engine parts. Face-area counts do not
-        # work here: inner skins and underbody parts gave GT-R 173 % "coverage".
-        lo, hi = mesh.bounds
-        H = hi[2] - lo[2]
-        gx = np.linspace(lo[0] + 0.05 * (hi[0] - lo[0]), hi[0] - 0.05 * (hi[0] - lo[0]), 60)
-        gy = np.linspace(lo[1] + 0.1 * (hi[1] - lo[1]), hi[1] - 0.1 * (hi[1] - lo[1]), 24)
-        origins = np.array([[x, y, lo[2] - 10.0] for x in gx for y in gy])
-        dirs = np.tile([0, 0, 1.0], (len(origins), 1))
-        hit, ray, _ = mesh.ray.intersects_location(origins, dirs, multiple_hits=False)
-        first = np.full(len(origins), np.nan)
-        if len(ray):
-            first[ray] = hit[:, 2]
-        seen = np.isfinite(first)
-        low = seen & (first < lo[2] + 0.3 * H)
-        coverage = float(low.sum() / max(1, seen.sum()))
-        diag["underside_coverage"] = round(coverage, 3)
-        log(f"[바닥 검사] 광선 검사 완료 — 바닥 덮임률 {coverage*100:.1f} %")
-        diag["underside_first_hit_median_frac"] = round(float(np.nanmedian((first - lo[2]) / H)), 3) if seen.any() else None
-        ok, text = run("flat_floor_wrap.py", ["--in", work, "--out", args.out / "floorscan", "--no-wrap"], "floorscan")
         floor_summary = args.out / "floorscan" / "summary.json"
-        floor_prop = json.loads(floor_summary.read_text()).get("floor_z") if floor_summary.exists() else None
-        if floor_prop is None and coverage < 0.3:
-            # no floor: propose the first height where sections cover 30 % of the box, else 15 % of the height
-            best = None
-            for z in np.arange(lo[2] + 20.0, lo[2] + 0.45 * H, 20.0):
-                sec = mesh.section(plane_origin=[0, 0, float(z)], plane_normal=[0, 0, 1])
-                if sec is None:
-                    continue
-                try:
-                    planar, _ = sec.to_2D()
-                    area = sum(pg.area for pg in planar.polygons_full)
-                except Exception:
-                    area = 0.0
-                if area >= 0.3 * (hi[0] - lo[0]) * (hi[1] - lo[1]):
-                    best = float(z) + 20.0
-                    break
-            floor_prop = round(best if best is not None else float(lo[2] + 0.15 * H), 1)
-            decide("바닥이 없는 껍질", f"아래에서 쏜 광선의 첫 충돌이 높이 30 % 아래인 비율 {coverage*100:.0f} % (30 % 미만); 단면 닫힘 없음")
+        floor_identity = {"mesh_hash": ledger.file_hash(work), "version": 1,
+                          "scan_script": ledger.file_hash(HERE / "flat_floor_wrap.py"),
+                          "trimesh": trimesh.__version__, "numpy": np.__version__,
+                          "grid": [60, 24], "low_fraction": 0.3, "section_step_mm": 20}
+        floor_cache = plan.get("floor_diagnosis_cache", {})
+        reuse_floor = (not args.force and floor_cache.get("identity") == floor_identity
+                       and floor_cache.get("status") == "done")
+        if reuse_floor:
+            coverage = floor_cache["coverage"]
+            floor_prop = floor_cache["floor_prop"]
+            diag.update(floor_cache["diagnosis"])
+            log("[재사용] 저장된 바닥 진단 — 광선·단면 검사 생략; 바닥 높이 답변은 수리에만 적용")
+        else:
+            log("[바닥 검사] 검사 중 — 아래쪽 광선으로 바닥 덮임 확인")
+            # Is the underside there? Area of downward-facing surface in the lower third,
+            # against the footprint. GT-R (no floor at all) has almost none; a car with
+            # open panel seams still has its floor. The section scan alone cannot tell
+            # the two apart: open seams keep any outline from closing.
+            # Seen from below: cast rays up through a grid over the footprint; with a floor
+            # the first hit is low (under 30 % of the height), with the floor missing the
+            # rays go on to the cabin ceiling and engine parts. Face-area counts do not
+            # work here: inner skins and underbody parts gave GT-R 173 % "coverage".
+            lo, hi = mesh.bounds
+            H = hi[2] - lo[2]
+            gx = np.linspace(lo[0] + 0.05 * (hi[0] - lo[0]), hi[0] - 0.05 * (hi[0] - lo[0]), 60)
+            gy = np.linspace(lo[1] + 0.1 * (hi[1] - lo[1]), hi[1] - 0.1 * (hi[1] - lo[1]), 24)
+            origins = np.array([[x, y, lo[2] - 10.0] for x in gx for y in gy])
+            dirs = np.tile([0, 0, 1.0], (len(origins), 1))
+            hit, ray, _ = mesh.ray.intersects_location(origins, dirs, multiple_hits=False)
+            first = np.full(len(origins), np.nan)
+            if len(ray):
+                first[ray] = hit[:, 2]
+            seen = np.isfinite(first)
+            low = seen & (first < lo[2] + 0.3 * H)
+            coverage = float(low.sum() / max(1, seen.sum()))
+            diag["underside_coverage"] = round(coverage, 3)
+            log(f"[바닥 검사] 광선 검사 완료 — 바닥 덮임률 {coverage*100:.1f} %")
+            diag["underside_first_hit_median_frac"] = round(float(np.nanmedian((first - lo[2]) / H)), 3) if seen.any() else None
+            ok, text = run("flat_floor_wrap.py", ["--in", work, "--out", args.out / "floorscan", "--no-wrap"], "floorscan")
+            floor_summary = args.out / "floorscan" / "summary.json"
+            floor_prop = json.loads(floor_summary.read_text()).get("floor_z") if floor_summary.exists() else None
+            if floor_prop is None and coverage < 0.3:
+                # no floor: propose the first height where sections cover 30 % of the box, else 15 % of the height
+                best = None
+                for z in np.arange(lo[2] + 20.0, lo[2] + 0.45 * H, 20.0):
+                    sec = mesh.section(plane_origin=[0, 0, float(z)], plane_normal=[0, 0, 1])
+                    if sec is None:
+                        continue
+                    try:
+                        planar, _ = sec.to_2D()
+                        area = sum(pg.area for pg in planar.polygons_full)
+                    except Exception:
+                        area = 0.0
+                    if area >= 0.3 * (hi[0] - lo[0]) * (hi[1] - lo[1]):
+                        best = float(z) + 20.0
+                        break
+                floor_prop = round(best if best is not None else float(lo[2] + 0.15 * H), 1)
+            plan["floor_diagnosis_cache"] = {"identity": floor_identity, "status": "done",
+                "coverage": coverage, "floor_prop": floor_prop,
+                "diagnosis": {k: diag[k] for k in ("underside_coverage", "underside_first_hit_median_frac")}}
+            save()
+        if floor_prop is not None and coverage < 0.3:
+            decide("바닥이 없는 껍질", f"바닥 덮임률 {coverage*100:.0f} % (30 % 미만); 평바닥 위치 확인 필요")
         if floor_prop is None:
             decide("경로 3: 구멍을 지키는 랩", f"언더사이드 덮임률 {coverage*100:.0f} % (바닥 있음) 인데 단면이 안 닫힘 → 부품 사이 틈이 문제")
             from aox_g3 import fair
@@ -659,9 +796,14 @@ if not is_step:
                 bad = [c for c in closed if c["gap_mm"] >= keep]
                 pts = [[*c["centre"], max(30.0, c["gap_mm"] * 3), f"{c['gap_mm']:.0f} mm"] for c in closed[:20]]
                 if coarse:
-                    ask("accept_coarse_closures", f"거친 알파(15 mm)라 {keep:.0f} mm 이상 틈 {len(bad)}곳이 닫혔습니다 (wrap_closed.txt). 이대로 쓸까요, 아니면 정리된 모델을 주시겠습니까?",
+                    accepted = ask("accept_coarse_closures", f"거친 알파(15 mm)라 {keep:.0f} mm 이상 틈 {len(bad)}곳이 닫혔습니다 (wrap_closed.txt). 이대로 쓸까요, 아니면 정리된 모델을 주시겠습니까?",
                         "accept", "열린 패널 이음새가 많은 메쉬는 가는 알파로 감쌀 수 없음", kind="choice", choices=["accept", "provide_clean_model"],
                         evidence=[str(closed_txt)], where={"points": pts})
+                    if accepted is None:
+                        pause()
+                    if accepted == "provide_clean_model":
+                        plan["status"] = "needs_customer"
+                        check("정리된 입력 모델 필요", False, "사용자가 거친 랩 결과를 거부함")
                 else:
                     check(f"{keep:.0f} mm 이상 구멍은 열려 있음", not bad, f"닫힌 자리 중 {keep:.0f} mm 이상: {len(bad)}개")
             if out_stl.exists():
@@ -693,6 +835,30 @@ if not is_step:
 
 else:
     # ---------------------------------------------------------------- STEP
+    from aox_g3 import cad
+    step_identity = {"hash": ledger.file_hash(src), "version": 1,
+                     "diagnostics": ledger.file_hash(HERE.parent / "aox_g3" / "cad.py")}
+    step_validation = plan.get("initial_step_validation", {})
+    if args.force or step_validation.get("identity") != step_identity:
+        log("[초기 검사] STEP 원본 자유 모서리·열린 셸·면 유효성 검사")
+        shape, report = cad.read_step(src)
+        if shape is None:
+            raise RuntimeError("STEP 읽기 실패: " + str(report.warnings))
+        cad.diagnose(shape, report)
+        step_validation = {"identity": step_identity, "report": report.as_dict()}
+        plan["initial_step_validation"] = step_validation
+        del shape
+        save()
+    step_report = step_validation["report"]
+    if (step_report.get("faces", 0) > 0 and step_report.get("solids", 0) > 0
+            and step_report.get("free_edges") == 0 and step_report.get("open_shells") == 0
+            and step_report.get("invalid_faces") == 0):
+        plan["route"] = "preserve-step-basic-valid"
+        plan["validation_scope"] = "basic CAD checks only; solid validity/intersections not fully checked"
+        plan["deliverables"].append(str(src))
+        check("STEP 기본 검사 통과", True, "자유 모서리·열린 셸·무효 면 없음")
+        decide("STEP 형상 유지", "기본 검사에서 수리 근거가 발견되지 않음; 원본 구조 보존")
+        finish()
     ok, text = run("propose_parameters.py", ["--in", src, "--out", args.out / "params.json"], "propose")
     params = json.loads((args.out / "params.json").read_text()) if (args.out / "params.json").exists() else {}
     diag["params"] = {k: v for k, v in params.items() if k != "questions"}
@@ -709,7 +875,7 @@ else:
     if mirror_ans is None or seal is None or rims_ans is None:
         pause()
     arguments = ["--in", src, "--out", args.out / "run", "--seal-below", seal] + ([] if mirror_ans else ["--no-mirror"]) \
-        + (["--auto"] if not rims else []) + (["--no-render"] if args.no_render else [])
+        + (["--no-render"] if args.no_render else [])
     if rims_ans and rims:
         for r in rims:
             x, y, z, rad = (list(r) + [450])[:4]
@@ -721,6 +887,8 @@ else:
     nums = summary.get("numbers", {})
     plan["healing_result"] = healing_result(summary)
     check("힐링 단계 실행", plan["healing_result"]["execution_status"] == "ok", "heal: " + plan["healing_result"]["execution_status"] + " (형상 품질 검사와 별개)")
+    check("힐링 STEP 형상 유효", nums.get("valid") is True, f"valid={nums.get('valid')}")
+    check("힐링 부유 캡 없음", nums.get("floating_caps") == 0, f"floating_caps={nums.get('floating_caps')}")
     log(f"[형상 보고] run/healed.stp: closed={nums.get('closed')}, valid={nums.get('valid')}, floating_caps={nums.get('floating_caps')}, 잔여 자유경계={nums.get('free_boundaries_measured')}")
     plan["deliverables"].append(str(args.out / "run" / "healed.stp"))
     full_mesh0 = args.out / "run" / ("mesh_full.stl" if mirror_ans else "mesh.stl")
@@ -735,8 +903,6 @@ else:
     big_left = [b for b in left if float(b.get("size", 0)) > 1000]
     if not big_left:
         decide("큰 구멍 없음 → 힐링 STEP 이 인도물", f"남은 구멍 {len(left)}개 전부 1 m 이하")
-        if not (args.out / "run" / "wrap.stl").exists():
-            ok, text = run("prepare_geometry.py", arguments + ["--wrap", "--force-wrap", "--smooth-seams"], "run_wrap")
         finish("done" if ok else "failed")
     decide("경로 C+E: 평바닥 가정 랩 → 랩 형상 캡으로 STEP 닫기", f"남은 구멍 중 1 m 이상 {len(big_left)}개 (최대 {max(float(b['size']) for b in big_left):.0f} mm): 언더바디·캐빈은 봉합 크기로 못 닫음")
     plan["route"] = "A-heal + C-flat-floor-wrap + E-wrapcaps"
@@ -775,8 +941,14 @@ else:
                 r = focus_render(full_mesh0, c["centre"], 600, f"wheel{k+1}", f"못 닫은 바퀴 고리 {k+1}")
                 if r:
                     ev.append(r)
-        ask("wheel_treatment", f"바퀴 주변 고리 {len(skipped)}곳은 접힘 때문에 자동으로 못 닫았습니다. 어떻게 할까요?", "leave",
-            "림·타이어 접합은 설계·해석 의도(회전 휠, 원판, 실제 타이어 형상)", kind="choice", choices=["leave", "disc", "tyre_contact"],
+        treatment = ask("wheel_treatment", f"바퀴 주변 고리 {len(skipped)}곳을 닫지 않은 검토용 결과로 남길까요? 원판·타이어 접합 자동 처리는 아직 지원하지 않습니다.", "leave",
+            "남은 고리는 별도 형상 수정이 필요합니다", kind="choice", choices=["leave"],
             evidence=[str(args.out / "wrapcaps.json")] + ev, where={"points": wheel_pts})
+        if treatment is None:
+            pause()
+        if treatment != "leave":
+            raise ValueError("지원하지 않는 wheel_treatment: " + str(treatment))
+        decide("바퀴 고리를 열린 채 검토용으로 유지", "사용자가 leave를 선택함")
+        check("바퀴 고리 후속 수정 필요", False, f"열린 고리 {len(skipped)}곳; 자동 수정 미지원")
     plan["deliverables"].append(str(args.out / "healed_wrapcaps.stp"))
     finish("done" if ok else "failed")

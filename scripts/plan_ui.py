@@ -323,21 +323,21 @@ button.run{padding:8px 14px;font-size:14px;margin-right:8px}.st{display:inline-b
 <style>.preview-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0}.preview-tabs{display:inline-flex;padding:4px;gap:4px;border:1px solid #e2e8f0;background:#edf2f7;border-radius:11px}.preview-tabs button{border:0;border-radius:8px;padding:9px 18px;background:transparent;color:#64748b;font-family:inherit;font-size:12px;font-weight:600;transition:background .15s,color .15s}.preview-tabs button[aria-pressed="true"]{background:white;color:#2563eb;box-shadow:0 1px 4px #0f172a12}.preview-tabs button:disabled{opacity:1;color:#94a3b8;cursor:not-allowed}.preview-tabs button:not(:disabled):hover{color:#2563eb}.preview-toolbar small{font-size:11px;color:#94a3b8}#result-note{display:flex;align-items:flex-start;gap:10px;background:#fff;border:1px solid #e2e8f0;border-radius:11px;padding:12px 14px;margin:0 0 12px;color:#64748b;font-size:12px;line-height:1.7}#result-note:before{content:'i';display:grid;place-items:center;width:20px;height:20px;flex-shrink:0;border-radius:7px;background:#eff6ff;color:#2563eb;font-size:11px;font-weight:700}#result-note.warning{background:#fff7ed;border-color:#fed7aa;color:#9a3412}#result-note.warning:before{content:'!';background:#ffedd5;color:#c2410c}#result-note-text{white-space:pre-wrap;overflow-wrap:anywhere}</style>
 <div class="preview-toolbar"><div class="preview-tabs" role="group" aria-label="미리보기 형상 선택"><button id="view-original" aria-pressed="true" onclick="selectPreview('original')">원본</button><button id="view-result" aria-pressed="false" onclick="selectPreview('result')" disabled>결과</button></div><small>원본 · 생성 결과 비교</small></div>
 <div id="result-note"><span id="result-note-text"></span></div>
-<div id="viewer" style="width:100%;height:380px;border:1px solid #ccd;border-radius:6px;background:#f4f5f7;position:relative;margin:8px 0">
+<div id="viewer" style="width:100%;height:380px;border:1px solid #ccd;border-radius:6px;background:#f4f5f7;position:relative;isolation:isolate;z-index:0;overflow:hidden;margin:8px 0">
 <div id="vhint" style="position:absolute;left:8px;top:6px;font-size:12px;color:#555;pointer-events:none">드래그로 돌리고 휠로 확대. 번호를 누르면 그 자리로, 표식을 누르면 해당 질문으로 갑니다.</div>
 <button onclick="togglePins()" style="position:absolute;right:8px;top:6px;font-size:12px">번호 숨기기/보이기</button></div>
 <div id="legend" style="font-size:12px;color:#444;margin:4px 0 8px 0;line-height:1.9"></div>
 <style>#questions .question-card{padding:18px 20px;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 3px 10px #0f172a04;margin:12px 0}#questions .question-card b{font-size:15px;line-height:1.5;margin:0}.question-top{display:flex;align-items:center;justify-content:space-between;gap:12px}.question-badge{white-space:nowrap;border-radius:20px;background:#eff6ff;color:#2563eb;padding:4px 9px;font-size:11px}.question-description{font-size:12px;color:#64748b;line-height:1.7;margin:9px 0 12px}.question-field{display:flex;align-items:center;gap:10px;flex-wrap:wrap}#questions .question-field select,#questions .question-field input{box-sizing:border-box;min-width:130px;max-width:100%;font-family:inherit;font-size:13px;padding:10px 12px;margin:0;border:1px solid #cbd5e1;border-radius:9px;background:#f8fafc;color:#1e293b;outline:none}#questions .question-field input{width:180px}#questions .question-field select:focus,#questions .question-field input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px #dbeafe}.question-field button{padding:9px 12px;border:1px solid #cbd5e1;background:white;border-radius:8px;color:#475569;font-size:12px}.question-card details{font-size:12px;color:#64748b;margin-top:12px;border-top:1px solid #f1f5f9;padding-top:4px}.question-card details p{line-height:1.7;margin:8px}.question-actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 22px}button.run{margin:0;border:1px solid #cbd5e1;border-radius:10px;background:white;color:#475569;padding:11px 16px;font-family:inherit;font-size:13px}button.run:first-child{background:#2563eb;color:white;border-color:#2563eb}button.run:disabled{cursor:not-allowed;opacity:.45}button.run:not(:disabled):hover{filter:brightness(.96)}</style>
-<h2>실행 전 확인</h2><p style="font-size:12px;color:#64748b;margin:6px 0">추천값을 확인하거나 변경한 뒤, 답을 저장해 다음 단계로 진행하세요.</p><div id="questions"></div>
-<div class="question-actions"><button class="run" onclick="submitAnswers()">답 저장 후 이어서 실행 →</button><button class="run" onclick="runDefaults()">제안값으로 실행</button></div>
-<style>.section-card{background:white;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;margin:12px 0;box-shadow:0 3px 10px #0f172a04}.section-card h3{font-size:14px;margin:0 0 12px;font-weight:700;color:#334155}.section-caption{font-size:12px;line-height:1.7;color:#64748b;margin:0}.empty-card{display:flex;align-items:flex-start;gap:12px;padding:18px 20px;background:white;border:1px dashed #cbd5e1;border-radius:14px;color:#64748b;font-size:12px;line-height:1.7}.empty-icon{display:grid;place-items:center;width:30px;height:30px;flex-shrink:0;border-radius:10px;background:#eff6ff;color:#2563eb}.empty-card strong{display:block;color:#334155;font-size:13px;margin-bottom:4px}.route-row{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid #f1f5f9}.route-row:last-child{border:0}.route-number{display:grid;place-items:center;flex-shrink:0;width:24px;height:24px;background:#eff6ff;color:#2563eb;border-radius:8px;font-size:11px;font-weight:700}.route-row strong{display:block;font-size:13px;font-weight:600}.route-row small{display:block;margin-top:4px;color:#64748b;line-height:1.6;font-size:11px}.check-row{padding:12px;border:1px solid #e2e8f0;border-radius:10px;margin:8px 0;display:flex;gap:10px;align-items:flex-start}.check-row.pass{background:#f0fdf4;border-color:#dcfce7}.check-row.fail{background:#fff7ed;border-color:#fed7aa}.check-tag{flex-shrink:0;font-size:10px;font-weight:700;border-radius:6px;padding:3px 7px;background:white;color:#166534}.fail .check-tag{color:#c2410c}.check-row strong{font-size:12px;display:block}.check-row small{display:block;font-size:11px;color:#64748b;margin-top:4px;line-height:1.6}.file-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;margin:7px 0;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12px}.file-row button{background:white;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;color:#2563eb;font-size:11px}.file-row code{font-family:inherit;font-weight:600;overflow-wrap:anywhere}.fold-panel{padding:0;background:white;border:1px solid #e2e8f0;border-radius:12px;margin:12px 0;overflow:hidden}.fold-panel>summary{padding:14px 18px;font-size:12px;font-weight:600;color:#475569}.fold-panel>div{padding:0 18px 16px}.fold-panel pre{white-space:pre-wrap;font-size:11px;line-height:1.7;overflow-wrap:anywhere}#log{background:#f8fafc;border-radius:9px;color:#475569;font-size:11px;padding:12px;line-height:1.7;max-height:250px}main>h2{font-size:15px;margin:24px 0 10px;letter-spacing:-.3px}main .question-actions{margin-bottom:24px}</style>
-<h2>검사 결과와 처리 과정</h2><div id="plan"></div><details class="fold-panel"><summary>실행 로그</summary><div><div id="log"></div></div></details>
+<section id="pre-run-confirmation"><h2 id="settings-title">실행 전 확인</h2><p id="settings-note" style="font-size:12px;color:#64748b;margin:6px 0">추천값을 확인하거나 변경한 뒤, 답을 저장해 다음 단계로 진행하세요.</p><div id="settings-summary" hidden></div><button id="settings-edit" class="run" hidden onclick="editSettings=true;renderSettings(latestPlan)">설정 변경</button><div id="questions"></div>
+<div id="settings-actions" class="question-actions"><button class="run" onclick="submitAnswers()">답 저장 후 이어서 실행 →</button><button class="run" onclick="runDefaults()">제안값으로 실행</button><button id="settings-cancel" class="run" hidden onclick="editSettings=false;questionSignature='';renderSettings(latestPlan);refresh()">취소</button></div></section>
+<style>.section-card{background:white;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;margin:12px 0;box-shadow:0 3px 10px #0f172a04}.section-card h3{font-size:14px;margin:0 0 12px;font-weight:700;color:#334155}.section-caption{font-size:12px;line-height:1.7;color:#64748b;margin:0}.empty-card{display:flex;align-items:flex-start;gap:12px;padding:18px 20px;background:white;border:1px dashed #cbd5e1;border-radius:14px;color:#64748b;font-size:12px;line-height:1.7}.empty-icon{display:grid;place-items:center;width:30px;height:30px;flex-shrink:0;border-radius:10px;background:#eff6ff;color:#2563eb}.empty-card strong{display:block;color:#334155;font-size:13px;margin-bottom:4px}.route-row{display:flex;gap:12px;padding:9px 0;border-bottom:1px solid #f1f5f9}.route-row:last-child{border:0}.route-number{display:grid;place-items:center;flex-shrink:0;width:24px;height:24px;background:#eff6ff;color:#2563eb;border-radius:8px;font-size:11px;font-weight:700}.route-row strong{display:block;font-size:13px;font-weight:600}.route-row small{display:block;margin-top:4px;color:#64748b;line-height:1.6;font-size:11px}.check-row{padding:12px;border:1px solid #e2e8f0;border-radius:10px;margin:8px 0;display:flex;gap:10px;align-items:flex-start}.check-row.pass{background:#f0fdf4;border-color:#dcfce7}.check-row.fail{background:#fff7ed;border-color:#fed7aa}.check-tag{flex-shrink:0;font-size:10px;font-weight:700;border-radius:6px;padding:3px 7px;background:white;color:#166534}.fail .check-tag{color:#c2410c}.check-row strong{font-size:12px;display:block}.check-row small{display:block;font-size:11px;color:#64748b;margin-top:4px;line-height:1.6}.file-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;margin:7px 0;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12px}.file-row button{background:white;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;color:#2563eb;font-size:11px}.file-row code{font-family:inherit;font-weight:600;overflow-wrap:anywhere}.fold-panel{padding:0;background:white;border:1px solid #e2e8f0;border-radius:12px;margin:12px 0;overflow:hidden}.fold-panel>summary{padding:14px 18px;font-size:12px;font-weight:600;color:#475569}.fold-panel>div{padding:0 18px 16px}.fold-panel pre{white-space:pre-wrap;font-size:11px;line-height:1.7;overflow-wrap:anywhere}#log{background:#f8fafc;border-radius:9px;color:#475569;font-size:11px;padding:12px;line-height:1.7;max-height:250px}main>h2{font-size:15px;margin:24px 0 10px;letter-spacing:-.3px}main .question-actions{margin-bottom:24px}</style>
+<h2>처리 과정 및 결과</h2><div id="plan"></div><details class="fold-panel"><summary>실행 로그</summary><div><div id="log"></div></div></details>
 <details class="fold-panel"><summary>파일·CLI 상세 안내</summary><div style="font-size:12px;line-height:1.8;overflow-wrap:anywhere"><p>브라우저에서 답변한다면 아래 파일을 직접 편집할 필요는 없습니다.</p><div>질문 파일: <code id="cli-questions"></code></div><div>답변 파일: <code id="cli-answers"></code></div><p>파일로 답하려면 answers.json에 질문 ID와 답을 적으세요. 예: <code>{"units": "mm", "length_axis_now": "x"}</code><br>현재 질문의 ID·형식에 맞는 값만 사용하고, 제안값을 그대로 승인할지는 확인하세요.</p><p>계산이 답변 대기로 끝난 상태에서만 아래 명령을 실행하세요. 브라우저 실행 버튼과 동시에 실행하지 마세요.</p><pre id="cli-command" style="white-space:pre-wrap;background:#f1f5f9;padding:12px;border-radius:8px"></pre><small>위 명령은 답변 파일로 이어서 실행합니다. 단순 미리보기 명령이 아닙니다.</small></div></details></main>
 <style>aside{min-width:0;border-left:1px solid #e2e8f0;background:#f8fafc}.chat-head{padding:22px 20px 16px;background:white;border-bottom:1px solid #e2e8f0}.chat-head h2{margin:0;font-size:18px;letter-spacing:-.4px}.chat-head p{margin:7px 0 0;font-size:12px;line-height:1.6;color:#64748b}.ai-label{font-size:10px;letter-spacing:1.2px;color:#2563eb;font-weight:700;margin-bottom:7px}#chat{min-height:0;padding:18px;scroll-behavior:smooth}.chat-empty{padding:24px 4px;color:#64748b;font-size:13px;line-height:1.8}.chat-empty strong{display:block;color:#334155;font-size:15px;margin-bottom:8px}.chat-example{display:block;text-align:left;width:100%;padding:11px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;margin:9px 0;color:#475569;font-size:12px}.chat-example:hover{border-color:#93c5fd;background:#eff6ff}.m{padding:13px 14px;margin:0 0 15px;border:1px solid #e2e8f0;border-radius:14px;font-size:13px;line-height:1.75;overflow-wrap:anywhere;box-shadow:0 2px 6px #0f172a04}.m.u{background:#eff6ff;border-color:#dbeafe;margin-left:20px}.m.a{background:white;margin-right:10px}.m-label{display:block;font-size:10px;font-weight:700;letter-spacing:.4px;margin-bottom:6px;color:#64748b}.m.u .m-label{color:#2563eb}.chat-wait{color:#64748b;display:flex;align-items:center;gap:9px}.chat-dot{width:12px;height:12px;border:2px solid #bfdbfe;border-top-color:#2563eb;border-radius:50%;animation:chat-spin .8s linear infinite}@keyframes chat-spin{to{transform:rotate(360deg)}}#in{display:block;margin:0;padding:14px 16px 12px;background:white;border-top:1px solid #e2e8f0}#in textarea{display:block;box-sizing:border-box;width:100%;height:86px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc;font-family:inherit;font-size:13px;line-height:1.6;outline:none}#in textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 3px #dbeafe}#in textarea::placeholder{color:#94a3b8}.chat-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}.chat-footer small{font-size:10px;color:#94a3b8}#in button{width:auto;padding:9px 18px;border-radius:9px;background:#2563eb;font-size:12px;font-weight:600;color:white}#in button:hover{background:#1d4ed8}#in button:disabled{opacity:.5}</style>
 <aside aria-label="AI 형상 도우미"><header class="chat-head"><div class="ai-label">GEOMETRY ASSISTANT</div><h2>AI 형상 도우미</h2><p>현재 작업의 검사 결과와 처리 경로를 물어보세요.<br>계산 진행 상태는 왼쪽 상태 카드에 표시됩니다.</p></header><div id="chat" role="log" aria-live="polite"><div class="chat-empty" id="chat-empty"><strong>어떤 부분이 궁금한가요?</strong>검증 실패 이유나 다음 단계에 대해 질문해 보세요.<button class="chat-example" onclick="fillQuestion(this.textContent)">검증이 실패한 이유를 설명해줘</button><button class="chat-example" onclick="fillQuestion(this.textContent)">원본과 결과는 무엇이 달라졌어?</button><button class="chat-example" onclick="fillQuestion(this.textContent)">현재 처리 경로를 쉽게 설명해줘</button></div></div><div id="in"><textarea id="msg" aria-label="AI에게 질문" placeholder="형상 검사나 처리 과정에 대해 질문하세요…"></textarea><div class="chat-footer"><small>Ctrl+Enter로 보내기 · AI 답변은 검토가 필요해요</small><button id="chat-send" onclick="send()">보내기 ↗</button></div></div></aside>
 <style>#log{background:#111827;color:#e2e8f0;border:1px solid #253247;border-radius:9px;padding:14px;line-height:1.8}#cli-command{color:#334155}</style>
 <script>
-let hist=[];let Q=[];let latestPlan={};let launching=false;let launchAt=0;let refreshing=false;let questionSignature='';
+let editSettings=false;let hist=[];let Q=[];let latestPlan={};let launching=false;let launchAt=0;let refreshing=false;let questionSignature='';
 let previewMode='original';let previewFiles={};
 function selectPreview(mode){previewMode=mode;syncPreview();}
 function syncPreview(){const info=previewFiles[previewMode];const result=previewFiles.result;
@@ -349,7 +349,7 @@ function syncPreview(){const info=previewFiles[previewMode];const result=preview
  const lines=previewMode==='result'&&result?['결과 파일: '+result.name+' ('+Math.round(result.bytes/1e6)+' MB)',...(failures.length?['검증 실패 — 정상 결과로 승인되지 않았습니다.',...failures.map(c=>c.name+': '+c.detail)]:['현재 기록에 미해결 검증 실패가 없습니다. 원본 보존·설계 의도는 별도 확인이 필요합니다.']),'결과 STL 전체를 불러오므로 큰 파일은 표시까지 시간이 걸립니다.']:[result?'원본 미리보기입니다. ‘결과’ 탭에서 생성된 STL을 확인하세요.':'수리 결과가 생성되면 ‘결과’ 탭이 활성화됩니다.'];document.getElementById('result-note-text').textContent=lines.join(String.fromCharCode(10));document.getElementById('result-note').classList.toggle('warning',previewMode==='result'&&!!result&&failures.length>0);
  window.previewSelection=info;if(window.ensurePreview)window.ensurePreview(info);
  if(window.updateMarkers)window.updateMarkers(previewMode==='result'?[]:Q);}
-const statusNames={running:'계산 중',waiting_for_answers:'답변 대기',done:'완료',done_with_failed_checks:'완료 · 검증 실패 있음',failed:'실행 실패·중단',needs_customer:'고객 확인 필요'};
+const statusNames={running:'계산 중',waiting_for_answers:'답변 대기',done:'완료',needs_review:'검토 필요 · 품질 미통과',done_with_failed_checks:'검토 필요 · 품질 미통과',failed:'실행 실패·중단',needs_customer:'고객 확인 필요'};
 function activity(){const p=latestPlan;const busy=launching||p.process_active===true;const rt=p.runtime||{};
  document.getElementById('activity').classList.toggle('busy',busy);
  document.getElementById('activity-title').textContent=launching?'실행 시작 중…':busy?'계산 중 — 실행 중입니다':(statusNames[p.status]||'실행 대기');
@@ -365,54 +365,116 @@ function healingPanel(h){if(!h)return '';const val=v=>v==null?'미보고':v===tr
  return '<div class="q"><b>힐링 STEP — '+esc(h.artifact)+'</b><div>실행 상태: heal: '+esc(h.execution_status)+' · '+state+'</div>'
  +[['closed','닫힘'],['valid','B-rep 유효성'],['floating_caps','떠 있는 캡'],['holes_found','발견한 구멍'],['holes_filled','메운 구멍'],['holes_left','남은 구멍'],['free_boundaries_measured','실측 잔여 자유경계']].map(([k,label])=>`<div class="${h[k]===false||(k==='floating_caps'&&h[k]>0)?'bad':''}">${label} (${k}): ${val(h[k])}</div>`).join('')
  +'<small>'+esc(h.note)+'</small></div>';}
+function renderSettings(p){
+ const active=Boolean(p.process_active||p.status==='running'||launching);
+ if(active)editSettings=false;
+ const ended=['done','needs_review','failed','done_with_failed_checks'].includes(p.status)&&!active;
+ const collapsed=ended&&!editSettings;
+ document.getElementById('pre-run-confirmation').hidden=active;
+ document.getElementById('settings-title').textContent=ended?(editSettings?'설정 변경':'이번 실행 설정'):'실행 전 확인';
+ const note=document.getElementById('settings-note');note.hidden=collapsed;note.textContent=ended?'설정을 변경한 뒤 다시 실행하세요.':'설정을 확인한 뒤 이어서 실행하세요.';
+ document.getElementById('questions').hidden=collapsed;
+ document.getElementById('settings-actions').style.display=collapsed?'none':'';
+ document.getElementById('settings-actions').querySelector('button').textContent=ended?'변경한 설정으로 다시 실행':'답 저장 후 이어서 실행 →';
+ document.getElementById('settings-edit').hidden=!collapsed;
+ document.getElementById('settings-cancel').hidden=!(ended&&editSettings);
+ document.getElementById('settings-actions').querySelectorAll('button')[1].hidden=ended;
+ const summary=document.getElementById('settings-summary');summary.hidden=!collapsed;
+ const names={units:'단위',length_axis_now:'방향',floor_z_mm:'평바닥 높이',voxel_mm:'복셀 크기'};
+ summary.innerHTML=(p.questions||[]).filter(q=>q.answer!=null).map(q=>`<div class="setting-item"><span>${esc(names[q.id]||q.id)}</span><b>${esc(q.answer)}${q.id==='length_axis_now'?'축':q.unit?' '+esc(q.unit):['floor_z_mm','voxel_mm'].includes(q.id)?' mm':''}</b></div>`).join('')||'<span>저장된 설정이 없습니다.</span>';
+ document.getElementById('pre-run-confirmation').classList.toggle('settings-collapsed',collapsed);
+
+}
 async function refresh(){if(refreshing)return;refreshing=true;try{const r=await fetch('/api/state',{cache:'no-store'});if(!r.ok)throw new Error('상태 조회 실패');const s=await r.json();const p=s.plan||{};
  latestPlan=p;if(p.process_active||Date.now()-launchAt>5000)launching=false;activity();
+ renderSettings(p);
  document.getElementById('status').textContent=(statusNames[p.status]||p.status||'대기')+(p.route?' · '+p.route:'');
  document.getElementById('input').textContent=p.input||'';
  Q=s.questions||[];const qd=document.getElementById('questions');const signature=JSON.stringify([Q,p.status]);if(signature!==questionSignature){questionSignature=signature;
  if(!Q.length){qd.innerHTML='<div class="empty-card"><span class="empty-icon">✓</span><div><strong>지금은 답할 질문이 없습니다</strong>검사가 끝나고 확인할 항목이 생기면 여기에 표시됩니다.</div></div>'}else{qd.innerHTML=Q.map(q=>{let inp='';
   const cur=(q.answer!=null?q.answer:q.proposal);
   if(q.type==='bool')inp=`<select id="q_${q.id}"><option value="true" ${cur?'selected':''}>예</option><option value="false" ${!cur?'selected':''}>아니오</option></select>`;
-  else if(q.type==='choice')inp=`<select id="q_${q.id}">${(q.choices||[]).map(c=>`<option ${c==cur?'selected':''}>${c}</option>`).join('')}</select>`;
+  else if(q.type==='choice')inp=`<select id="q_${q.id}">${(q.choices||[]).map(c=>`<option value="${esc(c)}" ${c==cur?'selected':''}>${q.id==='length_axis_now'?esc(c)+'축':esc(c)}</option>`).join('')}</select>`;
   else inp=`<input id="q_${q.id}" type="number" step="any" value="${q.answer!=null?q.answer:q.proposal}"> ${q.unit||''}`;
   const ev=(q.evidence||[]).map(e=>e.match(/\\.png$/)?`<div class="ev"><img src="/files/${esc(e)}"></div>`:`<div><a href="/files/${esc(e)}" target="_blank">${esc(e)}</a></div>`).join('');
   const w=q.where||{};const hasWhere=(w.points&&w.points.length)||(w.plane_z!=null);
   const btn=hasWhere?` <button onclick="focusQ('${q.id}')">위치 보기</button>`:'';
   const live=(w.plane_z!=null&&q.type==='number')?` oninput="planeFromInput('${q.id}')"`:'';
-  const done=q.answer!=null?` <span style="color:#197">· 답함 ${esc(q.answer)}</span>`:(q.assumed?' <span style="color:#a70">· 제안값으로 가정</span>':'');
+  const done='';
   const titles={units:'파일 단위',length_axis_now:'차량 길이 방향',voxel_mm:'재표면화 복셀 크기',floor_z_mm:'평바닥 높이',half_model:'반쪽 모델 대칭 복원',close_rims:'바퀴 림 닫기',seal_below_mm:'자동 봉합 크기',keep_openings_mm:'유지할 개구부 크기'};
   const descriptions={units:'이 파일의 좌표 단위를 선택하세요. 단위에 따라 실제 차량 크기가 달라집니다.',length_axis_now:'현재 원본에서 차량 앞뒤 방향에 해당하는 축을 선택하세요. x축이 아니면 계산 전에 회전합니다.'};
   const title=titles[q.id]||q.question;const description=descriptions[q.id]||q.question;
-  const card=`<div class="q question-card" id="card_${q.id}"><div class="question-top"><b>${esc(title)}</b><span class="question-badge">추천 ${esc(q.proposal)} ${esc(q.unit||'')}</span></div>${done}<p class="question-description">${esc(description)}</p><div class="question-field"><label for="q_${q.id}" style="font-size:12px;color:#475569">선택값</label>${inp.replace('<input ','<input '+live+' ')}${btn}</div><details><summary>질문·추천 근거 자세히 보기</summary><p>${esc(q.question)}</p><p>${esc(q.reason)}</p>${ev}</details></div>`;
+  if(q.id==='units'){
+   const ext=p.diagnosis?.extents;const length=ext?Math.max(...ext):null;
+   return `<div class="q question-card" id="card_units"><div class="question-top"><b>파일 단위</b><span class="question-badge">자동 추정: ${esc(q.proposal)}</span></div>${done}<div class="question-field" style="margin-top:20px;gap:12px;flex-wrap:wrap"><label for="q_units" style="font-size:14px;color:#475569">차량 길이</label><span id="unit-length" data-length="${length==null?'':length}" style="font-size:14px;font-weight:500;font-variant-numeric:tabular-nums"></span>${inp.replace('<select ','<select aria-label="파일 단위" style="width:110px;min-width:0;font-size:14px" oninput="updateUnitLength()" ')}</div><p id="unit-warning" style="color:#a65b00;font-size:13px;margin:12px 0 0" hidden></p></div>`;
+  }
+  if(q.id==='floor_z_mm')return `<div class="q question-card" id="card_${q.id}"><div class="question-top"><b>평바닥 높이</b><span class="question-badge">자동 추정: ${esc(q.proposal)} mm</span></div>${done}<p class="question-description">파란 평면이 추가할 바닥 위치입니다.<br>차량 밑면에 맞도록 높이를 조정하세요.</p><div class="question-field"><label for="q_${q.id}" style="font-size:14px;color:#475569">높이</label>${inp.replace('<input ','<input style="width:150px;min-width:0;font-size:14px" '+live+' ')}${btn}</div><p style="font-size:12px;color:#64748b;margin:14px 0 0">원본 좌표 기준 높이이며, 지면 간극이 아닙니다.</p></div>`;
+  if(q.id==='length_axis_now')return `<div class="q question-card" id="card_${q.id}"><div class="question-top"><b>파일 방향</b><span class="question-badge">자동 추정: ${esc(q.proposal)}축</span></div>${done}<p class="question-description">파란 화살표가 실제 차량 앞뒤와 나란한지 확인하세요.</p><div class="question-field" style="margin-top:20px"><label for="q_${q.id}" style="font-size:14px;color:#475569">방향 축</label>${inp.replace('<select ','<select style="font-size:14px;width:110px;min-width:0" oninput="updateDirectionWarning()" ')}</div><p id="direction-warning" data-proposal="${esc(q.proposal)}" style="color:#a65b00;font-size:13px;margin:12px 0 0" hidden></p></div>`;
+  const card=`<div class="q question-card" id="card_${q.id}"><div class="question-top"><b>${esc(title)}</b><span class="question-badge">자동 추정 ${esc(q.proposal)} ${esc(q.unit||'')}</span></div>${done}<p class="question-description">${esc(description)}</p><div class="question-field"><label for="q_${q.id}" style="font-size:12px;color:#475569">선택값</label>${inp.replace('<input ','<input '+live+' ')}${btn}</div><details><summary>질문·자동 추정 근거 자세히 보기</summary><p>${esc(q.question)}</p><p>${esc(q.reason)}</p>${ev}</details></div>`;
   return q.answer!=null||q.assumed||['done','done_with_failed_checks'].includes(p.status)?`<details><summary>확인한 설정 · ${esc(q.id)}: ${esc(q.answer!=null?q.answer:q.proposal)}</summary>${card}</details>`:card}).join('');
  }
- window.Qcache=Q;if(window.updateMarkers)window.updateMarkers(Q);}
+ window.Qcache=Q;if(window.updateMarkers)window.updateMarkers(Q);updateUnitLength();updateDirectionWarning();}
  const pd=document.getElementById('plan');const d=p.diagnosis||{};
  const openPlanPanels=new Set([...pd.querySelectorAll('details')].filter(el=>el.open).map(el=>el.querySelector('summary')?.textContent));
  const decisions=p.decisions||[];const seen=new Set();const unique=decisions.filter(x=>{const key=JSON.stringify([x.what,x.because]);if(seen.has(key))return false;seen.add(key);return true;});
- const route=p.route||'';let steps=[];
- if(route.includes('E-wrapcaps'))steps=['CAD 검사·봉합','작은 개구부 수리·STEP 저장','메쉬 생성','바닥 높이 확인','평바닥 생성·차량과 결합','랩 생성·검증','랩 기반 캡을 STEP에 반영','STEP 잔여 경계 검증'];
- else if(route.startsWith('C-flat-floor-wrap'))steps=['바닥 높이 확인','평바닥 생성','차량 메쉬와 결합','랩 생성','랩 수밀·채움률 검증'];
- else if(route==='D-resurface')steps=['복셀 크기 확인','메쉬 정점 병합·봉합','재표면화','수밀·체적 변화·경계상자 검증'];
- else if(route.startsWith('3-wrap-keep-openings'))steps=['유지할 개구부 크기 확인','메쉬 준비','랩 생성'+(route.endsWith('-coarse')?' (거친 알파)':''),'이음매 평활화','랩 형상 검증'];
- else if(route==='A-heal')steps=['CAD 검사·봉합','작은 개구부 수리·STEP 저장','메쉬 생성','남은 CAD 개구부 확인·후속 경로 결정'];
+ const flow=[];const visited=new Map();
+ const stageFromLog=line=>{
+  if(/초기 검사|입력: 파일|미리보기:/.test(line))return '원본 검사';
+  if(/두께 측정/.test(line)&&!/생략/.test(line))return '두께 측정·복셀 크기 확인';
+  if(/바닥 검사|flat_floor_wrap.py.*--no-wrap/.test(line))return '바닥 추가 검사';
+  if(/방법 선택|경로 C 로 전환/.test(line))return '처리 방법 선택';
+  if(/\[검증\]/.test(line))return '결과 검증';
+  if(/\[진행\].*flat_floor_wrap.py/.test(line))return '바닥 추가·틈 닫기';
+  if(/\[진행\].*(prepare_geometry.py|resurface_noclose.py)/.test(line))return '메쉬 수리';
+  if(/\[진행\].*(heal|seal|wrap).*\.py/.test(line))return '형상 수리';
+  return null;
+ };
+ const addStage=(what,because='')=>{if(!visited.has(what)){const row={what,because,reasons:[],selections:[],state:'완료'};visited.set(what,row);flow.push(row);}else if(because)visited.get(what).because=because;};
+ const knownQuestions=[...new Map([...(p.attempt_history||[]).flatMap(a=>a.questions||[]),...(p.questions||[]),...Q].map(q=>[q.id,q])).values()];
+ const questionStage=q=>['units','length_axis_now'].includes(q.id)?'단위·방향 확인':q.id==='floor_z_mm'?'바닥 높이 확인':q.id==='voxel_mm'?'두께 측정·복셀 크기 확인':'사용자 설정 확인';
+ let questionIndex=0;
+ for(const line of (s.log||'').split(/\\r?\\n/)){
+  const stage=stageFromLog(line);if(stage)addStage(stage);
+  if(/답변이 필요한 항목/.test(line)){
+   const q=knownQuestions[questionIndex];if(q){const name=questionStage(q);addStage(name);while(questionIndex<knownQuestions.length&&questionStage(knownQuestions[questionIndex])===name)questionIndex++;}
+  }
+ }
+ if(!flow.length&&(Object.keys(d).length||p.process_active))addStage('원본 검사');
+ for(const q of knownQuestions){if(q.answer!=null||['waiting','waiting_for_answers'].includes(p.status))addStage(questionStage(q));}
+ if((p.checks||[]).length)addStage('결과 검증');
+ const currentMessage=p.runtime?.current_stage||'';
+ const resumedInitial=knownQuestions.some(q=>q.answer!=null)&&(/입력: 파일|초기 검사|미리보기:/.test(currentMessage));
+ const current=p.process_active&&!resumedInitial?stageFromLog(currentMessage):null;
+
+ if(current)addStage(current);
+ if(p.process_active&&current)visited.get(current).state='진행 중';
+ else if(['waiting','waiting_for_answers'].includes(p.status)){const q=knownQuestions.find(q=>q.answer==null&&!q.assumed);if(q)visited.get(questionStage(q)).state='답변 대기';}
+ else if(!p.process_active&&flow.length){flow[flow.length-1].state=({done:'완료',needs_review:'검토 필요',failed:'실패'})[p.status]||'종료';}
  const facts=[];const shown=v=>v===true?'True':v===false?'False':String(v);
  if(d.triangles!=null)facts.push(['입력 삼각형',Number(d.triangles).toLocaleString()]);
  if(d.bodies!=null)facts.push(['입력 몸체 수',d.bodies]);
  if(d.watertight!=null)facts.push(['입력 수밀 여부',shown(d.watertight)]);
  if(d.boundary_edge_share!=null)facts.push(['입력 경계 모서리 비율',(d.boundary_edge_share*100).toFixed(3)+' %']);
- if(d.underside_coverage!=null)facts.push(['바닥 덮임률',(d.underside_coverage*100).toFixed(1)+' %']);
- if(d.thickness_p5_mm!=null)facts.push(['두께 5% 분위',d.thickness_p5_mm+' mm']);
- const routeRows=list=>list.map((x,i)=>`<div class="route-row"><span class="route-number">${i+1}</span><div><strong>${esc(x.what)}</strong><small>${esc(x.because)}</small></div></div>`).join('');
+ const extraFacts=[];if(d.underside_coverage!=null)extraFacts.push(['바닥 덮임률',(d.underside_coverage*100).toFixed(1)+' %']);
+ if(d.thickness_p5_mm!=null)extraFacts.push(['두께 5% 분위',d.thickness_p5_mm+' mm']);
+ const decisionTitle=what=>String(what||'').replace('경로 C: 평바닥 가정 + 랩','평바닥 추가 후 틈 닫기').replace('경로 C 로 전환: 평바닥 가정 + 랩','평바닥 추가 후 틈 닫기로 전환');
+ const selectedQuestions=[...new Map([...Q,...(p.questions||[])].filter(q=>q.answer!=null).map(q=>[q.id,q])).values()];
+ const names={units:'파일 단위',length_axis_now:'방향 축',floor_z_mm:'평바닥 높이',voxel_mm:'복셀 크기'};
+ const stageFor=questionStage;
+ for(const row of flow){row.reasons=[];row.selections=selectedQuestions.filter(q=>stageFor(q)===row.what);}
+ for(const x of unique){const title=String(x.what||'');const target=/바닥이 없는|바닥 있음|단면/.test(title)?'바닥 추가 검사':/열린 메쉬|닫힌 메쉬|열림 경계/.test(title)?'원본 검사':null;const row=flow.find(r=>r.what===target)||flow.find(r=>/처리 방법 선택/.test(r.what))||flow[flow.length-1];if(row)row.reasons.push(decisionTitle(title)+(x.because?' — '+x.because:''));}
+ const rest=selectedQuestions.filter(q=>!flow.some(r=>r.what===stageFor(q)));
+ if(rest.length)flow.splice(flow.length-1,0,{what:'사용자 설정 확인',because:'',selections:rest,reasons:[]});
+ const selectionLabel=q=>(names[q.id]||q.question||q.id)+': '+String(q.answer)+(q.id==='length_axis_now'?'축':q.unit?' '+q.unit:['floor_z_mm','voxel_mm'].includes(q.id)?' mm':'');
+ const inputDiagnosis=(facts.length?facts.map(([name,value])=>`<div class="file-row"><span>${esc(name)}</span><strong>${esc(value)}</strong></div>`).join(''):'<p class="section-caption">초기 검사 결과가 준비되면 표시됩니다.</p>')+'<details class="fold-panel"><summary>전체 진단 데이터 보기</summary><div><pre>'+esc(JSON.stringify(d,null,2))+'</pre></div></details>';
+ const routeRows=list=>list.map((x,i)=>`<div class="route-row"><span class="route-number stage-${({완료:'done','진행 중':'running','답변 대기':'waiting','검토 필요':'review',실패:'failed'})[x.state]||'done'}">${x.state==='완료'?'✓':i+1}${x.state==='진행 중'?'<span class="stage-spinner"></span>':''}</span><div style="min-width:0;flex:1"><strong>${esc(decisionTitle(x.what))}</strong>${x.state&&x.state!=='완료'?`<small style="color:${x.state==='진행 중'?'#2563eb':'#64748b'}">${esc(x.state)}</small>`:''}${x.what==='원본 검사'?inputDiagnosis:x.selections?.length||!x.because?'':`<small>${esc(x.because)}</small>`}${(x.selections||[]).map(q=>`<small style="color:#2563eb">${q.assumed?'제안값 사용':'사용자 선택'} · ${esc(selectionLabel(q))}</small>`).join('')}${(x.reasons||[]).map(reason=>`<small>${esc(reason)}</small>`).join('')}</div></div>`).join('');
  const checks=p.checks||[];const files=[...new Set(p.deliverables||[])];
  pd.innerHTML=healingPanel(p.healing_result)
- +'<section class="section-card"><h3>진단 결과</h3>'+(facts.length?facts.map(([name,value])=>`<div class="file-row"><span>${esc(name)}</span><strong>${esc(value)}</strong></div>`).join(''):'<p class="section-caption">초기 검사 결과가 준비되면 표시됩니다.</p>')+'<details class="fold-panel"><summary>전체 진단 데이터 보기</summary><div><pre>'+esc(JSON.stringify(d,null,2))+'</pre></div></details></section>'
- +'<section class="section-card"><h3>처리 경로</h3>'+(steps.length?'<p class="section-caption">선택된 작업 순서입니다. 각 단계의 완료를 뜻하지 않습니다.</p>'+routeRows(steps.map(what=>({what,because:''}))):'<p class="section-caption">아직 수리 경로가 확정되지 않았습니다.'+(route?' 현재 경로 코드: '+esc(route):'')+'</p>')+'</section>'
- +(unique.length?'<details class="fold-panel"><summary>진단 해석·경로 선택 근거</summary><div>'+routeRows(unique)+'</div></details>':'')
- +'<section class="section-card"><h3>검증 기록</h3>'+(checks.length?checks.map(c=>c.name==='STEP 되읽기·경계상자'?'<p class="section-caption">과거 힐링 실행 기록: '+(c.ok?'실행 성공':'실행 실패')+' · 실제 되읽기·경계상자 검사와 별개</p>':`<div class="check-row ${c.ok?'pass':'fail'}"><span class="check-tag">${c.resolved?'해결 기록':c.ok?'통과':'실패'}</span><div><strong>${esc(c.name)}</strong><small>${esc(c.detail)}${c.on_fail&&!c.ok?' · '+esc(c.on_fail):''}</small></div></div>`).join(''):'<p class="section-caption" style="margin-top:12px">아직 검증 결과가 없습니다.</p>')+'</section>'
- +(files.length?'<section class="section-card"><h3>생성된 파일</h3>'+files.map(f=>{const name=f.split(String.fromCharCode(92)).join('/').split('/').pop();return `<div class="file-row"><code>${esc(name)}</code><button onclick="selectPreview('result');document.getElementById('viewer').scrollIntoView({behavior:'smooth',block:'center'})">최종 STL 보기 ↗</button></div>`}).join('')+'</section>':'')
- +((p.assumptions||[]).length?'<section class="section-card"><h3>적용한 가정</h3><p class="section-caption">'+p.assumptions.map(a=>esc(a.id+' = '+a.value)).join(' · ')+'</p></section>':'')
- +(decisions.length>unique.length?'<details class="fold-panel"><summary>전체 결정 기록 · '+decisions.length+'건 (중복 포함)</summary><div>'+routeRows(decisions)+'</div></details>':'');
+ +'<section class="section-card"><h3>처리 과정</h3>'+routeRows(flow)
+ +'</section>'
+ +'<section class="section-card"><h3>결과 검증</h3>'+(checks.length?checks.map(c=>c.name==='STEP 되읽기·경계상자'?'<p class="section-caption">과거 힐링 실행 기록: '+(c.ok?'실행 성공':'실행 실패')+' · 실제 되읽기·경계상자 검사와 별개</p>':`<div class="check-row ${c.ok?'pass':'fail'}"><span class="check-tag">${c.resolved?'해결 기록':c.ok?'통과':'실패'}</span><div><strong>${esc(c.name)}</strong><small>${esc(c.detail)}${c.on_fail&&!c.ok?' · '+esc(c.on_fail):''}</small></div></div>`).join(''):'<p class="section-caption" style="margin-top:12px">아직 검증 결과가 없습니다.</p>')+'</section>'
+ +(files.length?'<section class="section-card"><h3>결과 파일</h3>'+files.map(f=>{const name=f.split(String.fromCharCode(92)).join('/').split('/').pop();return `<div class="file-row"><code>${esc(name)}</code><button onclick="selectPreview('result');document.getElementById('viewer').scrollIntoView({behavior:'smooth',block:'center'})">최종 STL 보기 ↗</button></div>`}).join('')+'</section>':'')
+ +((p.assumptions||[]).length?'<section class="section-card"><h3>적용한 가정</h3><p class="section-caption">'+p.assumptions.map(a=>esc(a.id+' = '+a.value)).join(' · ')+'</p></section>':'');
  pd.querySelectorAll('details').forEach(el=>{el.open=openPlanPanels.has(el.querySelector('summary')?.textContent);});
  document.getElementById('log').textContent=s.log||'';
  previewFiles=s.previews||{};syncPreview();
@@ -426,17 +488,41 @@ async function launch(url,body){launching=true;launchAt=Date.now();activity();tr
 async function runDefaults(){if(!confirm('미답변 질문에 제안값을 사용하고 이어서 실행합니다. 완료된 단계는 재사용합니다. 계속할까요?'))return;
  await launch('/api/run',{})}
 let chatBusy=false;
+function updateDirectionWarning(){const input=document.getElementById('q_length_axis_now'),warning=document.getElementById('direction-warning');if(!input||!warning)return;warning.hidden=input.value===warning.dataset.proposal;warning.textContent=warning.hidden?'':'차량 앞뒤 방향으로 추정한 축과 다릅니다. 방향을 확인하세요.';}
+function updateUnitLength(){
+ const label=document.getElementById('unit-length'),select=document.getElementById('q_units'),warning=document.getElementById('unit-warning');
+ if(!label||!select)return;
+ if(!label.dataset.length){label.textContent='측정값 없음';return}
+ const length=Number(label.dataset.length),unit=select.value;
+ label.textContent=length.toLocaleString('ko-KR',{maximumFractionDigits:1});
+ const meters=length*({mm:0.001,m:1,inch:0.0254}[unit]||0);
+ warning.textContent=meters>20||meters<1?'일반 차량 크기와 차이가 큽니다. 단위를 확인하세요.':'';
+ warning.hidden=!warning.textContent;
+}
 function fillQuestion(text){const m=document.getElementById('msg');m.value=text;m.focus();}
 function add(role,t){document.getElementById('chat-empty')?.remove();const c=document.getElementById('chat');const d=document.createElement('div');d.className='m '+(role==='user'?'u':'a');const label=document.createElement('span');label.className='m-label';label.textContent=role==='user'?'나':'AI 형상 도우미';const content=document.createElement('div');content.textContent=t;d.append(label,content);c.appendChild(d);c.scrollTop=c.scrollHeight;return content;}
 async function send(){if(chatBusy)return;const m=document.getElementById('msg');const t=m.value.trim();if(!t)return;chatBusy=true;const button=document.getElementById('chat-send');button.disabled=true;button.textContent='답변 대기…';m.value='';add('user',t);hist.push({role:'user',content:t});
  const pending=add('assistant','');pending.innerHTML='<div class="chat-wait"><span class="chat-dot" aria-hidden="true"></span>작업 기록을 확인하고 있어요…</div>';
  try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history:hist})});if(!r.ok)throw new Error('HTTP '+r.status);const s=await r.json();if(typeof s.reply!=='string')throw new Error('응답 형식 오류');pending.textContent=s.reply;hist.push({role:'assistant',content:s.reply});
- if(s.suggested){for(const [k,v] of Object.entries(s.suggested)){const el=document.getElementById('q_'+k);if(el)el.value=(typeof v==='boolean')?String(v):v}}
+ if(s.suggested&&typeof s.suggested==='object'){
+ const candidates=Object.entries(s.suggested).filter(([k,v])=>{
+ const q=Q.find(q=>q.id===k);if(!q||q.answer!=null||q.assumed)return false;
+ return q.type==='choice'?(q.choices||[]).includes(v):q.type==='bool'?typeof v==='boolean':typeof v==='number'&&Number.isFinite(v)});
+ if(candidates.length){const box=document.createElement('div');box.className='q';
+ const heading=document.createElement('strong');heading.textContent='AI 추천값';box.appendChild(heading);
+ for(const [k,v] of candidates){const row=document.createElement('div');row.textContent=k+': '+String(v);box.appendChild(row)}
+ const apply=document.createElement('button');apply.textContent='AI 추천을 답변란에 적용';
+ apply.onclick=()=>{let count=0;for(const [k,v] of candidates){const q=Q.find(q=>q.id===k);const el=document.getElementById('q_'+k);if(el&&q&&q.answer==null&&!q.assumed){el.value=String(v);el.dispatchEvent(new Event('input',{bubbles:true}));count++}}
+ apply.textContent=count?'적용됨 — 선택값 확인 후 답을 저장하세요':'질문이 변경되어 적용하지 않았습니다.';apply.disabled=true};
+ box.appendChild(apply);pending.appendChild(box)}}
  }catch(e){pending.textContent='답변을 받아오지 못했어요. UI 서버와 AI 연결 상태를 확인하고 다시 보내주세요.';pending.classList.add('bad');m.value=m.value||t;hist.pop();}
  finally{chatBusy=false;button.disabled=false;button.textContent='보내기 ↗';const c=document.getElementById('chat');c.scrollTop=c.scrollHeight;}}
 document.getElementById('msg').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&!e.isComposing){e.preventDefault();send();}});
 refresh();setInterval(refresh,2000);setInterval(activity,1000);
 </script>
+<style>
+#pre-run-confirmation{margin:22px 0}#pre-run-confirmation h2{font-size:15px;margin:0 0 8px}.settings-collapsed{display:grid;grid-template-columns:1fr auto;gap:14px 20px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;align-items:center}.settings-collapsed h2{grid-column:1/-1}.settings-collapsed #settings-summary{display:flex;gap:24px;flex-wrap:wrap}.settings-collapsed #settings-summary[hidden]{display:none}.setting-item{display:flex;flex-direction:column;gap:5px;font-size:13px}.setting-item span{font-size:11px;color:#64748b}.setting-item b{font-weight:600;color:#334155}#settings-edit{font-size:12px;padding:8px 12px;margin:0}#questions .question-card{padding:14px 18px;margin:10px 0}#questions .question-field{margin-top:12px!important}#settings-cancel{order:-1}.route-number.stage-done{background:#ecfdf5;color:#15803d}.route-number.stage-running{background:#eff6ff;color:#2563eb;position:relative}.route-number.stage-waiting,.route-number.stage-review{background:#fff7ed;color:#c2410c}.route-number.stage-failed{background:#fef2f2;color:#dc2626}.stage-spinner{position:absolute;inset:-3px;border:2px solid #dbeafe;border-top-color:#2563eb;border-radius:50%;animation:stage-turn 1s linear infinite}@keyframes stage-turn{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.stage-spinner{animation:none}}@media(max-width:560px){.settings-collapsed{grid-template-columns:1fr}.settings-collapsed #settings-summary{gap:16px}#settings-edit{justify-self:start}}
+</style>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
@@ -447,8 +533,49 @@ const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(W(),Hh
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xf4f5f7);
 const camera=new THREE.PerspectiveCamera(40,W()/Hh(),1,100000);camera.up.set(0,0,1);
 const controls=new OrbitControls(camera,renderer.domElement);
+// Small screen-space gizmo: camera changes only, never geometry or answers.
+const gizmo=document.createElement('canvas');gizmo.width=gizmo.height=240;
+gizmo.style.cssText='position:absolute;right:14px;bottom:14px;width:120px;height:120px;z-index:5;cursor:pointer;background:rgba(255,255,255,.9);border:1px solid #e2e8f0;border-radius:14px';
+gizmo.setAttribute('aria-label','좌표축 시점 선택');gizmo.title='X·Y·Z 클릭: 시점 변경';box.style.position='relative';box.appendChild(gizmo);
+const gx=gizmo.getContext('2d');let gizmoPoints=[];
+const axes=[new THREE.Vector3(1,0,0),new THREE.Vector3(0,1,0),new THREE.Vector3(0,0,1)],axisColors=['#dc4040','#25965b','#3976df'];
+function drawGizmo(){
+ gx.clearRect(0,0,240,240);const inverse=camera.quaternion.clone().invert();
+ const selected=document.getElementById('q_length_axis_now')?.value;
+ gizmoPoints=[];for(let i=0;i<3;i++)for(const sign of [-1,1]){
+ const v=axes[i].clone().multiplyScalar(sign).applyQuaternion(inverse);
+ gizmoPoints.push({i,sign,x:120+v.x*76,y:112-v.y*76,z:v.z})}
+ gizmoPoints.sort((a,b)=>a.z-b.z);
+ for(const p of gizmoPoints){gx.beginPath();gx.moveTo(120,112);gx.lineTo(p.x,p.y);gx.strokeStyle=axisColors[p.i];gx.lineWidth=3;gx.globalAlpha=p.z<0?.45:1;gx.stroke();
+ gx.beginPath();gx.arc(p.x,p.y,19,0,Math.PI*2);gx.fillStyle=p.sign>0?axisColors[p.i]:'#eef2f6';gx.fill();
+ if(selected==='xyz'[p.i]&&p.sign>0){gx.strokeStyle='#172554';gx.lineWidth=4;gx.stroke()}
+ gx.fillStyle=p.sign>0?'#fff':axisColors[p.i];gx.font='600 20px sans-serif';gx.textAlign='center';gx.textBaseline='middle';gx.fillText((p.sign<0?'−':'')+'XYZ'[p.i],p.x,p.y)}
+ gx.globalAlpha=1;gx.fillStyle='#64748b';gx.font='18px sans-serif';gx.fillText('좌표축 · 시점',120,219);
+}
+gizmo.addEventListener('click',event=>{const r=gizmo.getBoundingClientRect(),x=(event.clientX-r.left)*240/r.width,y=(event.clientY-r.top)*240/r.height;
+ const hit=[...gizmoPoints].reverse().find(p=>Math.hypot(p.x-x,p.y-y)<23);if(!hit)return;
+ const distance=camera.position.distanceTo(controls.target);camera.up.set(0,0,1);if(hit.i===2)camera.up.set(0,1,0);
+ camera.position.copy(controls.target).addScaledVector(axes[hit.i],hit.sign*distance);camera.lookAt(controls.target);controls.update();});
 scene.add(new THREE.HemisphereLight(0xffffff,0x667788,1.1));const dl=new THREE.DirectionalLight(0xffffff,0.8);dl.position.set(1,-1,2);scene.add(dl);
 let meshObj=null,bbox=null;const markers=new THREE.Group();scene.add(markers);let plane=null;
+const directionArrows=new THREE.Group();scene.add(directionArrows);let directionKey=null;
+function updateDirectionArrows(){
+ const input=document.getElementById('q_length_axis_now');
+ directionArrows.visible=!!input&&!!bbox&&previewMode!=='result';if(!directionArrows.visible)return;
+ const q=(window.Qcache||[]).find(q=>q.id==='length_axis_now');
+ // After an answered source axis is normalized, the displayed length axis is X.
+ const axis=q?.answer!=null?'x':input.value;
+ const center=bbox.getCenter(new THREE.Vector3()),size=bbox.getSize(new THREE.Vector3());
+ // Place the direction guide outside the model; it indicates an axis, not a body centerline.
+ center.z=bbox.min.z-size.length()*.10;
+ if(axis==='z'){center.x=bbox.max.x+size.length()*.10;center.z=bbox.getCenter(new THREE.Vector3()).z;}
+ const key=axis+':'+bbox.min.toArray()+':'+bbox.max.toArray();if(key===directionKey)return;directionKey=key;
+ for(const child of [...directionArrows.children]){child.line.geometry.dispose();child.line.material.dispose();child.cone.geometry.dispose();child.cone.material.dispose();directionArrows.remove(child)}
+ const vector=axes['xyz'.indexOf(axis)];if(!vector)return;
+ const span=Math.max(size.getComponent('xyz'.indexOf(axis))*.65,size.length()*.12);
+ for(const sign of [-1,1]){const arrow=new THREE.ArrowHelper(vector.clone().multiplyScalar(sign),center,span,0x2563eb,span*.13,span*.065);
+ arrow.line.material.depthTest=false;arrow.cone.material.depthTest=false;arrow.line.material.transparent=true;arrow.cone.material.transparent=true;arrow.line.renderOrder=20;arrow.cone.renderOrder=20;directionArrows.add(arrow)}
+}
 const loader=new STLLoader();
 let loadedRevision=null,loadingPreview=false;
 window.ensurePreview=function(info){if(!info){document.getElementById('preview-state').textContent='미리보기 준비 중 — 생성되면 자동으로 표시합니다.';return;}const revision=info.url+'?v='+encodeURIComponent(info.revision);if(loadingPreview||revision===loadedRevision)return;loadingPreview=true;document.getElementById('preview-state').textContent='미리보기 불러오는 중…';
@@ -463,6 +590,7 @@ function pin(n,pos,r){const c=document.createElement('canvas');c.width=c.height=
  const d=bbox?bbox.getSize(new THREE.Vector3()).length():4000;const w=d*0.028;
  sp.position.copy(pos).add(new THREE.Vector3(0,0,Math.min(r,w)*0.6+w*0.6));sp.scale.set(w,w,1);sp.userData.pin=true;return sp;}
 const qOf=new Map();
+function questionPlaneHeight(q){const el=document.getElementById('q_'+q.id);const raw=el?el.value:q.answer??q.where?.plane_z;const value=raw==null||raw===''?NaN:Number(raw);return Number.isFinite(value)?value:null;}
 window.updateMarkers=function(Q){markers.clear();qOf.clear();let pz=null;let n=0;window.markerList=[];
  for(const q of Q){const w=q.where||{};const lines=w.lines||[];
   for(let i=0;i<(w.points||[]).length;i++){const p=w.points[i];n++;
@@ -483,7 +611,7 @@ window.updateMarkers=function(Q){markers.clear();qOf.clear();let pz=null;let n=0
    m.position.copy(pos);m.userData.n=n;markers.add(m);qOf.set(m.uuid,q.id);
    if(window.showPins!==false)markers.add(pin(n,pos,r));}
   window.markerList.push({n:n,qid:q.id,text:p[4]||q.id,pos:[pos.x,pos.y,pos.z]});}
-  if(w.plane_z!=null&&pz==null)pz=w.plane_z;}
+  if(w.plane_z!=null&&pz==null)pz=questionPlaneHeight(q);}
  setPlane(pz);const leg=document.getElementById('legend');
  if(leg)leg.innerHTML=window.markerList.length?window.markerList.map(x=>`<span class="lg" onclick="focusN(${x.n})">${x.n}. ${x.text}</span>`).join(' '):'';}
 window.focusN=function(n){const m=markers.children.find(o=>o.isMesh&&o.userData.n===n);if(!m)return;
@@ -494,15 +622,18 @@ function setPlane(z){if(plane){scene.remove(plane);plane=null}if(z==null||!bbox)
  plane=new THREE.Mesh(new THREE.PlaneGeometry(s.x*1.1,s.y*1.1),new THREE.MeshBasicMaterial({color:0x2b6cff,transparent:true,opacity:0.35,side:THREE.DoubleSide}));
  const c=bbox.getCenter(new THREE.Vector3());plane.position.set(c.x,c.y,z);scene.add(plane);}
 window.planeFromInput=function(qid){const el=document.getElementById('q_'+qid);if(el)setPlane(parseFloat(el.value));};
+let focusTimer=null;
 window.focusQ=function(qid){const q=Q.find(x=>x.id===qid);if(!q)return;const w=q.where||{};const pts=w.points||[];
  if(pts.length){const c=new THREE.Vector3();for(const p of pts)c.add(new THREE.Vector3(p[0],p[1],p[2]));c.multiplyScalar(1/pts.length);const r=Math.max(...pts.map(p=>p[3]||60));fit(c,Math.max(r*6,600));}
- else if(w.plane_z!=null&&bbox){const c=bbox.getCenter(new THREE.Vector3());c.z=w.plane_z;fit(c,bbox.getSize(new THREE.Vector3()).length()*0.5);setPlane(w.plane_z);}
- const card=document.getElementById('card_'+qid);if(card){if(card.parentElement.tagName==='DETAILS')card.parentElement.open=true;card.scrollIntoView({behavior:'smooth',block:'center'});card.style.outline='2px solid #e04a3f';setTimeout(()=>card.style.outline='',2000);}};
+ else if(w.plane_z!=null&&bbox){const c=bbox.getCenter(new THREE.Vector3());const s=bbox.getSize(new THREE.Vector3());const extent=Math.max(s.length(),Math.abs((questionPlaneHeight(q)??c.z)-c.z)*2+s.z);const vertical=THREE.MathUtils.degToRad(camera.fov);const horizontal=2*Math.atan(Math.tan(vertical/2)*camera.aspect);const distance=extent/(2*Math.sin(Math.min(vertical,horizontal)/2))*1.1;fit(c,distance/Math.sqrt(.9*.9+1.1*1.1+.7*.7));setPlane(questionPlaneHeight(q));}
+ clearTimeout(focusTimer);box.style.outline='2px solid #3b82f6';box.style.outlineOffset='3px';box.scrollIntoView({behavior:'smooth',block:'center'});
+ if(plane)plane.material.opacity=.55;
+ focusTimer=setTimeout(()=>{box.style.outline='';box.style.outlineOffset='';if(plane)plane.material.opacity=.35;},2000);};
 const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();
 renderer.domElement.addEventListener('click',e=>{const rc=renderer.domElement.getBoundingClientRect();mouse.x=((e.clientX-rc.left)/rc.width)*2-1;mouse.y=-((e.clientY-rc.top)/rc.height)*2+1;
  ray.setFromCamera(mouse,camera);const hit=ray.intersectObjects(markers.children.filter(o=>o.isMesh));if(hit.length){const qid=qOf.get(hit[0].object.uuid);if(qid)window.focusQ(qid);}});
 window.addEventListener('resize',()=>{camera.aspect=W()/Hh();camera.updateProjectionMatrix();renderer.setSize(W(),Hh());});
-(function anim(){requestAnimationFrame(anim);controls.update();renderer.render(scene,camera);})();
+(function anim(){requestAnimationFrame(anim);controls.update();updateDirectionArrows();renderer.render(scene,camera);drawGizmo();})();
 window.ensurePreview(window.previewSelection);
 </script></body></html>"""
 
