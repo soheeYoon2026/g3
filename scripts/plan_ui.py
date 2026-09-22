@@ -408,6 +408,12 @@ async function refresh(){if(refreshing)return;refreshing=true;try{const r=await 
    const ext=p.diagnosis?.extents;const length=ext?Math.max(...ext):null;
    return `<div class="q question-card" id="card_units"><div class="question-top"><b>파일 단위</b><span class="question-badge">자동 추정: ${esc(q.proposal)}</span></div>${done}<div class="question-field" style="margin-top:20px;gap:12px;flex-wrap:wrap"><label for="q_units" style="font-size:14px;color:#475569">차량 길이</label><span id="unit-length" data-length="${length==null?'':length}" style="font-size:14px;font-weight:500;font-variant-numeric:tabular-nums"></span>${inp.replace('<select ','<select aria-label="파일 단위" style="width:110px;min-width:0;font-size:14px" oninput="updateUnitLength()" ')}</div><p id="unit-warning" style="color:#a65b00;font-size:13px;margin:12px 0 0" hidden></p></div>`;
   }
+  if(['half_model','seal_below_mm','close_rims'].includes(q.id)){
+   const labels={half_model:'반쪽 모델 복원',seal_below_mm:'구멍 메우기',close_rims:'바퀴 림 막기'};
+   const descriptions={half_model:'차량 한쪽만 있다면 좌우 대칭으로 복사해 전체 차량을 만듭니다.',seal_below_mm:'입력한 크기보다 작은 구멍을 메웁니다. 공기가 지나가야 하는 구멍은 남겨두세요.',close_rims:'바퀴의 열린 림을 원판으로 막을지 선택하세요.'};
+   const proposal=q.type==='bool'?(q.proposal?'적용 권장':'적용 안 함 권장'):esc(q.proposal)+' '+esc(q.unit||'');
+   return `<div class="q question-card" id="card_${q.id}"><div class="question-top"><b>${labels[q.id]}</b><span class="question-badge">자동 추정: ${proposal}</span></div><p class="question-description">${descriptions[q.id]}</p><div class="question-field"><label for="q_${q.id}" style="font-size:14px;color:#475569">${q.type==='bool'?'적용':'최대 크기'}</label>${inp.replace('<select ','<select style="width:110px;min-width:0;font-size:14px" ').replace('<input ','<input style="width:150px;min-width:0;font-size:14px" ')}${btn}</div></div>`;
+  }
   if(q.id==='floor_z_mm')return `<div class="q question-card" id="card_${q.id}"><div class="question-top"><b>평바닥 높이</b><span class="question-badge">자동 추정: ${esc(q.proposal)} mm</span></div>${done}<p class="question-description">파란 평면이 추가할 바닥 위치입니다.<br>차량 밑면에 맞도록 높이를 조정하세요.</p><div class="question-field"><label for="q_${q.id}" style="font-size:14px;color:#475569">높이</label>${inp.replace('<input ','<input style="width:150px;min-width:0;font-size:14px" '+live+' ')}${btn}</div><p style="font-size:12px;color:#64748b;margin:14px 0 0">원본 좌표 기준 높이이며, 지면 간극이 아닙니다.</p></div>`;
   if(q.id==='length_axis_now')return `<div class="q question-card" id="card_${q.id}"><div class="question-top"><b>파일 방향</b><span class="question-badge">자동 추정: ${esc(q.proposal)}축</span></div>${done}<p class="question-description">파란 화살표가 실제 차량 앞뒤와 나란한지 확인하세요.</p><div class="question-field" style="margin-top:20px"><label for="q_${q.id}" style="font-size:14px;color:#475569">방향 축</label>${inp.replace('<select ','<select style="font-size:14px;width:110px;min-width:0" oninput="updateDirectionWarning()" ')}</div><p id="direction-warning" data-proposal="${esc(q.proposal)}" style="color:#a65b00;font-size:13px;margin:12px 0 0" hidden></p></div>`;
   const card=`<div class="q question-card" id="card_${q.id}"><div class="question-top"><b>${esc(title)}</b><span class="question-badge">자동 추정 ${esc(q.proposal)} ${esc(q.unit||'')}</span></div>${done}<p class="question-description">${esc(description)}</p><div class="question-field"><label for="q_${q.id}" style="font-size:12px;color:#475569">선택값</label>${inp.replace('<input ','<input '+live+' ')}${btn}</div><details><summary>질문·자동 추정 근거 자세히 보기</summary><p>${esc(q.question)}</p><p>${esc(q.reason)}</p>${ev}</details></div>`;
@@ -423,9 +429,11 @@ async function refresh(){if(refreshing)return;refreshing=true;try{const r=await 
   if(/두께 측정/.test(line)&&!/생략/.test(line))return '두께 측정·복셀 크기 확인';
   if(/바닥 검사|flat_floor_wrap.py.*--no-wrap/.test(line))return '바닥 추가 검사';
   if(/방법 선택|경로 C 로 전환/.test(line))return '처리 방법 선택';
-  if(/\[검증\]/.test(line))return '결과 검증';
+  if(/\[검증\]/.test(line))return /힐링|STEP/.test(line)?'STEP 수리 결과 확인':'STL 결과 검증';
   if(/\[진행\].*flat_floor_wrap.py/.test(line))return '바닥 추가·틈 닫기';
-  if(/\[진행\].*(prepare_geometry.py|resurface_noclose.py)/.test(line))return '메쉬 수리';
+  if(/propose_parameters.py|STEP 설정 측정|저장된 STEP 설정 제안/.test(line))return '수리 설정 제안';
+  if(/prepare_geometry.py/.test(line))return d.format==='STEP'?'CAD 수리·STL 생성':'메쉬 수리';
+  if(/resurface_noclose.py/.test(line))return '메쉬 수리';
   if(/\[진행\].*(heal|seal|wrap).*\.py/.test(line))return '형상 수리';
   return null;
  };
@@ -441,13 +449,28 @@ async function refresh(){if(refreshing)return;refreshing=true;try{const r=await 
  }
  if(!flow.length&&(Object.keys(d).length||p.process_active))addStage('원본 검사');
  for(const q of knownQuestions){if(q.answer!=null||['waiting','waiting_for_answers'].includes(p.status))addStage(questionStage(q));}
- if((p.checks||[]).length)addStage('결과 검증');
+ if((p.checks||[]).length&&!flow.some(r=>/결과 확인|결과 검증/.test(r.what)))addStage(d.format==='STEP'?'STEP 수리 결과 확인':'STL 결과 검증');
+ const prep=p.preparation||{};
+ if(prep.current_stage||prep.cad_quality||prep.stages?.cad_quality){
+  const index=flow.findIndex(r=>r.what==='CAD 수리·STL 생성');
+  if(index>=0){
+   const rows=[];
+   for(const [key,title] of [['heal','CAD 수리'],['cad_quality','CAD 품질 확인'],['mesh','STL 생성']]){
+    const entry=prep.stages?.[key]||(key==='heal'?prep.stages?.cad:null);if(!entry)continue;
+    const state=entry.status==='running'?'진행 중':entry.status==='failed'?'실패':key==='cad_quality'&&prep.cad_quality?.passed===false?'검토 필요':'완료';
+    const row={what:title,because:key==='cad_quality'?'수리 보고서 기준 품질 확인':key==='mesh'&&prep.mesh_role==='intermediate_for_followup_repair'?'후속 수리용 중간 STL':'',reasons:[],selections:[],state};rows.push(row);visited.set(title,row);
+   }
+   flow.splice(index,1,...rows);
+   const duplicate=flow.findIndex(r=>r.what==='STEP 수리 결과 확인');if(duplicate>=0)flow.splice(duplicate,1);
+  }
+ }
  const currentMessage=p.runtime?.current_stage||'';
  const resumedInitial=knownQuestions.some(q=>q.answer!=null)&&(/입력: 파일|초기 검사|미리보기:/.test(currentMessage));
- const current=p.process_active&&!resumedInitial?stageFromLog(currentMessage):null;
+ let current=p.process_active&&!resumedInitial?stageFromLog(currentMessage):null;
+ if(current==='CAD 수리·STL 생성'&&(prep.current_stage||prep.cad_quality||prep.stages?.cad_quality)){current=({cad:'CAD 수리',heal:'CAD 수리',intent:'CAD 수리',cad_quality:'CAD 품질 확인',mesh:'STL 생성',area:'STL 생성',render:'STL 생성'})[prep.current_stage]||null;}
 
  if(current)addStage(current);
- if(p.process_active&&current)visited.get(current).state='진행 중';
+ if(p.process_active&&current){visited.get(current).state='진행 중';const index=flow.findIndex(r=>r.what===current);for(let i=index+1;i<flow.length;i++)flow[i].state='이전 실행';}
  else if(['waiting','waiting_for_answers'].includes(p.status)){const q=knownQuestions.find(q=>q.answer==null&&!q.assumed);if(q)visited.get(questionStage(q)).state='답변 대기';}
  else if(!p.process_active&&flow.length){flow[flow.length-1].state=({done:'완료',needs_review:'검토 필요',failed:'실패'})[p.status]||'종료';}
  const facts=[];const shown=v=>v===true?'True':v===false?'False':String(v);
@@ -455,24 +478,34 @@ async function refresh(){if(refreshing)return;refreshing=true;try{const r=await 
  if(d.bodies!=null)facts.push(['입력 몸체 수',d.bodies]);
  if(d.watertight!=null)facts.push(['입력 수밀 여부',shown(d.watertight)]);
  if(d.boundary_edge_share!=null)facts.push(['입력 경계 모서리 비율',(d.boundary_edge_share*100).toFixed(3)+' %']);
+ const cadDiagnosis=d.cad||p.initial_step_validation?.report;
+ if(cadDiagnosis)for(const [key,label] of [['faces','CAD 면 수'],['solids','CAD 솔리드 수'],['shells','CAD 셸 수'],['free_edges','자유 모서리 수'],['open_shells','열린 셸 수'],['invalid_faces','무효 면 수']])if(cadDiagnosis[key]!=null)facts.push([label,cadDiagnosis[key]]);
  const extraFacts=[];if(d.underside_coverage!=null)extraFacts.push(['바닥 덮임률',(d.underside_coverage*100).toFixed(1)+' %']);
  if(d.thickness_p5_mm!=null)extraFacts.push(['두께 5% 분위',d.thickness_p5_mm+' mm']);
  const decisionTitle=what=>String(what||'').replace('경로 C: 평바닥 가정 + 랩','평바닥 추가 후 틈 닫기').replace('경로 C 로 전환: 평바닥 가정 + 랩','평바닥 추가 후 틈 닫기로 전환');
  const selectedQuestions=[...new Map([...Q,...(p.questions||[])].filter(q=>q.answer!=null).map(q=>[q.id,q])).values()];
- const names={units:'파일 단위',length_axis_now:'방향 축',floor_z_mm:'평바닥 높이',voxel_mm:'복셀 크기'};
+ const names={units:'파일 단위',length_axis_now:'방향 축',floor_z_mm:'평바닥 높이',voxel_mm:'복셀 크기',half_model:'반쪽 모델 복원',seal_below_mm:'구멍 메우기',close_rims:'바퀴 림 막기'};
  const stageFor=questionStage;
  for(const row of flow){row.reasons=[];row.selections=selectedQuestions.filter(q=>stageFor(q)===row.what);}
  for(const x of unique){const title=String(x.what||'');const target=/바닥이 없는|바닥 있음|단면/.test(title)?'바닥 추가 검사':/열린 메쉬|닫힌 메쉬|열림 경계/.test(title)?'원본 검사':null;const row=flow.find(r=>r.what===target)||flow.find(r=>/처리 방법 선택/.test(r.what))||flow[flow.length-1];if(row)row.reasons.push(decisionTitle(title)+(x.because?' — '+x.because:''));}
  const rest=selectedQuestions.filter(q=>!flow.some(r=>r.what===stageFor(q)));
  if(rest.length)flow.splice(flow.length-1,0,{what:'사용자 설정 확인',because:'',selections:rest,reasons:[]});
- const selectionLabel=q=>(names[q.id]||q.question||q.id)+': '+String(q.answer)+(q.id==='length_axis_now'?'축':q.unit?' '+q.unit:['floor_z_mm','voxel_mm'].includes(q.id)?' mm':'');
+ const selectionLabel=q=>(names[q.id]||q.id)+': '+(typeof q.answer==='boolean'?(q.answer?'예':'아니오'):String(q.answer))+(q.id==='length_axis_now'?'축':q.unit?' '+q.unit:['floor_z_mm','voxel_mm'].includes(q.id)?' mm':'');
+ const executionCheck=(p.checks||[]).find(c=>c.name==='힐링 단계 실행');const cadRow=flow.find(r=>r.what==='CAD 수리'||r.what==='CAD 수리·STL 생성');if(executionCheck&&cadRow)cadRow.reasons.push(executionCheck.ok?'CAD 수리 실행 완료':'CAD 수리 실행 실패');
  const inputDiagnosis=(facts.length?facts.map(([name,value])=>`<div class="file-row"><span>${esc(name)}</span><strong>${esc(value)}</strong></div>`).join(''):'<p class="section-caption">초기 검사 결과가 준비되면 표시됩니다.</p>')+'<details class="fold-panel"><summary>전체 진단 데이터 보기</summary><div><pre>'+esc(JSON.stringify(d,null,2))+'</pre></div></details>';
- const routeRows=list=>list.map((x,i)=>`<div class="route-row"><span class="route-number stage-${({완료:'done','진행 중':'running','답변 대기':'waiting','검토 필요':'review',실패:'failed'})[x.state]||'done'}">${x.state==='완료'?'✓':i+1}${x.state==='진행 중'?'<span class="stage-spinner"></span>':''}</span><div style="min-width:0;flex:1"><strong>${esc(decisionTitle(x.what))}</strong>${x.state&&x.state!=='완료'?`<small style="color:${x.state==='진행 중'?'#2563eb':'#64748b'}">${esc(x.state)}</small>`:''}${x.what==='원본 검사'?inputDiagnosis:x.selections?.length||!x.because?'':`<small>${esc(x.because)}</small>`}${(x.selections||[]).map(q=>`<small style="color:#2563eb">${q.assumed?'제안값 사용':'사용자 선택'} · ${esc(selectionLabel(q))}</small>`).join('')}${(x.reasons||[]).map(reason=>`<small>${esc(reason)}</small>`).join('')}</div></div>`).join('');
+ const routeRows=list=>list.map((x,i)=>`<div class="route-row"><span class="route-number stage-${({완료:'done','진행 중':'running','답변 대기':'waiting','검토 필요':'review',실패:'failed'})[x.state]||'previous'}">${x.state==='완료'?'✓':i+1}${x.state==='진행 중'?'<span class="stage-spinner"></span>':''}</span><div style="min-width:0;flex:1"><strong>${esc(decisionTitle(x.what))}</strong>${x.state&&x.state!=='완료'?`<small style="color:${x.state==='진행 중'?'#2563eb':'#64748b'}">${esc(x.state)}</small>`:''}${x.what==='원본 검사'?inputDiagnosis:x.selections?.length||!x.because?'':`<small>${esc(x.because)}</small>`}${(x.selections||[]).map(q=>`<small style="color:#2563eb">${q.assumed?'제안값 사용':'사용자 선택'} · ${esc(selectionLabel(q))}</small>`).join('')}${(x.reasons||[]).map(reason=>`<small>${esc(reason)}</small>`).join('')}</div></div>`).join('');
  const checks=p.checks||[];const files=[...new Set(p.deliverables||[])];
- pd.innerHTML=healingPanel(p.healing_result)
+ const isStepCheck=c=>/STEP|힐링|바퀴 고리 후속/.test(c.name);
+ const qualityChecks=checks.filter(c=>!['힐링 단계 실행','STEP 되읽기·경계상자'].includes(c.name));
+ const stepChecks=qualityChecks.filter(isStepCheck),stlChecks=qualityChecks.filter(c=>!isStepCheck(c));
+ const renderCheck=c=>`<div class="check-row ${c.ok?'pass':'fail'}"><span class="check-tag">${c.resolved?'해결 기록':c.ok?'통과':'실패'}</span><div><strong>${esc(c.name)}</strong><small>${esc(c.detail)}${c.on_fail&&!c.ok?' · '+esc(c.on_fail):''}</small></div></div>`;
+ const verificationGroup=(label,items)=>'<div style="margin-top:16px"><h4 style="font-size:13px;color:#334155;margin:0 0 10px">'+label+'</h4>'+items.map(renderCheck).join('')+'</div>';
+ const verificationHtml=(stepChecks.length?verificationGroup('STEP 결과 검증',stepChecks):'')+(stlChecks.length?verificationGroup('STL 결과 검증',stlChecks):'');
+
+ pd.innerHTML=''
  +'<section class="section-card"><h3>처리 과정</h3>'+routeRows(flow)
  +'</section>'
- +'<section class="section-card"><h3>결과 검증</h3>'+(checks.length?checks.map(c=>c.name==='STEP 되읽기·경계상자'?'<p class="section-caption">과거 힐링 실행 기록: '+(c.ok?'실행 성공':'실행 실패')+' · 실제 되읽기·경계상자 검사와 별개</p>':`<div class="check-row ${c.ok?'pass':'fail'}"><span class="check-tag">${c.resolved?'해결 기록':c.ok?'통과':'실패'}</span><div><strong>${esc(c.name)}</strong><small>${esc(c.detail)}${c.on_fail&&!c.ok?' · '+esc(c.on_fail):''}</small></div></div>`).join(''):'<p class="section-caption" style="margin-top:12px">아직 검증 결과가 없습니다.</p>')+'</section>'
+ +'<section class="section-card"><h3>결과 검증</h3>'+(verificationHtml||'<p class="section-caption">아직 검증 결과가 없습니다.</p>')+'</section>'
  +(files.length?'<section class="section-card"><h3>결과 파일</h3>'+files.map(f=>{const name=f.split(String.fromCharCode(92)).join('/').split('/').pop();return `<div class="file-row"><code>${esc(name)}</code><button onclick="selectPreview('result');document.getElementById('viewer').scrollIntoView({behavior:'smooth',block:'center'})">최종 STL 보기 ↗</button></div>`}).join('')+'</section>':'')
  +((p.assumptions||[]).length?'<section class="section-card"><h3>적용한 가정</h3><p class="section-caption">'+p.assumptions.map(a=>esc(a.id+' = '+a.value)).join(' · ')+'</p></section>':'');
  pd.querySelectorAll('details').forEach(el=>{el.open=openPlanPanels.has(el.querySelector('summary')?.textContent);});
@@ -521,7 +554,7 @@ document.getElementById('msg').addEventListener('keydown',e=>{if((e.ctrlKey||e.m
 refresh();setInterval(refresh,2000);setInterval(activity,1000);
 </script>
 <style>
-#pre-run-confirmation{margin:22px 0}#pre-run-confirmation h2{font-size:15px;margin:0 0 8px}.settings-collapsed{display:grid;grid-template-columns:1fr auto;gap:14px 20px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;align-items:center}.settings-collapsed h2{grid-column:1/-1}.settings-collapsed #settings-summary{display:flex;gap:24px;flex-wrap:wrap}.settings-collapsed #settings-summary[hidden]{display:none}.setting-item{display:flex;flex-direction:column;gap:5px;font-size:13px}.setting-item span{font-size:11px;color:#64748b}.setting-item b{font-weight:600;color:#334155}#settings-edit{font-size:12px;padding:8px 12px;margin:0}#questions .question-card{padding:14px 18px;margin:10px 0}#questions .question-field{margin-top:12px!important}#settings-cancel{order:-1}.route-number.stage-done{background:#ecfdf5;color:#15803d}.route-number.stage-running{background:#eff6ff;color:#2563eb;position:relative}.route-number.stage-waiting,.route-number.stage-review{background:#fff7ed;color:#c2410c}.route-number.stage-failed{background:#fef2f2;color:#dc2626}.stage-spinner{position:absolute;inset:-3px;border:2px solid #dbeafe;border-top-color:#2563eb;border-radius:50%;animation:stage-turn 1s linear infinite}@keyframes stage-turn{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.stage-spinner{animation:none}}@media(max-width:560px){.settings-collapsed{grid-template-columns:1fr}.settings-collapsed #settings-summary{gap:16px}#settings-edit{justify-self:start}}
+#pre-run-confirmation{margin:22px 0}#pre-run-confirmation h2{font-size:15px;margin:0 0 8px}.settings-collapsed{display:grid;grid-template-columns:1fr auto;gap:14px 20px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;align-items:center}.settings-collapsed h2{grid-column:1/-1}.settings-collapsed #settings-summary{display:flex;gap:24px;flex-wrap:wrap}.settings-collapsed #settings-summary[hidden]{display:none}.setting-item{display:flex;flex-direction:column;gap:5px;font-size:13px}.setting-item span{font-size:11px;color:#64748b}.setting-item b{font-weight:600;color:#334155}#settings-edit{font-size:12px;padding:8px 12px;margin:0}#questions .question-card{padding:14px 18px;margin:10px 0}#questions .question-field{margin-top:12px!important;font-size:14px;color:#475569}#settings-cancel{order:-1}.route-number.stage-done{background:#ecfdf5;color:#15803d}.route-number.stage-running{background:#eff6ff;color:#2563eb;position:relative}.route-number.stage-waiting,.route-number.stage-review{background:#fff7ed;color:#c2410c}.route-number.stage-previous{background:#f1f5f9;color:#94a3b8}.route-number.stage-failed{background:#fef2f2;color:#dc2626}.stage-spinner{position:absolute;inset:-3px;border:2px solid #dbeafe;border-top-color:#2563eb;border-radius:50%;animation:stage-turn 1s linear infinite}@keyframes stage-turn{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.stage-spinner{animation:none}}@media(max-width:560px){.settings-collapsed{grid-template-columns:1fr}.settings-collapsed #settings-summary{gap:16px}#settings-edit{justify-self:start}}
 </style>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
@@ -689,6 +722,7 @@ class H(BaseHTTPRequestHandler):
             if summary_path.exists():
                 try:
                     summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                    plan["preparation"] = summary
                     if "heal" in summary.get("stages", {}):
                         plan["healing_result"] = healing_result(summary)
                 except (OSError, ValueError):

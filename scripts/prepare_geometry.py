@@ -31,6 +31,7 @@ sys.path.insert(0, str(ROOT))
 
 import numpy as np  # noqa: E402
 from aox_g3.controller_state import preparation_outcome
+from aox_g3.run_state import write_json
 for stream in (sys.stdout, sys.stderr):
     if hasattr(stream, "reconfigure"):
         stream.reconfigure(encoding="utf-8")
@@ -95,6 +96,9 @@ def stage(name):
         def __enter__(self):
             self.t0 = time.time()
             summary["stages"].setdefault(name, {})
+            summary["current_stage"] = name
+            summary["stages"][name]["status"] = "running"
+            write_json(args.out / "summary.json", summary)
             log(f"\n== {name} ==")
             return self
 
@@ -103,13 +107,16 @@ def stage(name):
             entry = summary["stages"].setdefault(name, {})
             entry["seconds"] = round(seconds, 1)
             if exc is None:
+                if entry.get("status") == "running":
+                    entry["status"] = "ok"
                 entry.setdefault("status", "ok")
                 log(f"   {name}: 완료 {seconds:.1f}s")
             else:
                 entry["status"] = "failed"
                 entry["error"] = f"{exc_type.__name__}: {str(exc)[:300]}"
                 log(f"   {name}: 실패 — {entry['error']}")
-            return True  # swallow: the next stage still runs
+            write_json(args.out / "summary.json", summary)
+            return True  # required CAD failures are gated before mesh generation
     return _Stage()
 
 
@@ -247,6 +254,25 @@ if not is_mesh_input:
         (args.out / "intent.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
         summary["numbers"]["intent_items"] = len(held)
         log(f"   결정 항목 {len(held)}개 → intent.md")
+
+# Confirm CAD repair quality before creating any STL.
+if not is_mesh_input:
+    failed_cad = [name for name in ("cad", "heal") if summary["stages"].get(name, {}).get("status") != "ok"]
+    if failed_cad or not healed_step.is_file() or healed_step.stat().st_size == 0:
+        summary.update(status="failed", failed_required_stages=failed_cad, current_stage="cad_failed")
+        write_json(args.out / "summary.json", summary)
+        log("CAD 읽기·수리 실행 실패 — STL 생성 중단")
+        sys.exit(2)
+    with stage("cad_quality"):
+        n = summary["numbers"]
+        quality = {"closed": n.get("closed") is True, "valid": n.get("valid") is True,
+                   "no_floating_caps": n.get("floating_caps") == 0}
+        summary["cad_quality"] = {"artifact": str(healed_step), "checks": quality,
+            "passed": all(quality.values()), "scope": "CAD repair report; STEP reread not performed"}
+        summary["mesh_role"] = "downstream_geometry" if all(quality.values()) else "intermediate_for_followup_repair"
+        log("CAD 품질 확인: " + ("통과" if all(quality.values()) else "미통과 — 후속 수리용 중간 STL 생성") +
+            f" (닫힘={n.get('closed')}, 유효성={n.get('valid')}, 부유 캡={n.get('floating_caps')})")
+    write_json(args.out / "summary.json", summary)
 
 # ------------------------------------------------------------------------ mesh
 with stage("mesh"):

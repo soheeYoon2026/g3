@@ -836,8 +836,12 @@ if not is_step:
 else:
     # ---------------------------------------------------------------- STEP
     from aox_g3 import cad
+    preview_log = open(args.out / "step_preview_log.txt", "a", encoding="utf-8")
+    preview_proc = subprocess.Popen([sys.executable, str(HERE / "step_preview.py"), "--in", str(src), "--out", str(args.out)], stdout=preview_log, stderr=subprocess.STDOUT)
+    preview_log.close()
     step_identity = {"hash": ledger.file_hash(src), "version": 1,
                      "diagnostics": ledger.file_hash(HERE.parent / "aox_g3" / "cad.py")}
+    shape = None
     step_validation = plan.get("initial_step_validation", {})
     if args.force or step_validation.get("identity") != step_identity:
         log("[초기 검사] STEP 원본 자유 모서리·열린 셸·면 유효성 검사")
@@ -847,9 +851,10 @@ else:
         cad.diagnose(shape, report)
         step_validation = {"identity": step_identity, "report": report.as_dict()}
         plan["initial_step_validation"] = step_validation
-        del shape
         save()
     step_report = step_validation["report"]
+    diag["cad"] = step_report
+    save()
     if (step_report.get("faces", 0) > 0 and step_report.get("solids", 0) > 0
             and step_report.get("free_edges") == 0 and step_report.get("open_shells") == 0
             and step_report.get("invalid_faces") == 0):
@@ -858,9 +863,33 @@ else:
         plan["deliverables"].append(str(src))
         check("STEP 기본 검사 통과", True, "자유 모서리·열린 셸·무효 면 없음")
         decide("STEP 형상 유지", "기본 검사에서 수리 근거가 발견되지 않음; 원본 구조 보존")
+        try:
+            preview_proc.wait(timeout=120)
+        except subprocess.TimeoutExpired:
+            preview_proc.terminate()
+            preview_proc.wait(timeout=10)
+            log("[미리보기] 생성 시간이 초과되어 중단 — 원본 STEP 검사는 완료")
         finish()
-    ok, text = run("propose_parameters.py", ["--in", src, "--out", args.out / "params.json"], "propose")
-    params = json.loads((args.out / "params.json").read_text()) if (args.out / "params.json").exists() else {}
+    from aox_g3 import autotune
+    proposal_identity = {"step": step_identity, "autotune": ledger.file_hash(HERE.parent / "aox_g3" / "autotune.py"), "version": 1}
+    proposal_cache = plan.get("step_proposal_cache", {})
+    if not args.force and proposal_cache.get("identity") == proposal_identity and proposal_cache.get("status") == "done":
+        params = proposal_cache["params"]
+        log("[재사용] 저장된 STEP 설정 제안 — 기본 검사·허용오차 시험 생략")
+    else:
+        if shape is None:
+            shape, _ = cad.read_step(src)
+            if shape is None:
+                raise RuntimeError("STEP 설정 제안용 형상 읽기 실패")
+        report = cad.CadReport(**step_report)
+        log("[검사·제안] STEP 설정 측정 — 초기 CAD 진단 재사용; 허용오차·개구부·반쪽 모델·림 후보 계산")
+        proposal, _ = autotune.propose(shape, report, do_sweep=True)
+        params = proposal.as_dict()
+        write_json(args.out / "params.json", params)
+        plan["step_proposal_cache"] = {"identity": proposal_identity, "status": "done", "params": params}
+        save()
+    if shape is not None:
+        del shape
     diag["params"] = {k: v for k, v in params.items() if k != "questions"}
     half = params.get("half_model")
     mirror_ans = ask("half_model", f"반쪽 모델로 보입니다({half}). 미러해서 전체 차로 볼까요?", bool(half) if half is not None else True,
