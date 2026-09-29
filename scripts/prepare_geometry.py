@@ -80,7 +80,9 @@ args = ap.parse_args()
 args.out.mkdir(parents=True, exist_ok=True)
 log_path = args.out / "log.txt"
 log_file = open(log_path, "w", encoding="utf-8")
-summary = {"input": str(args.src), "stages": {}, "numbers": {}}
+from aox_g3.stages import record_stage, end_current_stage
+
+summary = {"input": str(args.src), "stages": {}, "numbers": {}, "started_at": time.time()}
 python = sys.executable
 
 
@@ -98,6 +100,10 @@ def stage(name):
             summary["stages"].setdefault(name, {})
             summary["current_stage"] = name
             summary["stages"][name]["status"] = "running"
+            phase = {"cad": "cad_repair", "cad_quality": "cad_quality", "mesh": "repair" if is_mesh_input else "stl_generation",
+                     "resurface": "repair", "wrap": "repair", "local": "repair", "smooth": "repair"}.get(name)
+            if phase:
+                record_stage(summary, phase)
             write_json(args.out / "summary.json", summary)
             log(f"\n== {name} ==")
             return self
@@ -115,6 +121,9 @@ def stage(name):
                 entry["status"] = "failed"
                 entry["error"] = f"{exc_type.__name__}: {str(exc)[:300]}"
                 log(f"   {name}: 실패 — {entry['error']}")
+            if name in ("heal", "cad_quality", "mesh", "resurface", "wrap", "local", "smooth") or (name == "cad" and exc is not None):
+                state = "failed" if exc is not None else "review_required" if name == "cad_quality" and not summary.get("cad_quality", {}).get("passed") else "completed"
+                end_current_stage(summary, state)
             write_json(args.out / "summary.json", summary)
             return True  # required CAD failures are gated before mesh generation
     return _Stage()

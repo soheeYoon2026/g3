@@ -38,6 +38,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 from aox_g3 import ledger
+from aox_g3.stages import record_stage, end_current_stage, follow_preparation
 from aox_g3.run_state import RunLock, write_json
 from aox_g3.measurement_cache import cached_thickness
 from aox_g3.quality_display import healing_result
@@ -95,6 +96,8 @@ def finalize_runtime():
         plan["status"] = "failed"
         plan["runtime"].setdefault("error", "완료 상태 없이 실행이 종료되었습니다.")
     plan["runtime"]["ended_at"] = time.time()
+    if plan.get("status") == "failed":
+        end_current_stage(plan, "failed")
     write_json(PLAN, plan)
     LOG.close()
 
@@ -110,7 +113,7 @@ atexit.register(finalize_runtime)
 write_json(PLAN, plan)
 
 
-def log(msg):
+def log(msg, *, stage=None, state="running"):
     # Keep the public vocabulary bounded; stage and state belong in the message.
     tags = {
         "실행": ("진행", ""), "입력": ("진행", "입력: "),
@@ -127,8 +130,13 @@ def log(msg):
         tag, description = tags[match.group(1)]
         msg = f"[{tag}] {description}{match.group(2)}"
     with STATE_IO_LOCK:
+        if stage:
+            record_stage(plan, stage, state)
         if msg.startswith("["):
             plan["runtime"]["current_stage"] = msg
+            history = plan.setdefault("stage_history", [])
+            if not history or history[-1]["message"] != msg:
+                history.append({"message": msg, "at": time.time()})
             plan["runtime"]["updated_at"] = time.time()
             write_json(PLAN, plan)
         print(msg, flush=True)
@@ -172,11 +180,12 @@ def decide(what, because, evidence=None, tag=None):
     if tag is None:
         tag = "진단" if what == "바닥이 없는 껍질" else "경로 선택"
     plan["decisions"].append({"what": what, "because": because, "evidence": evidence or {}})
-    log(f"[{tag}] {what}  ← {because}")
+    log(f"[{tag}] {what}  ← {because}", stage="method_selection", state="completed")
     save()
 
 
 def check(name, ok, detail, on_fail=None):
+    record_stage(plan, "validation")
     plan["checks"].append({"name": name, "ok": bool(ok), "detail": detail, "on_fail": on_fail})
     log(f"[검증] {'통과' if ok else '실패'} {name}: {detail}" + (f"  → {on_fail}" if (not ok and on_fail) else ""))
     save()
@@ -203,6 +212,14 @@ def path_args(arguments):
 
 
 def run(script, arguments, capture_name):
+    stage_id = {
+        "propose_parameters.py": "settings_proposal",
+        "flat_floor_wrap.py": "floor_inspection" if "--no-wrap" in arguments else "floor_repair",
+        "resurface_noclose.py": "repair",
+        "close_with_wrap.py": "repair",
+    }.get(script, "repair")
+    if script != "prepare_geometry.py":
+        record_stage(plan, stage_id)
     cmd = [python, str(HERE / script)] + [str(a) for a in arguments]
     t0 = time.time()
     in_paths, out_paths = path_args(arguments)
@@ -225,6 +242,7 @@ def run(script, arguments, capture_name):
     ident = ledger.identity(script, arguments, inputs, args.out)
     hit = ledger.find(args.out, ident)
     if hit and not args.force:
+        end_current_stage(plan, "completed")
         log(f"[건너뜀] {script} — 같은 입력·인자로 {hit['at']} 에 끝난 단계 (산출물 {len(hit['outputs'])}개, {hit['seconds']} s)")
         plan["runs"].append({"script": script, "args": [str(a) for a in arguments], "skipped": True,
                              "from": hit["at"], "log": f"{capture_name}.txt"})
@@ -233,8 +251,14 @@ def run(script, arguments, capture_name):
         return True, prior.read_text(encoding="utf-8", errors="replace") if prior.exists() else ""
     log(f"[실행] {script} {' '.join(str(a) for a in arguments)}")
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=args.time_budget)
+        if script == "prepare_geometry.py":
+            child_out = Path(str(arguments[arguments.index("--out") + 1]))
+            with follow_preparation(plan, child_out / "summary.json", STATE_IO_LOCK, save):
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=args.time_budget)
+        else:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=args.time_budget)
     except subprocess.TimeoutExpired as exc:
+        end_current_stage(plan, "failed")
         out = (exc.stdout or b"") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
         text = out.decode() if isinstance(out, bytes) else out
         (args.out / f"{capture_name}.txt").write_text(text, encoding="utf-8")
@@ -250,6 +274,8 @@ def run(script, arguments, capture_name):
                          "returncode": proc.returncode, "log": f"{capture_name}.txt"})
     save()
     after = snapshot()
+    end_current_stage(plan, "completed" if proc.returncode == 0 else "failed")
+    save()
     produced = [p for p, v in after.items() if before.get(p) != v]
     ledger.record(args.out, script, arguments, inputs, produced + [args.out / f"{capture_name}.txt"], ident,
                   time.time() - t0, status="done" if proc.returncode == 0 else "failed")
@@ -342,6 +368,7 @@ def pause():
     pending = [q for q in plan["questions"] if "answer" not in q and not q.get("assumed")]
     write_json(QUESTIONS, pending)
     plan["status"] = "waiting_for_answers"
+    record_stage(plan, "waiting_for_answers", "waiting")
     save()
     log(f"[질문] 답변이 필요한 항목 {len(pending)}개")
     log("[답변 대기] 브라우저에서 답을 선택하고 ‘답 저장 후 이어서 실행’을 누르세요.")
@@ -353,6 +380,7 @@ def finish(status="done"):
     if status == "waiting_for_answers":
         pause()
     plan["status"] = status
+    end_current_stage(plan, "completed" if status == "done" else "failed" if status == "failed" else "review_required")
     plan["result"] = {"status": status, "exit_code": code,
                       "quality_passed": status == "done"}
     write_json(QUESTIONS, [])
@@ -375,7 +403,7 @@ if not is_step:
     cached_initial = plan.get("initial_mesh_diagnosis", {})
     reuse_initial = (not args.force and cached_initial.get("identity") == initial_identity
                      and cached_initial.get("status") == "done")
-    log("[입력] 파일 읽는 중 — 이어갈 단계 준비")
+    log("[입력] 파일 읽는 중 — 이어갈 단계 준비", stage="inspection")
     def load_native():
         native = trimesh.load(src, force="mesh")
         native.merge_vertices()
@@ -389,12 +417,12 @@ if not is_step:
         diag.update(cached_initial["diagnosis"])
         ext = np.asarray(cached_initial["extents_exact"], dtype=float)
         open_share = cached_initial["boundary_edge_share_exact"]
-        log("[초기 검사] 저장된 결과 재사용 — 같은 입력·검사 설정")
+        log("[초기 검사] 저장된 결과 재사용 — 같은 입력·검사 설정", stage="inspection", state="completed")
         viewer_mesh(src, loaded_mesh=mesh.copy() if face_count <= 150_000 else None, face_count=face_count)
         # Vertex normalization is needed by downstream geometry operations, not a re-diagnosis.
     else:
         proxy_source = mesh.copy() if face_count <= 150_000 else None
-        log("[초기 검사] 검사 중 — 미리보기 생성과 병렬 진행")
+        log("[초기 검사] 검사 중 — 미리보기 생성과 병렬 진행", stage="inspection")
         with ThreadPoolExecutor(max_workers=1) as preview_pool:
             preview_future = preview_pool.submit(viewer_mesh, src, 150_000, proxy_source, face_count)
             ext = mesh.extents
@@ -406,7 +434,7 @@ if not is_step:
                         "boundary_edge_share": round(open_share, 5), "watertight": bool(mesh.is_watertight),
                         "winding_consistent": bool(mesh.is_winding_consistent),
                         "finite_coordinates": bool(np.isfinite(mesh.vertices).all())}
-            log("[초기 검사] 완료 — 미리보기 생성 종료 확인 중")
+            log("[초기 검사] 완료 — 미리보기 생성 종료 확인 중", stage="inspection", state="completed")
             preview_future.result()
         diag.update(measured)
         plan["initial_mesh_diagnosis"] = {"identity": initial_identity, "status": "done",
@@ -538,7 +566,7 @@ if not is_step:
             big = max(mesh.split(only_watertight=False), key=lambda p: len(p.faces))
             pts, fid = trimesh.sample.sample_surface(big, 3000, seed=0)
             n = big.face_normals[fid]
-            log("[두께 측정] 측정 중 — 광선 3,000개를 작은 묶음으로 계산")
+            log("[두께 측정] 측정 중 — 광선 3,000개를 작은 묶음으로 계산", stage="thickness_measurement")
             loc, ray = ray_hits_batched(big.ray, pts - n * 0.05, -n)
             thick = np.linalg.norm(loc - (pts - n * 0.05)[ray], axis=1) if len(ray) else np.array([50.0])
             return float(np.percentile(thick, 5))
@@ -553,9 +581,9 @@ if not is_step:
         diag["thickness_measurement"] = {"status": "reused" if reused else "measured",
                                          "file": str(args.out / "thickness_measurement.json")}
         if reused:
-            log(f"[두께 측정] 저장값 재사용 — {t5:.2f} mm, 같은 입력·설정")
+            log(f"[두께 측정] 저장값 재사용 — {t5:.2f} mm, 같은 입력·설정", stage="thickness_measurement", state="completed")
         else:
-            log(f"[두께 측정] 완료 — 두께 5% 분위 {t5:.2f} mm")
+            log(f"[두께 측정] 완료 — 두께 5% 분위 {t5:.2f} mm", stage="thickness_measurement", state="completed")
         save()
         voxel_prop = float(np.clip(round(t5 / 2.5, 1), 0.6, 3.0))
         est = mesh.area / (voxel_prop ** 2) * 0.7
@@ -625,7 +653,7 @@ if not is_step:
             diag.update(floor_cache["diagnosis"])
             log("[재사용] 저장된 바닥 진단 — 광선·단면 검사 생략; 바닥 높이 답변은 수리에만 적용")
         else:
-            log("[바닥 검사] 검사 중 — 아래쪽 광선으로 바닥 덮임 확인")
+            log("[바닥 검사] 검사 중 — 아래쪽 광선으로 바닥 덮임 확인", stage="floor_inspection")
             # Is the underside there? Area of downward-facing surface in the lower third,
             # against the footprint. GT-R (no floor at all) has almost none; a car with
             # open panel seams still has its floor. The section scan alone cannot tell
@@ -648,7 +676,7 @@ if not is_step:
             low = seen & (first < lo[2] + 0.3 * H)
             coverage = float(low.sum() / max(1, seen.sum()))
             diag["underside_coverage"] = round(coverage, 3)
-            log(f"[바닥 검사] 광선 검사 완료 — 바닥 덮임률 {coverage*100:.1f} %")
+            log(f"[바닥 검사] 광선 검사 완료 — 바닥 덮임률 {coverage*100:.1f} %", stage="floor_inspection", state="completed")
             diag["underside_first_hit_median_frac"] = round(float(np.nanmedian((first - lo[2]) / H)), 3) if seen.any() else None
             ok, text = run("flat_floor_wrap.py", ["--in", work, "--out", args.out / "floorscan", "--no-wrap"], "floorscan")
             floor_summary = args.out / "floorscan" / "summary.json"
@@ -844,7 +872,7 @@ else:
     shape = None
     step_validation = plan.get("initial_step_validation", {})
     if args.force or step_validation.get("identity") != step_identity:
-        log("[초기 검사] STEP 원본 자유 모서리·열린 셸·면 유효성 검사")
+        log("[초기 검사] STEP 원본 자유 모서리·열린 셸·면 유효성 검사", stage="inspection")
         shape, report = cad.read_step(src)
         if shape is None:
             raise RuntimeError("STEP 읽기 실패: " + str(report.warnings))
@@ -854,6 +882,7 @@ else:
         save()
     step_report = step_validation["report"]
     diag["cad"] = step_report
+    record_stage(plan, "inspection", "completed")
     save()
     if (step_report.get("faces", 0) > 0 and step_report.get("solids", 0) > 0
             and step_report.get("free_edges") == 0 and step_report.get("open_shells") == 0
@@ -875,14 +904,14 @@ else:
     proposal_cache = plan.get("step_proposal_cache", {})
     if not args.force and proposal_cache.get("identity") == proposal_identity and proposal_cache.get("status") == "done":
         params = proposal_cache["params"]
-        log("[재사용] 저장된 STEP 설정 제안 — 기본 검사·허용오차 시험 생략")
+        log("[재사용] 저장된 STEP 설정 제안 — 기본 검사·허용오차 시험 생략", stage="settings_proposal", state="completed")
     else:
         if shape is None:
             shape, _ = cad.read_step(src)
             if shape is None:
                 raise RuntimeError("STEP 설정 제안용 형상 읽기 실패")
         report = cad.CadReport(**step_report)
-        log("[검사·제안] STEP 설정 측정 — 초기 CAD 진단 재사용; 허용오차·개구부·반쪽 모델·림 후보 계산")
+        log("[검사·제안] STEP 설정 측정 — 초기 CAD 진단 재사용; 허용오차·개구부·반쪽 모델·림 후보 계산", stage="settings_proposal")
         proposal, _ = autotune.propose(shape, report, do_sweep=True)
         params = proposal.as_dict()
         write_json(args.out / "params.json", params)
